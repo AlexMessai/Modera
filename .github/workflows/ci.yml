@@ -5,12 +5,22 @@ on:
     branches: ["main"]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout pull request head
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Checkout push
+        if: github.event_name != 'pull_request'
         uses: actions/checkout@v7
 
       - name: Setup Node
@@ -21,12 +31,16 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts
 
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v7
-        with:
-          name: package-lock
-          path: package-lock.json
-          retention-days: 1
+      - name: Commit dependency lock
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: lock dependencies"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+          fi
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
