@@ -1,0 +1,44 @@
+.settings-admin-panel { margin-bottom: 12px; }
+.settings-toolbar { align-items: center; }
+.settings-toolbar > div:first-child { display: grid; gap: 3px; }
+.settings-toolbar > div:first-child strong { font-size: 14px; }
+.settings-toolbar > div:first-child span { color: var(--muted); font-size: 12px; }
+.settings-toolbar-actions { display: flex; gap: 8px; }
+.settings-admin-table { min-width: 980px; }
+.settings-admin-identity { display: flex; align-items: center; gap: 10px; }
+.settings-admin-identity .account-avatar { flex: 0 0 auto; }
+.settings-role { border-color: var(--line); }
+.settings-role--owner { background: #f2f0ff; color: #5e4ca3; border-color: #ddd6ff; }
+.settings-role--admin { background: #eef4ff; color: #345f9c; border-color: #d6e4fa; }
+.settings-role--moderator { background: #f0f8f2; color: #33734a; border-color: #d7eadc; }
+.settings-role--viewer { background: #f5f5f6; color: #646a73; }
+.settings-role-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.settings-role-card { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 14px; }
+.settings-role-card > svg { margin-top: 1px; color: var(--muted); }
+.settings-role-card strong { font-size: 13px; }
+.settings-role-card p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.settings-admin-dialog { width: min(650px, 100%); }
+.settings-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-password-field { grid-column: 1 / -1; }
+.settings-active-toggle { display: flex; align-items: flex-start; gap: 9px; padding: 9px 0; }
+.settings-active-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
+.settings-active-toggle > span { display: grid; gap: 2px; }
+.settings-active-toggle strong { font-size: 12px; }
+.settings-active-toggle small { color: var(--muted); font-size: 11px; }
+.settings-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+@media (max-width: 1020px) {
+  .settings-role-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 760px) {
+  .settings-toolbar { align-items: stretch; flex-direction: column; }
+  .settings-toolbar-actions { display: grid; grid-template-columns: 1fr; }
+  .settings-toolbar-actions .button { width: 100%; }
+  .settings-role-grid { grid-template-columns: 1fr; }
+  .settings-form-grid { grid-template-columns: 1fr; }
+  .settings-password-field { grid-column: auto; }
+  .settings-dialog-footer { align-items: stretch; flex-direction: column; }
+  .settings-dialog-footer > .button, .settings-dialog-footer .dialog-actions { width: 100%; }
+  .settings-dialog-footer .dialog-actions { display: grid; grid-template-columns: 1fr; }
+}
