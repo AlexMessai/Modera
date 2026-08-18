@@ -17,19 +17,16 @@ const RULE_LABELS: Record<string, string> = {
 
 export async function recordAutomodViolationAndEscalate(input: {
   chatId: string;
-  userId: string;
+  telegramUserId: number;
   rule: string;
   telegramMessageId: string;
 }) {
   const resolved = await resolveEffectiveModerationSettings(input.chatId);
   const policy = resolved.settings;
+  if (!policy.autoEscalationEnabled) return { enabled: false, escalated: false } as const;
 
-  if (!policy.autoEscalationEnabled) {
-    return { enabled: false, escalated: false } as const;
-  }
-
-  const member = await prisma.chatMember.findUnique({
-    where: { chatId_userId: { chatId: input.chatId, userId: input.userId } },
+  const member = await prisma.chatMember.findFirst({
+    where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
     include: { user: { select: { isBot: true } } }
   });
   if (!member || member.user.isBot || isProtectedMemberStatus(member.status)) {
@@ -37,7 +34,7 @@ export async function recordAutomodViolationAndEscalate(input: {
       await prisma.auditLog.create({
         data: {
           chatId: input.chatId,
-          affectedUserId: input.userId,
+          affectedUserId: member.userId,
           source: "SYSTEM",
           action: "AUTOMOD_ESCALATION_SKIPPED_PROTECTED",
           reason: "Автоматическое наказание не применяется к владельцу или администратору Telegram.",
@@ -51,14 +48,11 @@ export async function recordAutomodViolationAndEscalate(input: {
   const reason = `Автомодерация: ${RULE_LABELS[input.rule] ?? "нарушение правила"}`;
   const now = new Date();
   const warning = await prisma.$transaction(async (tx) => {
-    const updated = await tx.chatMember.update({
-      where: { id: member.id },
-      data: { warningCount: { increment: 1 } }
-    });
+    const updated = await tx.chatMember.update({ where: { id: member.id }, data: { warningCount: { increment: 1 } } });
     const action = await tx.moderationAction.create({
       data: {
         chatId: input.chatId,
-        affectedUserId: input.userId,
+        affectedUserId: member.userId,
         actingAdminId: null,
         source: "SYSTEM",
         type: "WARNING",
@@ -77,7 +71,7 @@ export async function recordAutomodViolationAndEscalate(input: {
     await tx.auditLog.create({
       data: {
         chatId: input.chatId,
-        affectedUserId: input.userId,
+        affectedUserId: member.userId,
         source: "SYSTEM",
         action: "AUTOMOD_WARNING",
         reason,
@@ -94,21 +88,9 @@ export async function recordAutomodViolationAndEscalate(input: {
   });
 
   let action: "MUTE" | "BAN" | null = null;
-  if (
-    warning.warningCount >= policy.banAfterWarnings &&
-    warning.lastAutoEscalationWarningCount < policy.banAfterWarnings
-  ) {
-    action = "BAN";
-  } else if (
-    warning.warningCount >= policy.muteAfterWarnings &&
-    warning.lastAutoEscalationWarningCount < policy.muteAfterWarnings
-  ) {
-    action = "MUTE";
-  }
-
-  if (!action) {
-    return { enabled: true, escalated: false, warningCount: warning.warningCount } as const;
-  }
+  if (warning.warningCount >= policy.banAfterWarnings && warning.lastAutoEscalationWarningCount < policy.banAfterWarnings) action = "BAN";
+  else if (warning.warningCount >= policy.muteAfterWarnings && warning.lastAutoEscalationWarningCount < policy.muteAfterWarnings) action = "MUTE";
+  if (!action) return { enabled: true, escalated: false, warningCount: warning.warningCount } as const;
 
   try {
     const result = await executeAutomatedModerationAction({
@@ -121,21 +103,9 @@ export async function recordAutomodViolationAndEscalate(input: {
       triggerRule: input.rule,
       ...(action === "MUTE" ? { muteDurationMinutes: policy.muteDurationMinutes } : {})
     });
-    return {
-      enabled: true,
-      escalated: true,
-      warningCount: warning.warningCount,
-      action,
-      result
-    } as const;
+    return { enabled: true, escalated: true, warningCount: warning.warningCount, action, result } as const;
   } catch (error) {
     const message = error instanceof ModerationError ? error.message : "Не удалось применить автоматическое наказание.";
-    return {
-      enabled: true,
-      escalated: false,
-      warningCount: warning.warningCount,
-      attemptedAction: action,
-      error: message
-    } as const;
+    return { enabled: true, escalated: false, warningCount: warning.warningCount, attemptedAction: action, error: message } as const;
   }
 }
