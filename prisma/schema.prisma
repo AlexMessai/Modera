@@ -189,6 +189,7 @@ model Message {
 model ChatModerationSettings {
   id                     String   @id @default(uuid()) @db.Uuid
   chatId                 String   @unique @db.Uuid
+  useGlobalProfile       Boolean  @default(false)
   blockLinks             Boolean  @default(false)
   allowedDomains         String[] @default([])
   spamEnabled            Boolean  @default(false)
@@ -206,6 +207,26 @@ model ChatModerationSettings {
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalModerationSettings {
+  id                     String   @id @default("global")
+  blockLinks             Boolean  @default(false)
+  allowedDomains         String[] @default([])
+  spamEnabled            Boolean  @default(false)
+  spamWindowSeconds      Int      @default(10)
+  spamMaxMessages        Int      @default(5)
+  blockedTermsEnabled    Boolean  @default(false)
+  blockedTerms           String[] @default([])
+  massMentionsEnabled    Boolean  @default(false)
+  maxMentions            Int      @default(5)
+  duplicateEnabled       Boolean  @default(false)
+  duplicateWindowSeconds Int      @default(60)
+  duplicateMaxMessages   Int      @default(2)
+  blockedMessageTypes    String[] @default([])
+  ignoreAdmins           Boolean  @default(true)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model ModerationAction {
