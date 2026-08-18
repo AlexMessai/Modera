@@ -4,6 +4,7 @@ import "./globals.css";
 import "./members.css";
 import "./automod.css";
 import "./journal.css";
+import "./messages.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],
