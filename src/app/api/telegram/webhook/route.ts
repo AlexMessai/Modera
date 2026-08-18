@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { processTelegramUpdate } from "@/server/telegram/update-handler";
 import type { TelegramUpdate } from "@/server/telegram/types";
+import { resolveTelegramWebhookSecret } from "@/server/telegram/webhook-secret";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ function safeCompare(a: string, b: string) {
 }
 
 export async function POST(request: Request) {
-  const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const configuredSecret = resolveTelegramWebhookSecret();
   if (!configuredSecret) {
     return Response.json(
       { error: { code: "WEBHOOK_NOT_CONFIGURED", message: "Webhook не настроен." } },
