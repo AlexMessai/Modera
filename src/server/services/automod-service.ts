@@ -13,7 +13,56 @@ const CLAIM_STALE_MS = 2 * 60 * 1000;
 const PROTECTED_STATUSES = new Set(["CREATOR", "ADMINISTRATOR"]);
 const URL_FALLBACK_PATTERN = /(?<![@\w])(?:(?:https?:\/\/|www\.)[^\s<>"']+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(?:\/[^\s<>"']*)?)/giu;
 
-export type AutomodRule = "LINK" | "SPAM";
+export const RESTRICTABLE_MESSAGE_TYPES = [
+  "PHOTO",
+  "VIDEO",
+  "ANIMATION",
+  "DOCUMENT",
+  "STICKER",
+  "VOICE",
+  "AUDIO",
+  "VIDEO_NOTE",
+  "POLL",
+  "DICE",
+  "LOCATION",
+  "CONTACT"
+] as const;
+
+export type RestrictableMessageType = (typeof RESTRICTABLE_MESSAGE_TYPES)[number];
+export type AutomodRule =
+  | "LINK"
+  | "TERM"
+  | "MEDIA"
+  | "MENTIONS"
+  | "DUPLICATE"
+  | "SPAM";
+
+const RESULT_BY_RULE: Record<AutomodRule, string> = {
+  LINK: "DELETED_LINK",
+  TERM: "DELETED_TERM",
+  MEDIA: "DELETED_MEDIA",
+  MENTIONS: "DELETED_MENTIONS",
+  DUPLICATE: "DELETED_DUPLICATE",
+  SPAM: "DELETED_SPAM"
+};
+
+const AUDIT_BY_RULE: Record<AutomodRule, string> = {
+  LINK: "AUTOMOD_LINK_DELETED",
+  TERM: "AUTOMOD_TERM_DELETED",
+  MEDIA: "AUTOMOD_MEDIA_DELETED",
+  MENTIONS: "AUTOMOD_MENTIONS_DELETED",
+  DUPLICATE: "AUTOMOD_DUPLICATE_DELETED",
+  SPAM: "AUTOMOD_SPAM_DELETED"
+};
+
+const REASON_BY_RULE: Record<AutomodRule, string> = {
+  LINK: "Автомодерация: запрещённая ссылка",
+  TERM: "Автомодерация: запрещённое слово или фраза",
+  MEDIA: "Автомодерация: запрещённый тип контента",
+  MENTIONS: "Автомодерация: слишком много упоминаний",
+  DUPLICATE: "Автомодерация: повторяющееся сообщение",
+  SPAM: "Автомодерация: превышен лимит сообщений"
+};
 
 export function normalizeDomain(value: string) {
   const trimmed = value.trim().toLowerCase().replace(/^\.+/, "");
@@ -45,10 +94,7 @@ export function isDomainAllowed(domain: string, allowedDomains: string[]) {
   );
 }
 
-function entityValue(
-  text: string,
-  entity: TelegramMessageEntity
-) {
+function entityValue(text: string, entity: TelegramMessageEntity) {
   if (entity.type === "text_link" && entity.url) return entity.url;
   if (entity.type !== "url") return null;
   return text.slice(entity.offset, entity.offset + entity.length);
@@ -82,8 +128,60 @@ export function extractLinkDomains(message: TelegramMessage) {
   );
 }
 
+export function normalizeModerationText(value: string | null | undefined) {
+  return value
+    ?.normalize("NFKC")
+    .toLocaleLowerCase("ru-RU")
+    .replace(/\s+/gu, " ")
+    .trim() ?? "";
+}
+
+export function normalizeBlockedTerms(values: string[]) {
+  return Array.from(
+    new Set(values.map(normalizeModerationText).filter(Boolean))
+  ).slice(0, 200);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsBlockedTerm(content: string, term: string) {
+  if (!content || !term) return false;
+  const expression = new RegExp(
+    `(?:^|[^\\p{L}\\p{N}_])${escapeRegExp(term)}(?:$|[^\\p{L}\\p{N}_])`,
+    "u"
+  );
+  return expression.test(content);
+}
+
+export function findBlockedTerms(message: TelegramMessage, blockedTerms: string[]) {
+  const content = normalizeModerationText(
+    [message.text, message.caption].filter(Boolean).join(" ")
+  );
+  if (!content) return [];
+
+  return normalizeBlockedTerms(blockedTerms).filter((term) =>
+    containsBlockedTerm(content, term)
+  );
+}
+
+function mentionEntities(message: TelegramMessage) {
+  return [...(message.entities ?? []), ...(message.caption_entities ?? [])].filter(
+    (entity) => entity.type === "mention" || entity.type === "text_mention"
+  );
+}
+
+export function countMentions(message: TelegramMessage) {
+  return mentionEntities(message).length;
+}
+
 export function isFloodViolation(messageCount: number, maxMessages: number) {
   return messageCount > maxMessages;
+}
+
+export function isDuplicateViolation(duplicateCount: number, maxMessages: number) {
+  return duplicateCount > maxMessages;
 }
 
 function revisionDate(message: TelegramMessage) {
@@ -125,7 +223,7 @@ async function recordDeletion(input: {
     prisma.message.update({
       where: { id: input.messageId },
       data: {
-        automodResult: input.rule === "LINK" ? "DELETED_LINK" : "DELETED_SPAM",
+        automodResult: RESULT_BY_RULE[input.rule],
         automodClaimedAt: null,
         deletedAt: now
       }
@@ -135,11 +233,8 @@ async function recordDeletion(input: {
         chatId: input.chatId,
         affectedUserId: input.affectedUserId,
         source: "SYSTEM",
-        action: input.rule === "LINK" ? "AUTOMOD_LINK_DELETED" : "AUTOMOD_SPAM_DELETED",
-        reason:
-          input.rule === "LINK"
-            ? "Автомодерация: запрещённая ссылка"
-            : "Автомодерация: превышен лимит сообщений",
+        action: AUDIT_BY_RULE[input.rule],
+        reason: REASON_BY_RULE[input.rule],
         metadata: input.metadata
       }
     })
@@ -179,6 +274,41 @@ async function recordDeleteFailure(input: {
   ]);
 }
 
+async function countRecentDuplicates(input: {
+  chatId: string;
+  senderUserId: string;
+  messageId: string;
+  telegramDate: Date;
+  windowSeconds: number;
+  content: string;
+}) {
+  if (!input.content) return 0;
+  const windowStart = new Date(
+    input.telegramDate.getTime() - input.windowSeconds * 1000
+  );
+  const recent = await prisma.message.findMany({
+    where: {
+      chatId: input.chatId,
+      senderUserId: input.senderUserId,
+      id: { not: input.messageId },
+      telegramDate: {
+        gte: windowStart,
+        lte: input.telegramDate
+      }
+    },
+    orderBy: { telegramDate: "desc" },
+    take: 100,
+    select: { text: true, caption: true }
+  });
+
+  return recent.filter((message) => {
+    const candidate = normalizeModerationText(
+      [message.text, message.caption].filter(Boolean).join(" ")
+    );
+    return candidate === input.content;
+  }).length + 1;
+}
+
 export async function processAutomodMessage(input: {
   chatId: string;
   message: TelegramMessage;
@@ -198,7 +328,8 @@ export async function processAutomodMessage(input: {
     select: {
       id: true,
       senderUserId: true,
-      telegramDate: true
+      telegramDate: true,
+      messageType: true
     }
   });
 
@@ -237,7 +368,17 @@ export async function processAutomodMessage(input: {
     where: { chatId: input.chatId }
   });
 
-  if (!settings || (!settings.blockLinks && !settings.spamEnabled)) {
+  const rulesEnabled = Boolean(
+    settings &&
+      (settings.blockLinks ||
+        settings.spamEnabled ||
+        settings.blockedTermsEnabled ||
+        settings.massMentionsEnabled ||
+        settings.duplicateEnabled ||
+        settings.blockedMessageTypes.length > 0)
+  );
+
+  if (!settings || !rulesEnabled) {
     await finishWithoutDeletion(stored.id, "DISABLED");
     return { processed: true, result: "DISABLED" as const };
   }
@@ -264,10 +405,43 @@ export async function processAutomodMessage(input: {
   const blockedDomains = domains.filter(
     (domain) => !isDomainAllowed(domain, allowedDomains)
   );
+  const blockedTerms = settings.blockedTermsEnabled
+    ? findBlockedTerms(input.message, settings.blockedTerms)
+    : [];
+  const mentionCount = settings.massMentionsEnabled
+    ? countMentions(input.message)
+    : 0;
+  const blockedMessageType = settings.blockedMessageTypes.includes(stored.messageType)
+    ? stored.messageType
+    : null;
 
-  let rule: AutomodRule | null = blockedDomains.length > 0 ? "LINK" : null;
+  let rule: AutomodRule | null = null;
+  if (blockedDomains.length > 0) rule = "LINK";
+  else if (blockedTerms.length > 0) rule = "TERM";
+  else if (blockedMessageType) rule = "MEDIA";
+  else if (settings.massMentionsEnabled && mentionCount > settings.maxMentions) {
+    rule = "MENTIONS";
+  }
+
+  let duplicateCount: number | null = null;
+  if (!rule && settings.duplicateEnabled) {
+    const content = normalizeModerationText(
+      [input.message.text, input.message.caption].filter(Boolean).join(" ")
+    );
+    duplicateCount = await countRecentDuplicates({
+      chatId: input.chatId,
+      senderUserId: stored.senderUserId,
+      messageId: stored.id,
+      telegramDate: stored.telegramDate,
+      windowSeconds: settings.duplicateWindowSeconds,
+      content
+    });
+    if (content && isDuplicateViolation(duplicateCount, settings.duplicateMaxMessages)) {
+      rule = "DUPLICATE";
+    }
+  }
+
   let floodCount: number | null = null;
-
   if (!rule && settings.spamEnabled && !input.isEdited) {
     const windowStart = new Date(
       stored.telegramDate.getTime() - settings.spamWindowSeconds * 1000
@@ -297,7 +471,13 @@ export async function processAutomodMessage(input: {
     telegramMessageId: String(input.message.message_id),
     rule,
     blockedDomains,
-    allowedDomains,
+    blockedTerms,
+    blockedMessageType,
+    mentionCount,
+    maxMentions: settings.maxMentions,
+    duplicateCount,
+    duplicateWindowSeconds: settings.duplicateWindowSeconds,
+    duplicateMaxMessages: settings.duplicateMaxMessages,
     floodCount,
     spamWindowSeconds: settings.spamWindowSeconds,
     spamMaxMessages: settings.spamMaxMessages,
@@ -334,6 +514,6 @@ export async function processAutomodMessage(input: {
 
   return {
     processed: true,
-    result: rule === "LINK" ? ("DELETED_LINK" as const) : ("DELETED_SPAM" as const)
+    result: RESULT_BY_RULE[rule]
   };
 }
