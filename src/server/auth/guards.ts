@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { canModerate } from "@/server/auth/permissions";
 import { getCurrentAdmin } from "@/server/auth/session";
 
 export async function requireAdminPage() {
@@ -20,4 +21,26 @@ export async function requireAdminApi() {
   }
 
   return { ok: true as const, admin };
+}
+
+export async function requireModerationApi() {
+  const auth = await requireAdminApi();
+  if (!auth.ok) return auth;
+
+  if (!canModerate(auth.admin.role)) {
+    return {
+      ok: false as const,
+      response: Response.json(
+        {
+          error: {
+            code: "FORBIDDEN",
+            message: "У вашей роли нет прав на действия модерации."
+          }
+        },
+        { status: 403 }
+      )
+    };
+  }
+
+  return { ok: true as const, admin: auth.admin };
 }
