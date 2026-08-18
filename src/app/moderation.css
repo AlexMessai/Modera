@@ -1,0 +1,14 @@
+.moderation-metrics { margin-bottom: 12px; }
+.moderation-overview-warning { margin: 0 0 12px; }
+.moderation-chat-panel .panel-header { padding: 14px 16px; }
+.moderation-chat-table { min-width: 980px; }
+.rule-chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.rule-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 7px; border: 1px solid #dbe4f6; border-radius: 999px; background: #f6f8fd; color: #36598f; font-size: 11px; font-weight: 650; }
+
+@media (max-width: 760px) {
+  .moderation-metrics { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 520px) {
+  .moderation-metrics { grid-template-columns: 1fr; }
+}

@@ -1,5 +1,10 @@
 import { prisma } from "@/server/db/prisma";
-import { normalizeAllowedDomains } from "@/server/services/automod-service";
+import {
+  normalizeAllowedDomains,
+  normalizeBlockedTerms,
+  RESTRICTABLE_MESSAGE_TYPES,
+  type RestrictableMessageType
+} from "@/server/services/automod-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -9,8 +14,21 @@ export const DEFAULT_CHAT_MODERATION_SETTINGS = {
   spamEnabled: false,
   spamWindowSeconds: 10,
   spamMaxMessages: 5,
+  blockedTermsEnabled: false,
+  blockedTerms: [] as string[],
+  massMentionsEnabled: false,
+  maxMentions: 5,
+  duplicateEnabled: false,
+  duplicateWindowSeconds: 60,
+  duplicateMaxMessages: 2,
+  blockedMessageTypes: [] as string[],
   ignoreAdmins: true
 };
+
+function normalizeBlockedMessageTypes(values: string[]) {
+  const allowed = new Set<string>(RESTRICTABLE_MESSAGE_TYPES);
+  return Array.from(new Set(values.filter((value) => allowed.has(value)))).slice(0, 20) as RestrictableMessageType[];
+}
 
 export async function getChatModerationProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
@@ -41,6 +59,10 @@ export async function getChatModerationProfile(chatId: string) {
         in: [
           "AUTOMOD_LINK_DELETED",
           "AUTOMOD_SPAM_DELETED",
+          "AUTOMOD_TERM_DELETED",
+          "AUTOMOD_MEDIA_DELETED",
+          "AUTOMOD_MENTIONS_DELETED",
+          "AUTOMOD_DUPLICATE_DELETED",
           "AUTOMOD_DELETE_FAILED",
           "AUTOMOD_SETTINGS_UPDATED"
         ]
@@ -93,6 +115,14 @@ export async function getChatModerationProfile(chatId: string) {
       spamEnabled: settings.spamEnabled,
       spamWindowSeconds: settings.spamWindowSeconds,
       spamMaxMessages: settings.spamMaxMessages,
+      blockedTermsEnabled: settings.blockedTermsEnabled,
+      blockedTerms: [...settings.blockedTerms],
+      massMentionsEnabled: settings.massMentionsEnabled,
+      maxMentions: settings.maxMentions,
+      duplicateEnabled: settings.duplicateEnabled,
+      duplicateWindowSeconds: settings.duplicateWindowSeconds,
+      duplicateMaxMessages: settings.duplicateMaxMessages,
+      blockedMessageTypes: [...settings.blockedMessageTypes],
       ignoreAdmins: settings.ignoreAdmins
     },
     events: events.map((event) => ({
@@ -115,6 +145,14 @@ export async function updateChatModerationSettings(input: {
   spamEnabled: boolean;
   spamWindowSeconds: number;
   spamMaxMessages: number;
+  blockedTermsEnabled: boolean;
+  blockedTerms: string[];
+  massMentionsEnabled: boolean;
+  maxMentions: number;
+  duplicateEnabled: boolean;
+  duplicateWindowSeconds: number;
+  duplicateMaxMessages: number;
+  blockedMessageTypes: string[];
   ignoreAdmins: boolean;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
@@ -126,6 +164,8 @@ export async function updateChatModerationSettings(input: {
   if (!chat) return null;
 
   const allowedDomains = normalizeAllowedDomains(input.allowedDomains);
+  const blockedTerms = normalizeBlockedTerms(input.blockedTerms);
+  const blockedMessageTypes = normalizeBlockedMessageTypes(input.blockedMessageTypes);
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatModerationSettings.upsert({
       where: { chatId: input.chatId },
@@ -136,6 +176,14 @@ export async function updateChatModerationSettings(input: {
         spamEnabled: input.spamEnabled,
         spamWindowSeconds: input.spamWindowSeconds,
         spamMaxMessages: input.spamMaxMessages,
+        blockedTermsEnabled: input.blockedTermsEnabled,
+        blockedTerms,
+        massMentionsEnabled: input.massMentionsEnabled,
+        maxMentions: input.maxMentions,
+        duplicateEnabled: input.duplicateEnabled,
+        duplicateWindowSeconds: input.duplicateWindowSeconds,
+        duplicateMaxMessages: input.duplicateMaxMessages,
+        blockedMessageTypes,
         ignoreAdmins: input.ignoreAdmins
       },
       update: {
@@ -144,6 +192,14 @@ export async function updateChatModerationSettings(input: {
         spamEnabled: input.spamEnabled,
         spamWindowSeconds: input.spamWindowSeconds,
         spamMaxMessages: input.spamMaxMessages,
+        blockedTermsEnabled: input.blockedTermsEnabled,
+        blockedTerms,
+        massMentionsEnabled: input.massMentionsEnabled,
+        maxMentions: input.maxMentions,
+        duplicateEnabled: input.duplicateEnabled,
+        duplicateWindowSeconds: input.duplicateWindowSeconds,
+        duplicateMaxMessages: input.duplicateMaxMessages,
+        blockedMessageTypes,
         ignoreAdmins: input.ignoreAdmins
       }
     });
@@ -160,6 +216,14 @@ export async function updateChatModerationSettings(input: {
           spamEnabled: settings.spamEnabled,
           spamWindowSeconds: settings.spamWindowSeconds,
           spamMaxMessages: settings.spamMaxMessages,
+          blockedTermsEnabled: settings.blockedTermsEnabled,
+          blockedTerms: settings.blockedTerms,
+          massMentionsEnabled: settings.massMentionsEnabled,
+          maxMentions: settings.maxMentions,
+          duplicateEnabled: settings.duplicateEnabled,
+          duplicateWindowSeconds: settings.duplicateWindowSeconds,
+          duplicateMaxMessages: settings.duplicateMaxMessages,
+          blockedMessageTypes: settings.blockedMessageTypes,
           ignoreAdmins: settings.ignoreAdmins
         }
       }
@@ -174,6 +238,14 @@ export async function updateChatModerationSettings(input: {
     spamEnabled: saved.spamEnabled,
     spamWindowSeconds: saved.spamWindowSeconds,
     spamMaxMessages: saved.spamMaxMessages,
+    blockedTermsEnabled: saved.blockedTermsEnabled,
+    blockedTerms: saved.blockedTerms,
+    massMentionsEnabled: saved.massMentionsEnabled,
+    maxMentions: saved.maxMentions,
+    duplicateEnabled: saved.duplicateEnabled,
+    duplicateWindowSeconds: saved.duplicateWindowSeconds,
+    duplicateMaxMessages: saved.duplicateMaxMessages,
+    blockedMessageTypes: saved.blockedMessageTypes,
     ignoreAdmins: saved.ignoreAdmins
   };
 }

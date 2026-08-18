@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   MessagesSquare,
   ScrollText,
+  ShieldCheck,
   UsersRound
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ const navigation = [
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
   { href: "/members", label: "Участники", icon: UsersRound },
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
+  { href: "/moderation", label: "Модерация", icon: ShieldCheck },
   { href: "/journal", label: "Журнал", icon: ScrollText }
 ];
 

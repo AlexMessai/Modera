@@ -59,6 +59,10 @@ const actionLabels: Record<string, string> = {
   MANUAL_MESSAGE_ALREADY_GONE: "Сообщение уже отсутствовало",
   MANUAL_MESSAGE_DELETE_FAILED: "Ошибка ручного удаления сообщения",
   AUTOMOD_LINK_DELETED: "Удалена запрещённая ссылка",
+  AUTOMOD_TERM_DELETED: "Удалено запрещённое слово или фраза",
+  AUTOMOD_MEDIA_DELETED: "Удалён запрещённый тип контента",
+  AUTOMOD_MENTIONS_DELETED: "Удалено за массовые упоминания",
+  AUTOMOD_DUPLICATE_DELETED: "Удалено повторяющееся сообщение",
   AUTOMOD_SPAM_DELETED: "Удалено за флуд",
   AUTOMOD_DELETE_FAILED: "Ошибка автоматического удаления",
   AUTOMOD_SETTINGS_UPDATED: "Изменены правила чата"

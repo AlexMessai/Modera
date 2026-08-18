@@ -5,6 +5,9 @@
 
 .automod-settings { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .automod-rule { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
+.automod-rule-heading { display: grid; gap: 3px; }
+.automod-rule-heading strong { font-size: 13px; }
+.automod-rule-heading small { color: var(--muted); font-size: 12px; }
 .automod-toggle-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .automod-toggle-row--compact { padding: 2px 2px 0; }
 .automod-toggle-row input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); }
@@ -12,6 +15,7 @@
 .automod-toggle-row strong { font-size: 13px; }
 .automod-toggle-row small, .automod-field small { color: var(--muted); font-size: 12px; }
 .automod-field { display: grid; gap: 7px; }
+.automod-field--short { max-width: 220px; }
 .automod-field > span { font-size: 12px; font-weight: 650; }
 .automod-field textarea, .automod-field input { width: 100%; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; outline: 0; }
 .automod-field textarea { min-height: 104px; resize: vertical; padding: 10px 11px; line-height: 1.45; }
@@ -19,14 +23,22 @@
 .automod-field textarea:focus, .automod-field input:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
 .automod-field textarea:disabled, .automod-field input:disabled { background: var(--surface-2); color: #9aa0aa; }
 .automod-number-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.automod-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.automod-media-option { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
+.automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
 .automod-audit-list { margin-top: 14px; }
 .chat-cell-link { border-radius: 7px; }
 .chat-cell-link:hover strong { color: var(--accent); }
 
+@media (max-width: 900px) {
+  .automod-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 760px) {
   .chat-detail-header { align-items: stretch; flex-direction: column; }
   .chat-detail-status { justify-items: start; }
-  .automod-number-grid { grid-template-columns: 1fr; }
+  .automod-number-grid, .automod-media-grid { grid-template-columns: 1fr; }
+  .automod-field--short { max-width: none; }
   .automod-actions .button { width: 100%; }
 }

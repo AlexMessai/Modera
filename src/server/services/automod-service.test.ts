@@ -3,10 +3,15 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import type { TelegramMessage } from "@/server/telegram/types";
 import {
+  countMentions,
   extractLinkDomains,
+  findBlockedTerms,
   isDomainAllowed,
+  isDuplicateViolation,
   isFloodViolation,
   normalizeAllowedDomains,
+  normalizeBlockedTerms,
+  normalizeModerationText,
   processAutomodMessage
 } from "./automod-service";
 
@@ -42,6 +47,59 @@ test("domain allowlist includes subdomains but not lookalike domains", () => {
   assert.equal(isDomainAllowed("example.com", allowed), true);
   assert.equal(isDomainAllowed("badexample.com", allowed), false);
   assert.equal(isDomainAllowed("example.net", allowed), false);
+});
+
+test("blocked term matching is case insensitive and respects word boundaries", () => {
+  const terms = normalizeBlockedTerms(["  РЕКЛАМА  ", "купить сейчас", "реклама"]);
+  assert.deepEqual(terms, ["реклама", "купить сейчас"]);
+
+  const matched = findBlockedTerms(
+    {
+      message_id: 2,
+      date: 1_700_000_000,
+      chat: { id: -100123, type: "supergroup", title: "Test" },
+      from: { id: 77, is_bot: false, first_name: "User" },
+      text: "Это РЕКЛАМА: купить сейчас!"
+    },
+    terms
+  );
+  assert.deepEqual(matched, ["реклама", "купить сейчас"]);
+
+  assert.deepEqual(
+    findBlockedTerms(
+      {
+        message_id: 3,
+        date: 1_700_000_000,
+        chat: { id: -100123, type: "supergroup", title: "Test" },
+        from: { id: 77, is_bot: false, first_name: "User" },
+        text: "сверхрекламация"
+      },
+      ["реклама"]
+    ),
+    []
+  );
+});
+
+test("text normalization makes duplicate comparison stable", () => {
+  assert.equal(normalizeModerationText("  Привет\nМИР  "), "привет мир");
+  assert.equal(isDuplicateViolation(2, 2), false);
+  assert.equal(isDuplicateViolation(3, 2), true);
+});
+
+test("mass mention count uses Telegram mention entities", () => {
+  const message: TelegramMessage = {
+    message_id: 4,
+    date: 1_700_000_000,
+    chat: { id: -100123, type: "supergroup", title: "Test" },
+    from: { id: 77, is_bot: false, first_name: "User" },
+    text: "@one @two кнопка",
+    entities: [
+      { type: "mention", offset: 0, length: 4 },
+      { type: "mention", offset: 5, length: 4 },
+      { type: "text_link", offset: 10, length: 6, url: "https://example.com" }
+    ]
+  };
+  assert.equal(countMentions(message), 2);
 });
 
 test("flood threshold allows the configured count and flags the next message", () => {
@@ -84,7 +142,7 @@ test("same Telegram message revision is processed once and a later edit is a new
       telegramMessageId: 501n,
       telegramDate: new Date(1_700_000_000_000),
       text: "Обычное сообщение",
-      messageType: "text"
+      messageType: "TEXT"
     }
   });
 
