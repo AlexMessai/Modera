@@ -191,11 +191,7 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (!selectedChatId) {
-      setChatProfile(null);
-      setChatSettings(null);
-      return;
-    }
+    if (!selectedChatId) return;
     void readJson<ChatProfile>(`/api/chats/${selectedChatId}/anti-raid`).then((profile) => {
       setChatProfile(profile);
       setChatSettings(profile.settings);
@@ -210,6 +206,11 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
     () => overview?.chats.find((chat) => chat.id === selectedChatId) ?? null,
     [overview, selectedChatId]
   );
+  const selectedEffectiveSettings = chatProfile && chatSettings
+    ? useGlobalProfile
+      ? chatProfile.globalSettings
+      : chatSettings
+    : null;
 
   async function saveGlobal() {
     if (!globalSettings) return;
@@ -264,7 +265,7 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
 
       <section className="metrics-grid anti-raid-metrics">
         <article className="metric-card"><span>Активных рейдов</span><strong>{overview.activeIncidents}</strong><small>Защитный режим сейчас</small></article>
-        <article className="metric-card"><span>Инцидентов за 24 ч</span><strong>{overview.incidents24h}</strong><small>Реально зафиксированы detector'ом</small></article>
+        <article className="metric-card"><span>Инцидентов за 24 ч</span><strong>{overview.incidents24h}</strong><small>Реально зафиксированы детектором</small></article>
         <article className="metric-card"><span>Чатов под наблюдением</span><strong>{overview.chats.length}</strong><small>Из PostgreSQL</small></article>
       </section>
 
@@ -278,8 +279,8 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
       </section>
 
       <section className="panel table-panel">
-        <div className="panel-header"><div><h2>Чаты</h2><p>Источник политики, готовность прав бота и текущий raid status.</p></div></div>
-        <div className="table-wrap"><table className="data-table anti-raid-table"><thead><tr><th>Чат</th><th>Политика</th><th>Бот</th><th>Raid status</th><th></th></tr></thead><tbody>
+        <div className="panel-header"><div><h2>Чаты</h2><p>Источник политики, готовность прав бота и текущий статус рейда.</p></div></div>
+        <div className="table-wrap"><table className="data-table anti-raid-table"><thead><tr><th>Чат</th><th>Политика</th><th>Бот</th><th>Статус рейда</th><th></th></tr></thead><tbody>
           {overview.chats.map((chat) => <tr key={chat.id}>
             <td><Link className="stacked-cell table-link" href={`/chats/${chat.id}`}><strong>{chat.title}</strong><span>{chat.telegramChatId}</span></Link></td>
             <td>{chat.useGlobalProfile ? "Глобальная" : chat.localEnabled ? "Индивидуальная · включена" : "Индивидуальная · выключена"}</td>
@@ -296,15 +297,15 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
           <input type="checkbox" checked={useGlobalProfile} onChange={(event) => setUseGlobalProfile(event.target.checked)} disabled={!canManage} />
           <span><strong>Использовать глобальную Anti-Raid политику</strong><small>Локальные значения сохраняются и снова вступят в силу после отключения наследования.</small></span>
         </label>
-        {useGlobalProfile ? <div className="state-box state-box--compact">Сейчас detector использует глобальные значения. Локальные настройки ниже временно неактивны.</div> : null}
+        {useGlobalProfile ? <div className="state-box state-box--compact">Сейчас детектор использует глобальные значения. Локальные настройки ниже временно неактивны.</div> : null}
         <SettingsFields value={chatSettings} onChange={setChatSettings} disabled={!canManage || useGlobalProfile} />
-        {chatSettings.mode === "MUTE_NEW_MEMBERS" && !chatProfile.bot.canRestrictMembers && !useGlobalProfile ? <div className="state-box state-box--error"><AlertTriangle size={16} /> Для автоматического mute у бота нет права restrict_members.</div> : null}
+        {selectedEffectiveSettings?.enabled && selectedEffectiveSettings.mode === "MUTE_NEW_MEMBERS" && !chatProfile.bot.canRestrictMembers ? <div className="state-box state-box--error"><AlertTriangle size={16} /> Для автоматического mute у бота нет права restrict_members.</div> : null}
         {chatProfile.activeIncident ? <div className="anti-raid-live"><strong>Сейчас действует защитный режим</strong><span>{modeLabels[chatProfile.activeIncident.mode]} · до {formatDate(chatProfile.activeIncident.activeUntil)}</span></div> : null}
         {canManage ? <div className="anti-raid-actions"><button className="button" type="button" onClick={saveChat} disabled={saving}>{saving ? "Сохраняю…" : "Сохранить настройки чата"}</button></div> : null}
       </section> : null}
 
       <section className="panel table-panel">
-        <div className="panel-header"><div><h2>Инциденты за 24 часа</h2><p>История реальных срабатываний detector'а.</p></div></div>
+        <div className="panel-header"><div><h2>Инциденты за 24 часа</h2><p>История реальных срабатываний детектора.</p></div></div>
         {overview.incidents.length === 0 ? <div className="state-box state-box--compact"><strong>Рейдов не зафиксировано</strong><p>Здесь появятся только реальные срабатывания Anti-Raid.</p></div> : <div className="table-wrap"><table className="data-table anti-raid-table"><thead><tr><th>Чат</th><th>Статус</th><th>Сигналы</th><th>Причина</th><th>Начало</th><th>До</th></tr></thead><tbody>
           {overview.incidents.map((incident) => <tr key={incident.id}>
             <td><Link className="table-link" href={`/chats/${incident.chat.id}`}>{incident.chat.title}</Link></td>
