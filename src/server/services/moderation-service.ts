@@ -259,10 +259,11 @@ async function executeTelegramBackedAction(input: {
   metadata?: Prisma.InputJsonObject;
   escalationWarningCount?: number;
 }) {
-  if (!input.member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
-  assertLocalActionAllowed(input.action, input.member);
+  const member = input.member;
+  if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+  assertLocalActionAllowed(input.action, member);
   const action = await createAction({
-    member: input.member,
+    member,
     actingAdminId: input.actingAdminId,
     source: input.source,
     action: input.action,
@@ -275,8 +276,8 @@ async function executeTelegramBackedAction(input: {
   try {
     const targetMember = await performTelegramAction({
       action: input.action,
-      chatTelegramId: Number(input.member.chat.telegramChatId),
-      targetTelegramId: Number(input.member.user.telegramUserId),
+      chatTelegramId: Number(member.chat.telegramChatId),
+      targetTelegramId: Number(member.user.telegramUserId),
       expiresAt: input.expiresAt
     });
     telegramStatusBefore = targetMember.status;
@@ -284,8 +285,8 @@ async function executeTelegramBackedAction(input: {
     const message = error instanceof ModerationError || error instanceof TelegramApiError ? error.message : "Telegram не выполнил действие модерации.";
     await failAction({
       actionId: action.id,
-      chatId: input.member.chatId,
-      userId: input.member.userId,
+      chatId: member.chatId,
+      userId: member.userId,
       actingAdminId: input.actingAdminId,
       source: input.source,
       action: input.action,
@@ -300,7 +301,7 @@ async function executeTelegramBackedAction(input: {
   try {
     const updated = await prisma.$transaction(async (tx) => {
       const membership = await tx.chatMember.update({
-        where: { id: input.member.id },
+        where: { id: member.id },
         data: {
           ...membershipUpdateFor(input.action, now, input.expiresAt),
           ...(input.escalationWarningCount !== undefined
@@ -315,8 +316,8 @@ async function executeTelegramBackedAction(input: {
           completedAt: now,
           telegramError: null,
           metadata: {
-            previousStatus: input.member.status,
-            previousPunishmentState: input.member.punishmentState,
+            previousStatus: member.status,
+            previousPunishmentState: member.punishmentState,
             telegramStatusBefore,
             ...(input.expiresAt ? { expiresAt: input.expiresAt.toISOString() } : {}),
             ...(input.metadata ?? {})
@@ -325,8 +326,8 @@ async function executeTelegramBackedAction(input: {
       });
       await tx.auditLog.create({
         data: {
-          chatId: input.member.chatId,
-          affectedUserId: input.member.userId,
+          chatId: member.chatId,
+          affectedUserId: member.userId,
           actingAdminId: input.actingAdminId,
           source: input.source,
           action: input.auditAction,
