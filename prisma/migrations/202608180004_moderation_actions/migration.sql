@@ -1,6 +1,9 @@
 CREATE TYPE "ModerationActionType" AS ENUM ('WARNING', 'MUTE', 'UNMUTE', 'BAN', 'UNBAN');
 CREATE TYPE "ModerationActionStatus" AS ENUM ('PENDING', 'SUCCEEDED', 'FAILED');
 
+ALTER TABLE "ChatMember"
+ADD COLUMN "lastModerationAt" TIMESTAMPTZ(3);
+
 CREATE TABLE "ModerationAction" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "chatId" UUID NOT NULL,
