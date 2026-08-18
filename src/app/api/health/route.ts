@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { getTelegramClient } from "@/server/telegram/client";
+import { resolveTelegramWebhookUrl } from "@/server/telegram/webhook-url";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function GET() {
       ]);
       checks.telegram = bot.id ? "ok" : "error";
 
-      const expectedUrl = process.env.TELEGRAM_WEBHOOK_URL?.trim();
+      const expectedUrl = resolveTelegramWebhookUrl();
       if (!expectedUrl) {
         checks.webhook = "not_configured";
       } else {

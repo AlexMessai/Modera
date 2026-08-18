@@ -3,6 +3,7 @@ import {
   getTelegramClient,
   TelegramApiError
 } from "@/server/telegram/client";
+import { resolveTelegramWebhookUrl } from "@/server/telegram/webhook-url";
 
 export type SystemCheckStatus = "ok" | "warning" | "error" | "not_configured";
 
@@ -11,7 +12,7 @@ function elapsedMs(start: number) {
 }
 
 function expectedWebhookUrl() {
-  return process.env.TELEGRAM_WEBHOOK_URL?.trim() || null;
+  return resolveTelegramWebhookUrl();
 }
 
 function safeAppUrl() {
@@ -249,7 +250,7 @@ export async function getSystemDiagnostics() {
       databaseConfigured: Boolean(process.env.DATABASE_URL),
       telegramBotTokenConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
       telegramWebhookSecretConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
-      telegramWebhookUrlConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_URL),
+      telegramWebhookUrlConfigured: Boolean(expectedWebhookUrl()),
       adminEmailConfigured: Boolean(process.env.ADMIN_EMAIL),
       adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD),
       environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
