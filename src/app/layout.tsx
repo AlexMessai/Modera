@@ -7,6 +7,7 @@ import "./journal.css";
 import "./messages.css";
 import "./moderation.css";
 import "./system.css";
+import "./join-requests.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],
