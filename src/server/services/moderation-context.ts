@@ -1,4 +1,6 @@
 import { prisma } from "@/server/db/prisma";
+import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
+import { countActiveWarnings } from "@/server/services/moderation-escalation-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -31,13 +33,22 @@ export async function getModerationContext(membershipId: string) {
 
   if (!membership) return null;
 
-  const actions = await prisma.moderationAction.findMany({
-    where: { chatId: membership.chatId, affectedUserId: membership.userId },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    include: {
-      actingAdmin: { select: { displayName: true, role: true } }
-    }
+  const [actions, policy] = await Promise.all([
+    prisma.moderationAction.findMany({
+      where: { chatId: membership.chatId, affectedUserId: membership.userId },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: {
+        actingAdmin: { select: { displayName: true, role: true } }
+      }
+    }),
+    resolveEffectiveModerationSettings(membership.chatId)
+  ]);
+
+  const activeWarningCount = await countActiveWarnings({
+    chatId: membership.chatId,
+    affectedUserId: membership.userId,
+    warningExpiryDays: policy.settings.warningExpiryDays
   });
 
   const botLink = membership.chat.botLinks[0];
@@ -49,6 +60,8 @@ export async function getModerationContext(membershipId: string) {
     punishmentState: membership.punishmentState,
     punishmentExpiresAt: membership.punishmentExpiresAt,
     warningCount: membership.warningCount,
+    activeWarningCount,
+    warningExpiryDays: policy.settings.warningExpiryDays,
     userDisplayName: membership.user.displayName,
     userIsBot: membership.user.isBot,
     chatType: membership.chat.type,
