@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AdminRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  VIEWER
+}
+
+enum BotChatStatus {
+  ACTIVE
+  CONNECTED
+  NOT_ADMIN
+  INSUFFICIENT_PERMISSIONS
+  REMOVED
+  DISABLED
+  TELEGRAM_ERROR
+}
+
+enum AuditSource {
+  TELEGRAM
+  ADMIN
+  SYSTEM
+}
+
+enum MembershipStatus {
+  CREATOR
+  ADMINISTRATOR
+  MEMBER
+  RESTRICTED
+  LEFT
+  BANNED
+  UNKNOWN
+}
+
+model TelegramBot {
+  id              String    @id @default(uuid()) @db.Uuid
+  telegramBotId   BigInt    @unique
+  username        String?
+  firstName       String
+  isActive        Boolean   @default(true)
+  lastCheckedAt   DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+  chats           BotChat[]
+
+  @@index([isActive])
+}
+
+model Chat {
+  id               String       @id @default(uuid()) @db.Uuid
+  telegramChatId   BigInt       @unique
+  title            String
+  username         String?
+  type             String
+  photoFileId      String?
+  knownMemberCount Int?
+  firstSeenAt      DateTime     @default(now()) @db.Timestamptz(3)
+  lastActivityAt   DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
+  botLinks         BotChat[]
+  members          ChatMember[]
+  auditLogs        AuditLog[]
+
+  @@index([lastActivityAt(sort: Desc)])
+  @@index([type])
+}
+
+model BotChat {
+  id               String        @id @default(uuid()) @db.Uuid
+  botId            String        @db.Uuid
+  chatId           String        @db.Uuid
+  telegramStatus   String?
+  status           BotChatStatus @default(CONNECTED)
+  permissions      Json?
+  lastError        String?
+  firstSeenAt      DateTime      @default(now()) @db.Timestamptz(3)
+  lastSeenAt       DateTime      @default(now()) @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  bot              TelegramBot   @relation(fields: [botId], references: [id], onDelete: Cascade)
+  chat             Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, chatId])
+  @@index([chatId, status])
+  @@index([botId, status])
+}
+
+model TelegramUser {
+  id              String       @id @default(uuid()) @db.Uuid
+  telegramUserId  BigInt       @unique
+  username        String?
+  firstName       String
+  lastName        String?
+  displayName     String
+  isBot           Boolean      @default(false)
+  languageCode    String?
+  avatarFileId    String?
+  firstSeenAt     DateTime     @default(now()) @db.Timestamptz(3)
+  lastSeenAt      DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+  memberships     ChatMember[]
+  auditLogs       AuditLog[]   @relation("AffectedUser")
+
+  @@index([username])
+  @@index([lastSeenAt(sort: Desc)])
+}
+
+model ChatMember {
+  id              String           @id @default(uuid()) @db.Uuid
+  chatId          String           @db.Uuid
+  userId          String           @db.Uuid
+  status          MembershipStatus @default(UNKNOWN)
+  internalRole    String?
+  joinedAt        DateTime?        @db.Timestamptz(3)
+  leftAt          DateTime?        @db.Timestamptz(3)
+  firstSeenAt     DateTime         @default(now()) @db.Timestamptz(3)
+  lastSeenAt      DateTime         @default(now()) @db.Timestamptz(3)
+  messageCount    Int              @default(0)
+  warningCount    Int              @default(0)
+  punishmentState String?
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+  chat            Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user            TelegramUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@index([chatId, status, lastSeenAt(sort: Desc)])
+  @@index([userId])
+}
+
+model AdminUser {
+  id           String         @id @default(uuid()) @db.Uuid
+  email        String         @unique
+  displayName  String
+  passwordHash String
+  role         AdminRole      @default(VIEWER)
+  isActive     Boolean        @default(true)
+  lastLoginAt  DateTime?      @db.Timestamptz(3)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+  sessions     AdminSession[]
+  auditLogs    AuditLog[]     @relation("ActingAdmin")
+
+  @@index([role, isActive])
+}
+
+model AdminSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  adminId    String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime  @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @db.Timestamptz(3)
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  admin      AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, expiresAt])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id             String        @id @default(uuid()) @db.Uuid
+  chatId         String?       @db.Uuid
+  affectedUserId String?       @db.Uuid
+  actingAdminId  String?       @db.Uuid
+  source         AuditSource
+  action         String
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  chat           Chat?         @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  affectedUser   TelegramUser? @relation("AffectedUser", fields: [affectedUserId], references: [id], onDelete: SetNull)
+  actingAdmin    AdminUser?    @relation("ActingAdmin", fields: [actingAdminId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([chatId, createdAt(sort: Desc)])
+  @@index([affectedUserId, createdAt(sort: Desc)])
+  @@index([actingAdminId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+}
