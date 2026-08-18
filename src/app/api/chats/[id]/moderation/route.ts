@@ -11,6 +11,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
+  useGlobalProfile: z.boolean(),
   blockLinks: z.boolean(),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
   spamEnabled: z.boolean(),
