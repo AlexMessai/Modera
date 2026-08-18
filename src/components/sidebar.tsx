@@ -10,6 +10,7 @@ import {
   ScrollText,
   ServerCog,
   ShieldCheck,
+  UserRoundPlus,
   UsersRound
 } from "lucide-react";
 
@@ -17,6 +18,7 @@ const baseNavigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
   { href: "/members", label: "Участники", icon: UsersRound },
+  { href: "/join-requests", label: "Заявки", icon: UserRoundPlus },
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
   { href: "/moderation", label: "Модерация", icon: ShieldCheck },
   { href: "/journal", label: "Журнал", icon: ScrollText }
