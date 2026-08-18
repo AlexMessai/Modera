@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, UserRound } from "lucide-react";
+import { ArrowLeft, Bot, ShieldAlert, UserRound } from "lucide-react";
 import { ModerationActions } from "@/components/moderation-actions";
 import { memberStatusBadgeClass, memberStatusLabel } from "@/lib/member-status";
 import { canModerate } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getMemberProfile } from "@/server/services/member-service";
+import { getMemberRisk } from "@/server/services/member-risk-service";
 import { getModerationContext } from "@/server/services/moderation-context";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,8 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const [member, moderation] = await Promise.all([getMemberProfile(id), getModerationContext(id)]);
   if (!member || !moderation) notFound();
+  const risk = await getMemberRisk(id, moderation.activeWarningCount);
+  if (!risk) notFound();
 
   return (
     <main className="page">
@@ -103,6 +106,29 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             <Detail label="Срок предупреждений" value={moderation.warningExpiryDays > 0 ? `${moderation.warningExpiryDays} дн.` : "Не сгорают"} />
           </dl>
         </article>
+      </section>
+
+      <section className="panel profile-section risk-panel">
+        <div className="panel-header">
+          <div><h2>Оценка риска</h2><p>Информационная оценка по активности в этом чате. Она сама по себе не запускает наказания.</p></div>
+          <div className="risk-score-summary">
+            <ShieldAlert size={20} />
+            <strong>{risk.score}<span>/100</span></strong>
+            <span className={`badge ${riskBadgeClass(risk.level)}`}>{riskLevelLabel(risk.level)}</span>
+          </div>
+        </div>
+        {risk.reasons.length === 0 ? (
+          <div className="state-box state-box--compact"><strong>Сигналов риска нет</strong><p>Недавних нарушений, наказаний и рейдовых событий не обнаружено.</p></div>
+        ) : (
+          <div className="risk-reason-list">
+            {risk.reasons.map((reason) => (
+              <div className="risk-reason-row" key={reason.code}>
+                <div><strong>{reason.label}</strong><span>{reason.detail}</span></div>
+                <b>{reason.points > 0 ? `+${reason.points}` : "—"}</b>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="panel profile-section moderation-panel">
@@ -184,4 +210,14 @@ function Detail({ label, value, mono = false }: { label: string; value: string; 
 
 function formatDate(value: Date) {
   return new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(value);
+}
+
+function riskLevelLabel(level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL") {
+  return ({ LOW: "Низкий", MEDIUM: "Средний", HIGH: "Высокий", CRITICAL: "Критический" })[level];
+}
+
+function riskBadgeClass(level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL") {
+  if (level === "LOW") return "badge--active";
+  if (level === "MEDIUM") return "badge--warning";
+  return "badge--danger";
 }

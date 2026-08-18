@@ -40,6 +40,14 @@
 .profile-stat-grid span { color: var(--muted); font-size: 12px; }
 .profile-stat-grid strong { font-size: 21px; letter-spacing: -0.025em; }
 .profile-section { margin-top: 12px; }
+.risk-score-summary { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.risk-score-summary > strong { color: var(--text); font-size: 28px; letter-spacing: -.04em; }
+.risk-score-summary > strong span { margin-left: 2px; color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.risk-reason-list { margin-top: 14px; border-top: 1px solid var(--line); }
+.risk-reason-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 58px; border-bottom: 1px solid var(--line); }
+.risk-reason-row > div { display: grid; gap: 2px; }
+.risk-reason-row span { color: var(--muted); font-size: 12px; }
+.risk-reason-row > b { color: var(--danger); font-size: 15px; }
 .membership-list { margin-top: 14px; border-top: 1px solid var(--line); }
 .membership-row { display: grid; grid-template-columns: 34px minmax(180px, 1fr) auto auto auto; gap: 12px; align-items: center; min-height: 58px; border-bottom: 1px solid var(--line); }
 .membership-row:hover { background: #fafbfc; }
@@ -94,6 +102,7 @@
   .membership-row > span:nth-last-child(-n+2) { display: none; }
   .moderation-history-row { grid-template-columns: minmax(160px, 1fr) auto; }
   .moderation-history-reason { grid-column: 1 / -1; padding-bottom: 8px; }
+  .risk-panel .panel-header { align-items: flex-start; gap: 12px; flex-direction: column; }
 }
 
 @media (max-width: 760px) {
