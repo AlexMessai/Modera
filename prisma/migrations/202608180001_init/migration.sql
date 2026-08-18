@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 CREATE TYPE "AdminRole" AS ENUM ('OWNER', 'ADMIN', 'MODERATOR', 'VIEWER');
 CREATE TYPE "BotChatStatus" AS ENUM ('ACTIVE', 'CONNECTED', 'NOT_ADMIN', 'INSUFFICIENT_PERMISSIONS', 'REMOVED', 'DISABLED', 'TELEGRAM_ERROR');
@@ -125,6 +126,8 @@ CREATE TABLE "AuditLog" (
 CREATE INDEX "TelegramBot_isActive_idx" ON "TelegramBot"("isActive");
 CREATE INDEX "Chat_lastActivityAt_idx" ON "Chat"("lastActivityAt" DESC);
 CREATE INDEX "Chat_type_idx" ON "Chat"("type");
+CREATE INDEX "Chat_title_trgm_idx" ON "Chat" USING GIN ("title" gin_trgm_ops);
+CREATE INDEX "Chat_username_trgm_idx" ON "Chat" USING GIN ("username" gin_trgm_ops);
 CREATE INDEX "BotChat_chatId_status_idx" ON "BotChat"("chatId", "status");
 CREATE INDEX "BotChat_botId_status_idx" ON "BotChat"("botId", "status");
 CREATE INDEX "TelegramUser_username_idx" ON "TelegramUser"("username");
