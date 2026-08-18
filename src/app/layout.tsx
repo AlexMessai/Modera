@@ -3,6 +3,7 @@ import { Onest } from "next/font/google";
 import "./globals.css";
 import "./members.css";
 import "./automod.css";
+import "./journal.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],
