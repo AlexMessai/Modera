@@ -13,24 +13,16 @@ export async function getModerationContext(membershipId: string) {
       userId: true,
       status: true,
       punishmentState: true,
+      punishmentExpiresAt: true,
       warningCount: true,
-      user: {
-        select: {
-          displayName: true,
-          isBot: true
-        }
-      },
+      user: { select: { displayName: true, isBot: true } },
       chat: {
         select: {
           type: true,
           botLinks: {
             orderBy: { lastSeenAt: "desc" },
             take: 1,
-            select: {
-              status: true,
-              permissions: true,
-              lastSeenAt: true
-            }
+            select: { status: true, permissions: true, lastSeenAt: true }
           }
         }
       }
@@ -40,32 +32,22 @@ export async function getModerationContext(membershipId: string) {
   if (!membership) return null;
 
   const actions = await prisma.moderationAction.findMany({
-    where: {
-      chatId: membership.chatId,
-      affectedUserId: membership.userId
-    },
+    where: { chatId: membership.chatId, affectedUserId: membership.userId },
     orderBy: { createdAt: "desc" },
     take: 30,
     include: {
-      actingAdmin: {
-        select: {
-          displayName: true,
-          role: true
-        }
-      }
+      actingAdmin: { select: { displayName: true, role: true } }
     }
   });
 
   const botLink = membership.chat.botLinks[0];
-  const permissions = botLink?.permissions as
-    | { canRestrictMembers?: boolean }
-    | null
-    | undefined;
+  const permissions = botLink?.permissions as { canRestrictMembers?: boolean } | null | undefined;
 
   return {
     membershipId: membership.id,
     status: membership.status,
     punishmentState: membership.punishmentState,
+    punishmentExpiresAt: membership.punishmentExpiresAt,
     warningCount: membership.warningCount,
     userDisplayName: membership.user.displayName,
     userIsBot: membership.user.isBot,
@@ -75,9 +57,11 @@ export async function getModerationContext(membershipId: string) {
     botRightsCheckedAt: botLink?.lastSeenAt ?? null,
     actions: actions.map((action) => ({
       id: action.id,
+      source: action.source,
       type: action.type,
       status: action.status,
       reason: action.reason,
+      expiresAt: action.expiresAt,
       telegramError: action.telegramError,
       createdAt: action.createdAt,
       completedAt: action.completedAt,
