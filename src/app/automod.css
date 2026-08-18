@@ -1,0 +1,32 @@
+.chat-detail-header { align-items: flex-end; }
+.chat-detail-header .back-link { margin-bottom: 15px; }
+.chat-detail-status { display: grid; justify-items: end; gap: 7px; }
+.chat-detail-status small { color: var(--muted); }
+
+.automod-settings { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.automod-rule { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
+.automod-toggle-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.automod-toggle-row--compact { padding: 2px 2px 0; }
+.automod-toggle-row input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); }
+.automod-toggle-row > span { display: grid; gap: 2px; }
+.automod-toggle-row strong { font-size: 13px; }
+.automod-toggle-row small, .automod-field small { color: var(--muted); font-size: 12px; }
+.automod-field { display: grid; gap: 7px; }
+.automod-field > span { font-size: 12px; font-weight: 650; }
+.automod-field textarea, .automod-field input { width: 100%; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; outline: 0; }
+.automod-field textarea { min-height: 104px; resize: vertical; padding: 10px 11px; line-height: 1.45; }
+.automod-field input { height: 38px; padding: 0 10px; }
+.automod-field textarea:focus, .automod-field input:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
+.automod-field textarea:disabled, .automod-field input:disabled { background: var(--surface-2); color: #9aa0aa; }
+.automod-number-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
+.automod-audit-list { margin-top: 14px; }
+.chat-cell-link { border-radius: 7px; }
+.chat-cell-link:hover strong { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .chat-detail-header { align-items: stretch; flex-direction: column; }
+  .chat-detail-status { justify-items: start; }
+  .automod-number-grid { grid-template-columns: 1fr; }
+  .automod-actions .button { width: 100%; }
+}
