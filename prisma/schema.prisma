@@ -136,28 +136,31 @@ model TelegramUser {
 }
 
 model ChatMember {
-  id                   String           @id @default(uuid()) @db.Uuid
-  chatId               String           @db.Uuid
-  userId               String           @db.Uuid
-  status               MembershipStatus @default(UNKNOWN)
-  internalRole         String?
-  joinedAt             DateTime?        @db.Timestamptz(3)
-  leftAt               DateTime?        @db.Timestamptz(3)
-  firstSeenAt          DateTime          @default(now()) @db.Timestamptz(3)
-  lastSeenAt           DateTime          @default(now()) @db.Timestamptz(3)
-  lastTelegramUpdateId BigInt?
-  lastModerationAt     DateTime?         @db.Timestamptz(3)
-  messageCount         Int               @default(0)
-  warningCount         Int               @default(0)
-  punishmentState      String?
-  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
-  chat                 Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user                 TelegramUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                             String           @id @default(uuid()) @db.Uuid
+  chatId                         String           @db.Uuid
+  userId                         String           @db.Uuid
+  status                         MembershipStatus @default(UNKNOWN)
+  internalRole                   String?
+  joinedAt                       DateTime?        @db.Timestamptz(3)
+  leftAt                         DateTime?        @db.Timestamptz(3)
+  firstSeenAt                    DateTime          @default(now()) @db.Timestamptz(3)
+  lastSeenAt                     DateTime          @default(now()) @db.Timestamptz(3)
+  lastTelegramUpdateId           BigInt?
+  lastModerationAt               DateTime?        @db.Timestamptz(3)
+  messageCount                   Int               @default(0)
+  warningCount                   Int               @default(0)
+  lastAutoEscalationWarningCount Int               @default(0)
+  punishmentState                String?
+  punishmentExpiresAt            DateTime?         @db.Timestamptz(3)
+  createdAt                      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                      DateTime           @updatedAt @db.Timestamptz(3)
+  chat                           Chat               @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user                           TelegramUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@index([chatId, status, lastSeenAt(sort: Desc)])
   @@index([status, lastSeenAt(sort: Desc)])
+  @@index([punishmentState, punishmentExpiresAt])
   @@index([userId])
 }
 
@@ -204,6 +207,10 @@ model ChatModerationSettings {
   duplicateMaxMessages   Int      @default(2)
   blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
+  autoEscalationEnabled  Boolean  @default(false)
+  muteAfterWarnings      Int      @default(3)
+  muteDurationMinutes    Int      @default(10)
+  banAfterWarnings       Int      @default(6)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -225,6 +232,10 @@ model GlobalModerationSettings {
   duplicateMaxMessages   Int      @default(2)
   blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
+  autoEscalationEnabled  Boolean  @default(false)
+  muteAfterWarnings      Int      @default(3)
+  muteDurationMinutes    Int      @default(10)
+  banAfterWarnings       Int      @default(6)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
@@ -233,7 +244,8 @@ model ModerationAction {
   id             String                 @id @default(uuid()) @db.Uuid
   chatId         String                 @db.Uuid
   affectedUserId String                 @db.Uuid
-  actingAdminId  String                 @db.Uuid
+  actingAdminId  String?                @db.Uuid
+  source         AuditSource            @default(ADMIN)
   type           ModerationActionType
   status         ModerationActionStatus @default(PENDING)
   reason         String?                @db.VarChar(500)
@@ -245,13 +257,15 @@ model ModerationAction {
   updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
   chat           Chat                   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   affectedUser   TelegramUser           @relation("ModeratedUser", fields: [affectedUserId], references: [id], onDelete: Cascade)
-  actingAdmin    AdminUser              @relation("ModerationActor", fields: [actingAdminId], references: [id], onDelete: Restrict)
+  actingAdmin    AdminUser?             @relation("ModerationActor", fields: [actingAdminId], references: [id], onDelete: Restrict)
 
   @@index([chatId, createdAt(sort: Desc)])
   @@index([affectedUserId, createdAt(sort: Desc)])
   @@index([actingAdminId, createdAt(sort: Desc)])
+  @@index([source, status, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([type, createdAt(sort: Desc)])
+  @@index([expiresAt, status])
 }
 
 model AdminUser {
