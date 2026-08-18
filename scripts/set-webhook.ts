@@ -1,21 +1,7 @@
 import "dotenv/config";
 import { TelegramClient } from "../src/server/telegram/client";
 import { resolveTelegramWebhookSecret } from "../src/server/telegram/webhook-secret";
-
-const DEFAULT_PRODUCTION_HOST = "modera-silk.vercel.app";
-
-function resolveWebhookUrl() {
-  if (process.env.TELEGRAM_WEBHOOK_URL) {
-    return process.env.TELEGRAM_WEBHOOK_URL;
-  }
-
-  const productionHost =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
-    process.env.VERCEL_URL ??
-    DEFAULT_PRODUCTION_HOST;
-
-  return `https://${productionHost}/api/telegram/webhook`;
-}
+import { resolveTelegramWebhookUrlForSetup } from "../src/server/telegram/webhook-url";
 
 async function main() {
   if (process.env.VERCEL === "1" && process.env.VERCEL_ENV !== "production") {
@@ -24,7 +10,7 @@ async function main() {
   }
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const url = resolveWebhookUrl();
+  const url = resolveTelegramWebhookUrlForSetup();
   const secretToken = resolveTelegramWebhookSecret();
 
   if (!token) {
