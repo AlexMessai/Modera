@@ -188,7 +188,8 @@ export async function getSystemDiagnostics() {
                 "MODERATION_ACTION_FAILED",
                 "AUTOMOD_DELETE_FAILED",
                 "AUTOMOD_ESCALATION_FAILED",
-                "MANUAL_MESSAGE_DELETE_FAILED"
+                "MANUAL_MESSAGE_DELETE_FAILED",
+                "MEMBER_TAG_UPDATE_FAILED"
               ]
             },
             createdAt: { gte: since24h }

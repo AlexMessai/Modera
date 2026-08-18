@@ -103,6 +103,8 @@ async function upsertUser(
       lastName: user.last_name,
       displayName: displayName(user),
       isBot: user.is_bot,
+      isPremium: Boolean(user.is_premium),
+      addedToAttachmentMenu: Boolean(user.added_to_attachment_menu),
       languageCode: user.language_code,
       firstSeenAt: seenAt,
       lastSeenAt: seenAt
@@ -113,6 +115,8 @@ async function upsertUser(
       lastName: user.last_name,
       displayName: displayName(user),
       isBot: user.is_bot,
+      isPremium: Boolean(user.is_premium),
+      addedToAttachmentMenu: Boolean(user.added_to_attachment_menu),
       languageCode: user.language_code
     }
   });
@@ -133,6 +137,8 @@ async function syncMembership(
     seenAt: Date;
     updateId: number;
     status?: MembershipStatusValue;
+    telegramTag?: string | null;
+    telegramCustomTitle?: string | null;
     auditAction?: string;
   }
 ) {
@@ -147,7 +153,9 @@ async function syncMembership(
       status: true,
       joinedAt: true,
       lastTelegramUpdateId: true,
-      lastModerationAt: true
+      lastModerationAt: true,
+      telegramCustomTitle: true,
+      memberTag: { select: { tag: true } }
     }
   });
 
@@ -179,6 +187,7 @@ async function syncMembership(
       chatId: input.chatId,
       userId: user.id,
       status: nextStatus,
+      telegramCustomTitle: input.telegramCustomTitle,
       joinedAt: ACTIVE_STATUSES.has(nextStatus) ? input.seenAt : null,
       leftAt: nextStatus === "LEFT" || nextStatus === "BANNED" ? input.seenAt : null,
       firstSeenAt: input.seenAt,
@@ -189,6 +198,9 @@ async function syncMembership(
       ? {}
       : {
           status: nextStatus,
+          ...(input.telegramCustomTitle !== undefined
+            ? { telegramCustomTitle: input.telegramCustomTitle }
+            : {}),
           joinedAt: becameActive ? input.seenAt : existing?.joinedAt ?? undefined,
           leftAt: becameInactive
             ? nextStatus === "PENDING"
@@ -199,6 +211,42 @@ async function syncMembership(
           lastTelegramUpdateId: incomingUpdateId
         }
   });
+
+  if (!isStale && input.telegramTag !== undefined) {
+    const previousTag = existing?.memberTag?.tag ?? null;
+    const nextTag = input.telegramTag?.trim() || null;
+
+    if (nextTag) {
+      await tx.chatMemberTag.upsert({
+        where: { chatMemberId: membership.id },
+        create: { chatMemberId: membership.id, tag: nextTag },
+        update: { tag: nextTag }
+      });
+    } else {
+      await tx.chatMemberTag.deleteMany({
+        where: { chatMemberId: membership.id }
+      });
+    }
+
+    if (previousTag !== nextTag) {
+      await tx.auditLog.create({
+        data: {
+          chatId: input.chatId,
+          affectedUserId: user.id,
+          source: "TELEGRAM",
+          action: nextTag
+            ? "TELEGRAM_MEMBER_TAG_CHANGED"
+            : "TELEGRAM_MEMBER_TAG_REMOVED",
+          metadata: {
+            telegramUserId: String(input.user.id),
+            telegramUpdateId: input.updateId,
+            previousTag,
+            tag: nextTag
+          }
+        }
+      });
+    }
+  }
 
   if (!isStale && input.auditAction && previousStatus !== nextStatus) {
     await tx.auditLog.create({
@@ -249,6 +297,14 @@ export async function syncMemberStatus(input: {
       seenAt: eventDate(input.date),
       updateId: input.updateId,
       status: mapTelegramMembershipStatus(input.member.status),
+      telegramTag:
+        input.member.status === "member" || input.member.status === "restricted"
+          ? input.member.tag ?? null
+          : null,
+      telegramCustomTitle:
+        input.member.status === "administrator" || input.member.status === "creator"
+          ? input.member.custom_title ?? null
+          : null,
       auditAction: "MEMBER_STATUS_CHANGED"
     })
   );
@@ -450,6 +506,7 @@ export async function listMembers(input: {
       take: pageSize,
       include: {
         user: true,
+        memberTag: true,
         chat: {
           select: { id: true, telegramChatId: true, title: true, username: true }
         }
@@ -462,6 +519,8 @@ export async function listMembers(input: {
       id: membership.id,
       status: effectiveMembershipStatus(membership),
       internalRole: membership.internalRole,
+      telegramCustomTitle: membership.telegramCustomTitle,
+      tag: membership.memberTag?.tag ?? null,
       joinedAt: membership.joinedAt?.toISOString() ?? null,
       leftAt: membership.leftAt?.toISOString() ?? null,
       firstSeenAt: membership.firstSeenAt.toISOString(),
@@ -477,6 +536,7 @@ export async function listMembers(input: {
         lastName: membership.user.lastName,
         displayName: membership.user.displayName,
         isBot: membership.user.isBot,
+        isPremium: membership.user.isPremium,
         languageCode: membership.user.languageCode
       },
       chat: {
@@ -502,11 +562,13 @@ export async function getMemberProfile(membershipId: string) {
     where: { id: membershipId },
     include: {
       chat: true,
+      memberTag: true,
       user: {
         include: {
           memberships: {
             orderBy: { lastSeenAt: "desc" },
             include: {
+              memberTag: true,
               chat: {
                 select: { id: true, telegramChatId: true, title: true, username: true }
               }
@@ -519,19 +581,37 @@ export async function getMemberProfile(membershipId: string) {
 
   if (!membership) return null;
 
-  const auditLogs = await prisma.auditLog.findMany({
-    where: { affectedUserId: membership.userId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      chat: { select: { id: true, title: true } },
-      actingAdmin: { select: { displayName: true } }
-    }
-  });
+  const [auditLogs, deletedMessageCount, violationCount] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { affectedUserId: membership.userId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        chat: { select: { id: true, title: true } },
+        actingAdmin: { select: { displayName: true } }
+      }
+    }),
+    prisma.message.count({
+      where: {
+        chatId: membership.chatId,
+        senderUserId: membership.userId,
+        deletedAt: { not: null }
+      }
+    }),
+    prisma.moderationIncident.count({
+      where: {
+        chatId: membership.chatId,
+        affectedUserId: membership.userId
+      }
+    })
+  ]);
 
   return {
     id: membership.id,
     status: effectiveMembershipStatus(membership),
+    telegramCustomTitle: membership.telegramCustomTitle,
+    tag: membership.memberTag?.tag ?? null,
+    tagUpdatedAt: membership.memberTag?.updatedAt ?? null,
     joinedAt: membership.joinedAt,
     leftAt: membership.leftAt,
     firstSeenAt: membership.firstSeenAt,
@@ -553,12 +633,17 @@ export async function getMemberProfile(membershipId: string) {
       lastName: membership.user.lastName,
       displayName: membership.user.displayName,
       isBot: membership.user.isBot,
+      isPremium: membership.user.isPremium,
+      addedToAttachmentMenu: membership.user.addedToAttachmentMenu,
       languageCode: membership.user.languageCode,
+      updatedAt: membership.user.updatedAt,
       firstSeenAt: membership.user.firstSeenAt,
       lastSeenAt: membership.user.lastSeenAt,
       memberships: membership.user.memberships.map((item) => ({
         id: item.id,
         status: item.status,
+        telegramCustomTitle: item.telegramCustomTitle,
+        tag: item.memberTag?.tag ?? null,
         lastSeenAt: item.lastSeenAt,
         messageCount: item.messageCount,
         chat: {
@@ -568,6 +653,10 @@ export async function getMemberProfile(membershipId: string) {
           username: item.chat.username
         }
       }))
+    },
+    activity: {
+      deletedMessageCount,
+      violationCount
     },
     auditLogs: auditLogs.map((log) => ({
       id: log.id,

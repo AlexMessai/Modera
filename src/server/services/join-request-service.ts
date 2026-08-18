@@ -125,6 +125,8 @@ export async function recordTelegramJoinRequest(input: {
         lastName: input.request.from.last_name,
         displayName: displayName(input.request),
         isBot: input.request.from.is_bot,
+        isPremium: Boolean(input.request.from.is_premium),
+        addedToAttachmentMenu: Boolean(input.request.from.added_to_attachment_menu),
         languageCode: input.request.from.language_code,
         firstSeenAt: requestedAt,
         lastSeenAt: requestedAt
@@ -135,6 +137,8 @@ export async function recordTelegramJoinRequest(input: {
         lastName: input.request.from.last_name,
         displayName: displayName(input.request),
         isBot: input.request.from.is_bot,
+        isPremium: Boolean(input.request.from.is_premium),
+        addedToAttachmentMenu: Boolean(input.request.from.added_to_attachment_menu),
         languageCode: input.request.from.language_code,
         lastSeenAt: requestedAt
       }

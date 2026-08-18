@@ -13,7 +13,7 @@ type ChatItem = {
   knownMemberCount: number | null;
   lastActivityAt: string;
   status: "ACTIVE" | "CONNECTED" | "NOT_ADMIN" | "INSUFFICIENT_PERMISSIONS" | "REMOVED" | "DISABLED" | "TELEGRAM_ERROR";
-  permissions: { canDeleteMessages?: boolean; canRestrictMembers?: boolean } | null;
+  permissions: { canDeleteMessages?: boolean; canRestrictMembers?: boolean; canManageTags?: boolean } | null;
   lastError: string | null;
 };
 
@@ -125,7 +125,7 @@ export function ChatsClient() {
           <td className="mono">{chat.telegramChatId}</td>
           <td>{chat.type === "supergroup" ? "Супергруппа" : "Группа"}</td>
           <td>{chat.knownMemberCount?.toLocaleString("ru-RU") ?? "—"}</td>
-          <td><div className="permission-stack"><span className={chat.permissions?.canDeleteMessages ? "permission-ok" : ""}>Удаление</span><span className={chat.permissions?.canRestrictMembers ? "permission-ok" : ""}>Ограничения</span></div></td>
+          <td><div className="permission-stack"><span className={chat.permissions?.canDeleteMessages ? "permission-ok" : ""}>Удаление</span><span className={chat.permissions?.canRestrictMembers ? "permission-ok" : ""}>Ограничения</span><span className={chat.permissions?.canManageTags ? "permission-ok" : ""}>Теги</span></div></td>
           <td><span className={`badge badge--${chat.status.toLowerCase()}`}>{statusLabels[chat.status]}</span>{chat.lastError ? <div className="row-note">{chat.lastError}</div> : null}</td>
           <td>{new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(chat.lastActivityAt))}</td>
         </tr>)}</tbody></table></div>

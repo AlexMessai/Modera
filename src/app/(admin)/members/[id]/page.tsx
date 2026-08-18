@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ShieldAlert, UserRound } from "lucide-react";
 import { ModerationActions } from "@/components/moderation-actions";
+import { MemberTagControl } from "@/components/member-tag-control";
 import { TelegramAvatar } from "@/components/telegram-avatar";
 import { memberStatusBadgeClass, memberStatusLabel } from "@/lib/member-status";
 import { canModerate } from "@/server/auth/permissions";
@@ -27,6 +28,11 @@ const auditLabels: Record<string, string> = {
   AUTOMOD_ESCALATION_FAILED: "Ошибка автоматического наказания",
   TRUSTED_MEMBER_ADDED: "Добавлен в исключения",
   TRUSTED_MEMBER_REMOVED: "Удалён из исключений",
+  TELEGRAM_MEMBER_TAG_CHANGED: "Telegram-тег синхронизирован из Telegram",
+  TELEGRAM_MEMBER_TAG_REMOVED: "Telegram-тег удалён в Telegram",
+  MEMBER_TAG_UPDATED: "Telegram-тег изменён владельцем",
+  MEMBER_TAG_REMOVED: "Telegram-тег удалён владельцем",
+  MEMBER_TAG_UPDATE_FAILED: "Не удалось изменить Telegram-тег",
   PUNISHMENT_STATE_CONFIRMED: "Состояние наказания подтверждено Telegram",
   PUNISHMENT_STATE_CLEARED: "Telegram снял наказание"
 };
@@ -72,7 +78,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               className="profile-avatar"
             />
             <div>
-              <div className="profile-heading-line"><h1>{member.user.displayName}</h1><span className={`badge ${memberStatusBadgeClass(member.status)}`}>{memberStatusLabel(member.status)}</span></div>
+              <div className="profile-heading-line"><h1>{member.user.displayName}</h1><span className={`badge ${memberStatusBadgeClass(member.status)}`}>{memberStatusLabel(member.status)}</span>{member.user.isPremium ? <span className="badge badge--premium">Telegram Premium</span> : null}</div>
               <p>{member.user.username ? `@${member.user.username}` : member.user.isBot ? "Telegram-бот" : "Username не указан"}</p>
             </div>
           </div>
@@ -88,9 +94,12 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             <Detail label="Фамилия" value={member.user.lastName ?? "—"} />
             <Detail label="Username" value={member.user.username ? `@${member.user.username}` : "—"} />
             <Detail label="Язык" value={member.user.languageCode ?? "—"} />
+            <Detail label="Telegram Premium" value={member.user.isPremium ? "Да" : "Нет"} />
+            <Detail label="Attachment menu" value={member.user.addedToAttachmentMenu ? "Бот добавлен" : "Нет"} />
             <Detail label="Тип" value={member.user.isBot ? "Бот" : "Пользователь"} />
             <Detail label="Впервые замечен" value={formatDate(member.user.firstSeenAt)} />
             <Detail label="Последняя активность" value={formatDate(member.user.lastSeenAt)} />
+            <Detail label="Профиль синхронизирован" value={formatDate(member.user.updatedAt)} />
           </dl>
         </article>
 
@@ -100,9 +109,19 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             <div><span>Сообщения</span><strong>{member.messageCount.toLocaleString("ru-RU")}</strong></div>
             <div><span>Предупреждения всего</span><strong>{member.warningCount.toLocaleString("ru-RU")}</strong></div>
             <div><span>Активные предупреждения</span><strong>{moderation.activeWarningCount.toLocaleString("ru-RU")}</strong></div>
+            <div><span>Нарушения</span><strong>{member.activity.violationCount.toLocaleString("ru-RU")}</strong></div>
+            <div><span>Удалённые сообщения</span><strong>{member.activity.deletedMessageCount.toLocaleString("ru-RU")}</strong></div>
           </div>
+          <MemberTagControl
+            membershipId={member.id}
+            initialTag={member.tag}
+            initialStatus={member.status}
+            telegramCustomTitle={member.telegramCustomTitle}
+          />
           <dl className="detail-list detail-list--compact">
             <Detail label="Статус" value={memberStatusLabel(member.status)} />
+            <Detail label="Telegram-роль" value={telegramRoleLabel(member.status, member.telegramCustomTitle)} />
+            <Detail label="Тег участника" value={member.tag ?? "—"} />
             <Detail label="Telegram ID чата" value={member.chat.telegramChatId} mono />
             <Detail label="Вступил / замечен" value={member.joinedAt ? formatDate(member.joinedAt) : "—"} />
             <Detail label="Последняя активность" value={formatDate(member.lastSeenAt)} />
@@ -181,7 +200,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           {member.user.memberships.map((membership) => (
             <Link href={`/members/${membership.id}`} className="membership-row" key={membership.id}>
               <span className="membership-icon"><UserRound size={17} /></span>
-              <div><strong>{membership.chat.title}</strong><span className="mono">{membership.chat.telegramChatId}</span></div>
+              <div><strong>{membership.chat.title}</strong><span className="mono">{membership.chat.telegramChatId}{membership.tag ? ` · ${membership.tag}` : ""}</span></div>
               <span className={`badge ${memberStatusBadgeClass(membership.status)}`}>{memberStatusLabel(membership.status)}</span>
               <span>{membership.messageCount.toLocaleString("ru-RU")} сообщений</span>
               <span>{formatDate(membership.lastSeenAt)}</span>
@@ -226,4 +245,14 @@ function riskBadgeClass(level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL") {
   if (level === "LOW") return "badge--active";
   if (level === "MEDIUM") return "badge--warning";
   return "badge--danger";
+}
+
+function telegramRoleLabel(status: string, customTitle: string | null) {
+  if (status === "CREATOR") return customTitle ? `Владелец · ${customTitle}` : "Владелец";
+  if (status === "ADMINISTRATOR") return customTitle ? `Администратор · ${customTitle}` : "Администратор";
+  if (status === "RESTRICTED") return "Ограниченный участник";
+  if (status === "BANNED") return "Заблокирован";
+  if (status === "LEFT") return "Покинул чат";
+  if (status === "PENDING") return "Ожидает вступления";
+  return "Участник";
 }

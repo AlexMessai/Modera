@@ -5,6 +5,8 @@ export type TelegramUser = {
   last_name?: string;
   username?: string;
   language_code?: string;
+  is_premium?: true;
+  added_to_attachment_menu?: true;
 };
 
 export type TelegramChat = {
@@ -19,6 +21,8 @@ export type TelegramChat = {
 export type TelegramChatMember = {
   status: "creator" | "administrator" | "member" | "restricted" | "left" | "kicked" | string;
   user: TelegramUser;
+  tag?: string;
+  custom_title?: string;
   until_date?: number;
   is_member?: boolean;
   can_send_messages?: boolean;
@@ -40,6 +44,7 @@ export type TelegramChatMember = {
   can_invite_users?: boolean;
   can_pin_messages?: boolean;
   can_manage_topics?: boolean;
+  can_manage_tags?: boolean;
   can_post_stories?: boolean;
   can_edit_stories?: boolean;
   can_delete_stories?: boolean;
