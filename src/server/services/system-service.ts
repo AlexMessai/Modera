@@ -166,7 +166,10 @@ export async function getSystemDiagnostics() {
           where: { status: "FAILED", createdAt: { gte: since24h } }
         }),
         prisma.auditLog.count({
-          where: { action: "AUTOMOD_DELETE_FAILED", createdAt: { gte: since24h } }
+          where: {
+            action: { in: ["AUTOMOD_DELETE_FAILED", "AUTOMOD_ESCALATION_FAILED"] },
+            createdAt: { gte: since24h }
+          }
         }),
         prisma.message.count({ where: { telegramDate: { gte: since24h } } }),
         prisma.botChat.findMany({
@@ -183,6 +186,7 @@ export async function getSystemDiagnostics() {
               in: [
                 "MODERATION_ACTION_FAILED",
                 "AUTOMOD_DELETE_FAILED",
+                "AUTOMOD_ESCALATION_FAILED",
                 "MANUAL_MESSAGE_DELETE_FAILED"
               ]
             },
