@@ -6,13 +6,15 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquareText,
+  ScrollText,
   UsersRound
 } from "lucide-react";
 
 const navigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
-  { href: "/members", label: "Участники", icon: UsersRound }
+  { href: "/members", label: "Участники", icon: UsersRound },
+  { href: "/journal", label: "Журнал", icon: ScrollText }
 ];
 
 const roleLabels: Record<string, string> = {
