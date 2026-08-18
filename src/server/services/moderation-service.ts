@@ -403,17 +403,18 @@ export async function executeModerationAction(input: {
     });
   }
 
+  const telegramAction = input.action;
   const action = await createAction({
     member,
     actingAdminId: input.actingAdminId,
-    action: input.action,
+    action: telegramAction,
     reason
   });
 
   let telegramStatusBefore: string | null = null;
   try {
     const targetMember = await performTelegramAction({
-      action: input.action,
+      action: telegramAction,
       chatTelegramId: Number(member.chat.telegramChatId),
       targetTelegramId: Number(member.user.telegramUserId)
     });
@@ -431,7 +432,7 @@ export async function executeModerationAction(input: {
       chatId: member.chatId,
       userId: member.userId,
       actingAdminId: input.actingAdminId,
-      action: input.action,
+      action: telegramAction,
       reason,
       error: message
     });
@@ -448,7 +449,7 @@ export async function executeModerationAction(input: {
     const updated = await prisma.$transaction(async (tx) => {
       const membership = await tx.chatMember.update({
         where: { id: member.id },
-        data: membershipUpdateFor(input.action, now)
+        data: membershipUpdateFor(telegramAction, now)
       });
 
       const completedAction = await tx.moderationAction.update({
@@ -471,7 +472,7 @@ export async function executeModerationAction(input: {
           affectedUserId: member.userId,
           actingAdminId: input.actingAdminId,
           source: "ADMIN",
-          action: ACTION_AUDIT_LABELS[input.action],
+          action: ACTION_AUDIT_LABELS[telegramAction],
           reason,
           metadata: {
             moderationActionId: action.id,
