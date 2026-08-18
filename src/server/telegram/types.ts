@@ -89,13 +89,26 @@ export type TelegramChatMemberUpdated = {
   new_chat_member: TelegramChatMember;
 };
 
+export type TelegramChatJoinRequest = {
+  chat: TelegramChat;
+  from: TelegramUser;
+  user_chat_id: number;
+  date: number;
+  bio?: string;
+  invite_link?: {
+    invite_link: string;
+    name?: string;
+    creates_join_request?: boolean;
+  };
+};
+
 export type TelegramUpdate = {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
   my_chat_member?: TelegramChatMemberUpdated;
   chat_member?: TelegramChatMemberUpdated;
-  chat_join_request?: { chat: TelegramChat; from: TelegramUser; date: number };
+  chat_join_request?: TelegramChatJoinRequest;
   callback_query?: { id: string; from: TelegramUser; message?: TelegramMessage };
 };
 
