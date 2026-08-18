@@ -23,6 +23,8 @@ type MemberItem = {
   id: string;
   status: MemberStatus;
   internalRole: string | null;
+  telegramCustomTitle: string | null;
+  tag: string | null;
   joinedAt: string | null;
   leftAt: string | null;
   firstSeenAt: string;
@@ -38,6 +40,7 @@ type MemberItem = {
     lastName: string | null;
     displayName: string;
     isBot: boolean;
+    isPremium: boolean;
     languageCode: string | null;
   };
   chat: {
@@ -339,6 +342,7 @@ export function MembersClient({ canManageTrust = false }: { canManageTrust?: boo
                                 : member.user.isBot
                                   ? "Telegram-бот"
                                   : "Без username"}
+                              {member.tag ? ` · ${member.tag}` : ""}
                             </span>
                           </div>
                         </div>

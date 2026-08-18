@@ -155,6 +155,8 @@ model TelegramUser {
   lastName          String?
   displayName       String
   isBot             Boolean            @default(false)
+  isPremium         Boolean            @default(false)
+  addedToAttachmentMenu Boolean        @default(false)
   languageCode      String?
   avatarFileId      String?
   avatarSyncedAt    DateTime?          @db.Timestamptz(3)
@@ -179,6 +181,7 @@ model ChatMember {
   userId                         String           @db.Uuid
   status                         MembershipStatus @default(UNKNOWN)
   internalRole                   String?
+  telegramCustomTitle            String?          @db.VarChar(16)
   joinedAt                       DateTime?        @db.Timestamptz(3)
   leftAt                         DateTime?        @db.Timestamptz(3)
   firstSeenAt                    DateTime          @default(now()) @db.Timestamptz(3)
@@ -194,12 +197,24 @@ model ChatMember {
   updatedAt                      DateTime           @updatedAt @db.Timestamptz(3)
   chat                           Chat               @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user                           TelegramUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberTag                      ChatMemberTag?
 
   @@unique([chatId, userId])
   @@index([chatId, status, lastSeenAt(sort: Desc)])
   @@index([status, lastSeenAt(sort: Desc)])
   @@index([punishmentState, punishmentExpiresAt])
   @@index([userId])
+}
+
+model ChatMemberTag {
+  id           String     @id @default(uuid()) @db.Uuid
+  chatMemberId String     @unique @map("chat_member_id") @db.Uuid
+  tag          String     @db.VarChar(16)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  chatMember   ChatMember @relation(fields: [chatMemberId], references: [id], onDelete: Cascade)
+
+  @@map("chat_member_tags")
 }
 
 model Message {

@@ -17,7 +17,8 @@ export function extractBotPermissions(member: TelegramChatMember) {
       canRestrictMembers: false,
       canInviteUsers: false,
       canPinMessages: false,
-      canManageTopics: false
+      canManageTopics: false,
+      canManageTags: false
     };
   }
 
@@ -27,7 +28,10 @@ export function extractBotPermissions(member: TelegramChatMember) {
     canRestrictMembers: member.status === "creator" || Boolean(member.can_restrict_members),
     canInviteUsers: member.status === "creator" || Boolean(member.can_invite_users),
     canPinMessages: member.status === "creator" || Boolean(member.can_pin_messages),
-    canManageTopics: member.status === "creator" || Boolean(member.can_manage_topics)
+    canManageTopics: member.status === "creator" || Boolean(member.can_manage_topics),
+    canManageTags:
+      member.status === "creator" ||
+      Boolean(member.can_manage_tags ?? member.can_pin_messages)
   };
 }
 

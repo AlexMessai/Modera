@@ -237,6 +237,18 @@ export class TelegramClient {
     });
   }
 
+  setChatMemberTag(input: {
+    chatId: number;
+    userId: number;
+    tag: string;
+  }) {
+    return this.call<boolean>("setChatMemberTag", {
+      chat_id: input.chatId,
+      user_id: input.userId,
+      tag: input.tag
+    });
+  }
+
   getWebhookInfo() {
     return this.call<{
       url: string;

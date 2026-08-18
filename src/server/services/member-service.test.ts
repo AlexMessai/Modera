@@ -148,3 +148,70 @@ test("Telegram event older than manual moderation cannot regress status", async 
 test("invalid member profile id returns not found without querying UUID", async () => {
   assert.equal(await getMemberProfile("not-a-uuid"), null);
 });
+
+test("Telegram profile, member tag and administrator title stay chat-scoped", async () => {
+  const telegramChatId = -1009000000003n;
+  const telegramUserId = 900000003;
+  const chat = await prisma.chat.create({
+    data: {
+      telegramChatId,
+      title: "CI member tag chat",
+      type: "supergroup"
+    }
+  });
+
+  try {
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: {
+        status: "member",
+        tag: "Designer",
+        user: {
+          id: telegramUserId,
+          is_bot: false,
+          first_name: "Premium",
+          is_premium: true,
+          added_to_attachment_menu: true
+        }
+      },
+      date: 1_700_000_300,
+      updateId: 400
+    });
+
+    const tagged = await prisma.chatMember.findFirstOrThrow({
+      where: { chatId: chat.id },
+      include: { memberTag: true, user: true }
+    });
+    assert.equal(tagged.memberTag?.tag, "Designer");
+    assert.equal(tagged.user.isPremium, true);
+    assert.equal(tagged.user.addedToAttachmentMenu, true);
+
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: {
+        status: "administrator",
+        custom_title: "Curator",
+        user: {
+          id: telegramUserId,
+          is_bot: false,
+          first_name: "Premium",
+          is_premium: true
+        }
+      },
+      date: 1_700_000_301,
+      updateId: 401
+    });
+
+    const promoted = await prisma.chatMember.findUniqueOrThrow({
+      where: { id: tagged.id },
+      include: { memberTag: true }
+    });
+    assert.equal(promoted.memberTag, null);
+    assert.equal(promoted.telegramCustomTitle, "Curator");
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.deleteMany({
+      where: { telegramUserId: BigInt(telegramUserId) }
+    });
+  }
+});
