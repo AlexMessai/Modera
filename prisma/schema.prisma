@@ -119,22 +119,23 @@ model TelegramUser {
 }
 
 model ChatMember {
-  id              String           @id @default(uuid()) @db.Uuid
-  chatId          String           @db.Uuid
-  userId          String           @db.Uuid
-  status          MembershipStatus @default(UNKNOWN)
-  internalRole    String?
-  joinedAt        DateTime?        @db.Timestamptz(3)
-  leftAt          DateTime?        @db.Timestamptz(3)
-  firstSeenAt     DateTime         @default(now()) @db.Timestamptz(3)
-  lastSeenAt      DateTime         @default(now()) @db.Timestamptz(3)
-  messageCount    Int              @default(0)
-  warningCount    Int              @default(0)
-  punishmentState String?
-  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
-  chat            Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user            TelegramUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String           @id @default(uuid()) @db.Uuid
+  chatId               String           @db.Uuid
+  userId               String           @db.Uuid
+  status               MembershipStatus @default(UNKNOWN)
+  internalRole         String?
+  joinedAt             DateTime?        @db.Timestamptz(3)
+  leftAt               DateTime?        @db.Timestamptz(3)
+  firstSeenAt          DateTime          @default(now()) @db.Timestamptz(3)
+  lastSeenAt           DateTime          @default(now()) @db.Timestamptz(3)
+  lastTelegramUpdateId BigInt?
+  messageCount         Int               @default(0)
+  warningCount         Int               @default(0)
+  punishmentState      String?
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+  chat                 Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user                 TelegramUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@index([chatId, status, lastSeenAt(sort: Desc)])
