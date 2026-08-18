@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Check, Globe2, ShieldCheck, TriangleAlert } from "lucide-react";
 
 const mediaTypes = [
   ["PHOTO", "Фото"],
@@ -18,7 +18,7 @@ const mediaTypes = [
   ["CONTACT", "Контакты"]
 ] as const;
 
-type Settings = {
+export type ModerationSettingsValue = {
   blockLinks: boolean;
   allowedDomains: string[];
   spamEnabled: boolean;
@@ -36,10 +36,13 @@ type Settings = {
 };
 
 type Props = {
-  chatId: string;
-  initial: Settings;
+  chatId?: string;
+  initial: ModerationSettingsValue;
   canEdit: boolean;
-  botCanDeleteMessages: boolean;
+  botCanDeleteMessages?: boolean;
+  scope?: "chat" | "global";
+  initialUseGlobalProfile?: boolean;
+  globalSettings?: ModerationSettingsValue;
 };
 
 function splitList(value: string) {
@@ -53,48 +56,82 @@ export function ChatModerationSettings({
   chatId,
   initial,
   canEdit,
-  botCanDeleteMessages
+  botCanDeleteMessages = true,
+  scope = "chat",
+  initialUseGlobalProfile = false,
+  globalSettings
 }: Props) {
   const [settings, setSettings] = useState(initial);
+  const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
   const [domains, setDomains] = useState(initial.allowedDomains.join("\n"));
   const [terms, setTerms] = useState(initial.blockedTerms.join("\n"));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const isGlobalScope = scope === "global";
+  const inherited = !isGlobalScope && useGlobalProfile && Boolean(globalSettings);
+  const visibleSettings = inherited && globalSettings ? globalSettings : settings;
+  const visibleDomains = inherited && globalSettings
+    ? globalSettings.allowedDomains.join("\n")
+    : domains;
+  const visibleTerms = inherited && globalSettings
+    ? globalSettings.blockedTerms.join("\n")
+    : terms;
+  const fieldsDisabled = !canEdit || saving || inherited;
+
   const anyRuleEnabled =
-    settings.blockLinks ||
-    settings.spamEnabled ||
-    settings.blockedTermsEnabled ||
-    settings.massMentionsEnabled ||
-    settings.duplicateEnabled ||
-    settings.blockedMessageTypes.length > 0;
+    visibleSettings.blockLinks ||
+    visibleSettings.spamEnabled ||
+    visibleSettings.blockedTermsEnabled ||
+    visibleSettings.massMentionsEnabled ||
+    visibleSettings.duplicateEnabled ||
+    visibleSettings.blockedMessageTypes.length > 0;
 
   async function save() {
+    if (!isGlobalScope && !chatId) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const response = await fetch(`/api/chats/${chatId}/moderation`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          allowedDomains: splitList(domains),
-          blockedTerms: splitList(terms)
-        })
-      });
+      const response = await fetch(
+        isGlobalScope ? "/api/moderation/global" : `/api/chats/${chatId}/moderation`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...settings,
+            ...(isGlobalScope ? {} : { useGlobalProfile }),
+            allowedDomains: splitList(domains),
+            blockedTerms: splitList(terms)
+          })
+        }
+      );
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки.");
       }
 
-      const saved = payload.data as Settings;
-      setSettings(saved);
-      setDomains(saved.allowedDomains.join("\n"));
-      setTerms(saved.blockedTerms.join("\n"));
-      setSuccess("Настройки сохранены и применяются к новым Telegram-событиям.");
+      if (isGlobalScope) {
+        const saved = payload.data as ModerationSettingsValue;
+        setSettings(saved);
+        setDomains(saved.allowedDomains.join("\n"));
+        setTerms(saved.blockedTerms.join("\n"));
+        setSuccess("Глобальная политика сохранена. Чаты с наследованием применят её к новым Telegram-событиям.");
+      } else {
+        const saved = payload.data as ModerationSettingsValue & { useGlobalProfile: boolean };
+        const { useGlobalProfile: savedMode, ...savedSettings } = saved;
+        setUseGlobalProfile(savedMode);
+        setSettings(savedSettings);
+        setDomains(savedSettings.allowedDomains.join("\n"));
+        setTerms(savedSettings.blockedTerms.join("\n"));
+        setSuccess(
+          savedMode
+            ? "Чат переключён на глобальную политику модерации."
+            : "Индивидуальные правила сохранены и применяются к новым Telegram-событиям."
+        );
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки.");
     } finally {
@@ -113,6 +150,32 @@ export function ChatModerationSettings({
 
   return (
     <div className="automod-settings">
+      {!isGlobalScope ? (
+        <div className="automod-rule">
+          <label className="automod-toggle-row">
+            <input
+              type="checkbox"
+              checked={useGlobalProfile}
+              disabled={!canEdit || saving}
+              onChange={(event) => setUseGlobalProfile(event.target.checked)}
+            />
+            <span>
+              <strong>Использовать глобальную политику</strong>
+              <small>Правила этого чата будут автоматически следовать настройкам из раздела «Модерация».</small>
+            </span>
+          </label>
+          {useGlobalProfile ? (
+            <div className="moderation-readonly">
+              <Globe2 size={18} />
+              <div>
+                <strong>Глобальное наследование включено</strong>
+                <p>Индивидуальные значения сохранены, но пока не применяются. Отключите наследование, чтобы вернуться к ним.</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {!botCanDeleteMessages && anyRuleEnabled ? (
         <div className="moderation-notice">
           <TriangleAlert size={16} />
@@ -127,63 +190,63 @@ export function ChatModerationSettings({
           <ShieldCheck size={18} />
           <div>
             <strong>Только просмотр</strong>
-            <p>Изменять правила чата могут OWNER и ADMIN.</p>
+            <p>{isGlobalScope ? "Изменять глобальную политику могут OWNER и ADMIN." : "Изменять правила чата могут OWNER и ADMIN."}</p>
           </div>
         </div>
       ) : null}
 
       <div className="automod-rule">
         <label className="automod-toggle-row">
-          <input type="checkbox" checked={settings.blockLinks} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, blockLinks: event.target.checked }))} />
+          <input type="checkbox" checked={visibleSettings.blockLinks} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockLinks: event.target.checked }))} />
           <span><strong>Запрещённые ссылки</strong><small>Удаляет ссылки, которых нет в allowlist доменов.</small></span>
         </label>
         <label className="automod-field">
           <span>Разрешённые домены</span>
-          <textarea rows={4} value={domains} disabled={!canEdit || saving || !settings.blockLinks} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} />
+          <textarea rows={4} value={visibleDomains} disabled={fieldsDisabled || !visibleSettings.blockLinks} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} />
           <small>По одному домену на строку. Поддомены разрешённого домена тоже пропускаются.</small>
         </label>
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row">
-          <input type="checkbox" checked={settings.blockedTermsEnabled} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, blockedTermsEnabled: event.target.checked }))} />
+          <input type="checkbox" checked={visibleSettings.blockedTermsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockedTermsEnabled: event.target.checked }))} />
           <span><strong>Запрещённые слова и фразы</strong><small>Проверяет текст сообщения и подпись к медиа без учёта регистра.</small></span>
         </label>
         <label className="automod-field">
           <span>Список выражений</span>
-          <textarea rows={5} value={terms} disabled={!canEdit || saving || !settings.blockedTermsEnabled} onChange={(event) => setTerms(event.target.value)} placeholder={"рекламная фраза\nзапрещенное слово"} />
+          <textarea rows={5} value={visibleTerms} disabled={fieldsDisabled || !visibleSettings.blockedTermsEnabled} onChange={(event) => setTerms(event.target.value)} placeholder={"рекламная фраза\nзапрещенное слово"} />
           <small>Одно слово или фраза на строку. До 200 выражений.</small>
         </label>
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row">
-          <input type="checkbox" checked={settings.spamEnabled} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, spamEnabled: event.target.checked }))} />
+          <input type="checkbox" checked={visibleSettings.spamEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, spamEnabled: event.target.checked }))} />
           <span><strong>Антифлуд</strong><small>Удаляет текущее сообщение при превышении лимита сообщений за окно времени.</small></span>
         </label>
         <div className="automod-number-grid">
-          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={3} max={120} value={settings.spamWindowSeconds} disabled={!canEdit || saving || !settings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamWindowSeconds: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Сообщений разрешено</span><input type="number" min={2} max={50} value={settings.spamMaxMessages} disabled={!canEdit || saving || !settings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamMaxMessages: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={3} max={120} value={visibleSettings.spamWindowSeconds} disabled={fieldsDisabled || !visibleSettings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamWindowSeconds: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Сообщений разрешено</span><input type="number" min={2} max={50} value={visibleSettings.spamMaxMessages} disabled={fieldsDisabled || !visibleSettings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamMaxMessages: Number(event.target.value) }))} /></label>
         </div>
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row">
-          <input type="checkbox" checked={settings.duplicateEnabled} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, duplicateEnabled: event.target.checked }))} />
+          <input type="checkbox" checked={visibleSettings.duplicateEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateEnabled: event.target.checked }))} />
           <span><strong>Повторяющиеся сообщения</strong><small>Сравнивает нормализованный текст пользователя с его недавними сообщениями в этом чате.</small></span>
         </label>
         <div className="automod-number-grid">
-          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={5} max={3600} value={settings.duplicateWindowSeconds} disabled={!canEdit || saving || !settings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateWindowSeconds: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Одинаковых разрешено</span><input type="number" min={1} max={20} value={settings.duplicateMaxMessages} disabled={!canEdit || saving || !settings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateMaxMessages: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={5} max={3600} value={visibleSettings.duplicateWindowSeconds} disabled={fieldsDisabled || !visibleSettings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateWindowSeconds: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Одинаковых разрешено</span><input type="number" min={1} max={20} value={visibleSettings.duplicateMaxMessages} disabled={fieldsDisabled || !visibleSettings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateMaxMessages: Number(event.target.value) }))} /></label>
         </div>
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row">
-          <input type="checkbox" checked={settings.massMentionsEnabled} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, massMentionsEnabled: event.target.checked }))} />
+          <input type="checkbox" checked={visibleSettings.massMentionsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, massMentionsEnabled: event.target.checked }))} />
           <span><strong>Массовые упоминания</strong><small>Считает реальные Telegram mention/text_mention entities.</small></span>
         </label>
-        <label className="automod-field automod-field--short"><span>Максимум упоминаний</span><input type="number" min={1} max={50} value={settings.maxMentions} disabled={!canEdit || saving || !settings.massMentionsEnabled} onChange={(event) => setSettings((current) => ({ ...current, maxMentions: Number(event.target.value) }))} /></label>
+        <label className="automod-field automod-field--short"><span>Максимум упоминаний</span><input type="number" min={1} max={50} value={visibleSettings.maxMentions} disabled={fieldsDisabled || !visibleSettings.massMentionsEnabled} onChange={(event) => setSettings((current) => ({ ...current, maxMentions: Number(event.target.value) }))} /></label>
       </div>
 
       <div className="automod-rule">
@@ -191,7 +254,7 @@ export function ChatModerationSettings({
         <div className="automod-media-grid">
           {mediaTypes.map(([value, label]) => (
             <label className="automod-media-option" key={value}>
-              <input type="checkbox" checked={settings.blockedMessageTypes.includes(value)} disabled={!canEdit || saving} onChange={(event) => toggleMedia(value, event.target.checked)} />
+              <input type="checkbox" checked={visibleSettings.blockedMessageTypes.includes(value)} disabled={fieldsDisabled} onChange={(event) => toggleMedia(value, event.target.checked)} />
               <span>{label}</span>
             </label>
           ))}
@@ -199,7 +262,7 @@ export function ChatModerationSettings({
       </div>
 
       <label className="automod-toggle-row automod-toggle-row--compact">
-        <input type="checkbox" checked={settings.ignoreAdmins} disabled={!canEdit || saving} onChange={(event) => setSettings((current) => ({ ...current, ignoreAdmins: event.target.checked }))} />
+        <input type="checkbox" checked={visibleSettings.ignoreAdmins} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, ignoreAdmins: event.target.checked }))} />
         <span><strong>Не применять к администраторам Telegram</strong><small>Рекомендуется оставить включённым, чтобы правила не удаляли сообщения владельца и администраторов.</small></span>
       </label>
 
@@ -209,7 +272,7 @@ export function ChatModerationSettings({
       {canEdit ? (
         <div className="automod-actions">
           <button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}>
-            <Check size={16} />{saving ? "Сохраняю…" : "Сохранить правила"}
+            <Check size={16} />{saving ? "Сохраняю…" : isGlobalScope ? "Сохранить глобальную политику" : "Сохранить правила"}
           </button>
         </div>
       ) : null}

@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import {
   getTelegramClient,
   TelegramApiError
@@ -364,21 +365,18 @@ export async function processAutomodMessage(input: {
     return { processed: false, result: "DUPLICATE_REVISION" as const };
   }
 
-  const settings = await prisma.chatModerationSettings.findUnique({
-    where: { chatId: input.chatId }
-  });
-
+  const resolvedPolicy = await resolveEffectiveModerationSettings(input.chatId);
+  const settings = resolvedPolicy.settings;
   const rulesEnabled = Boolean(
-    settings &&
-      (settings.blockLinks ||
-        settings.spamEnabled ||
-        settings.blockedTermsEnabled ||
-        settings.massMentionsEnabled ||
-        settings.duplicateEnabled ||
-        settings.blockedMessageTypes.length > 0)
+    settings.blockLinks ||
+      settings.spamEnabled ||
+      settings.blockedTermsEnabled ||
+      settings.massMentionsEnabled ||
+      settings.duplicateEnabled ||
+      settings.blockedMessageTypes.length > 0
   );
 
-  if (!settings || !rulesEnabled) {
+  if (!rulesEnabled) {
     await finishWithoutDeletion(stored.id, "DISABLED");
     return { processed: true, result: "DISABLED" as const };
   }
@@ -470,6 +468,7 @@ export async function processAutomodMessage(input: {
   const metadata = {
     telegramMessageId: String(input.message.message_id),
     rule,
+    policySource: resolvedPolicy.source,
     blockedDomains,
     blockedTerms,
     blockedMessageType,

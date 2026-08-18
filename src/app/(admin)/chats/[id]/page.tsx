@@ -69,6 +69,9 @@ export default async function ChatModerationPage({
           <small>
             Удаление сообщений: {profile.bot.canDeleteMessages ? "разрешено" : "нет права"}
           </small>
+          <small>
+            Политика: {profile.policy.effectiveSource === "GLOBAL" ? "глобальная" : "индивидуальная"}
+          </small>
         </div>
       </header>
 
@@ -76,12 +79,14 @@ export default async function ChatModerationPage({
         <div className="panel-header">
           <div>
             <h2>Правила чата</h2>
-            <p>Все автоматические удаления выключены по умолчанию и включаются только явно.</p>
+            <p>Используйте глобальную политику или храните индивидуальные правила только для этого чата.</p>
           </div>
         </div>
         <ChatModerationSettings
           chatId={profile.chat.id}
           initial={profile.settings}
+          initialUseGlobalProfile={profile.policy.useGlobalProfile}
+          globalSettings={profile.globalSettings}
           canEdit={canManageChatSettings(admin.role)}
           botCanDeleteMessages={profile.bot.canDeleteMessages}
         />

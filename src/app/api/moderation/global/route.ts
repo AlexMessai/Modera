@@ -4,14 +4,13 @@ import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import { RESTRICTABLE_MESSAGE_TYPES } from "@/server/services/automod-service";
 import {
-  getChatModerationProfile,
-  updateChatModerationSettings
-} from "@/server/services/chat-moderation-settings-service";
+  getGlobalModerationProfile,
+  updateGlobalModerationProfile
+} from "@/server/services/global-moderation-service";
 
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   blockLinks: z.boolean(),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
   spamEnabled: z.boolean(),
@@ -28,29 +27,14 @@ const settingsSchema = z.object({
   ignoreAdmins: z.boolean()
 });
 
-export async function GET(
-  _request: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function GET() {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
 
-  const { id } = await context.params;
-  const profile = await getChatModerationProfile(id);
-  if (!profile) {
-    return Response.json(
-      { error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } },
-      { status: 404 }
-    );
-  }
-
-  return Response.json({ data: profile });
+  return Response.json({ data: await getGlobalModerationProfile() });
 }
 
-export async function PATCH(
-  request: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request) {
   if (!isSameOrigin(request)) {
     return Response.json(
       { error: { code: "INVALID_ORIGIN", message: "Запрос отклонён." } },
@@ -65,7 +49,7 @@ export async function PATCH(
       {
         error: {
           code: "FORBIDDEN",
-          message: "Изменять правила чата могут только владелец и администратор Modera."
+          message: "Изменять глобальную политику могут только владелец и администратор Modera."
         }
       },
       { status: 403 }
@@ -78,26 +62,17 @@ export async function PATCH(
       {
         error: {
           code: "VALIDATION_ERROR",
-          message: "Проверьте настройки автомодерации."
+          message: "Проверьте настройки глобальной автомодерации."
         }
       },
       { status: 400 }
     );
   }
 
-  const { id } = await context.params;
-  const saved = await updateChatModerationSettings({
-    chatId: id,
+  const saved = await updateGlobalModerationProfile({
     actingAdminId: auth.admin.id,
-    ...parsed.data
+    settings: parsed.data
   });
-
-  if (!saved) {
-    return Response.json(
-      { error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } },
-      { status: 404 }
-    );
-  }
 
   return Response.json({ data: saved });
 }
