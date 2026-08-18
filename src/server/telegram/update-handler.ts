@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { processAutomodMessage } from "@/server/services/automod-service";
 import {
   markBotChatTelegramError,
   syncTelegramChat,
@@ -148,6 +149,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       updateId: update.update_id,
       skipTelegramUserId: botProfile.id
     });
+    await processAutomodMessage({
+      chatId: syncedChat.id,
+      message: update.message,
+      isEdited: false
+    });
   }
 
   if (update.edited_message) {
@@ -156,6 +162,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       message: update.edited_message,
       isEdited: true,
       updateId: update.update_id
+    });
+    await processAutomodMessage({
+      chatId: syncedChat.id,
+      message: update.edited_message,
+      isEdited: true
     });
   }
 
