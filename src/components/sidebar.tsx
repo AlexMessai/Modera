@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquareText,
+  MessagesSquare,
   ScrollText,
   UsersRound
 } from "lucide-react";
@@ -14,6 +15,7 @@ const navigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
   { href: "/members", label: "Участники", icon: UsersRound },
+  { href: "/messages", label: "Сообщения", icon: MessagesSquare },
   { href: "/journal", label: "Журнал", icon: ScrollText }
 ];
 

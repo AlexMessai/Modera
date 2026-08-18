@@ -12,27 +12,41 @@ export const JOURNAL_CATEGORIES = [
 
 export type JournalCategory = (typeof JOURNAL_CATEGORIES)[number];
 
-const JOURNAL_ACTIONS = [
+const MANUAL_ACTIONS = [
   "MODERATION_WARNING",
   "MODERATION_MUTE",
   "MODERATION_UNMUTE",
   "MODERATION_BAN",
   "MODERATION_UNBAN",
   "MODERATION_ACTION_FAILED",
+  "MANUAL_MESSAGE_DELETED",
+  "MANUAL_MESSAGE_ALREADY_GONE",
+  "MANUAL_MESSAGE_DELETE_FAILED"
+];
+
+const AUTOMOD_ACTIONS = [
   "AUTOMOD_LINK_DELETED",
   "AUTOMOD_SPAM_DELETED",
   "AUTOMOD_DELETE_FAILED",
   "AUTOMOD_SETTINGS_UPDATED"
 ];
 
+const JOURNAL_ACTIONS = [...MANUAL_ACTIONS, ...AUTOMOD_ACTIONS];
+
 function auditActionFilter(category: JournalCategory): Prisma.StringFilter {
   switch (category) {
     case "MANUAL":
-      return { startsWith: "MODERATION_" };
+      return { in: MANUAL_ACTIONS };
     case "AUTOMOD":
-      return { startsWith: "AUTOMOD_" };
+      return { in: AUTOMOD_ACTIONS };
     case "ERRORS":
-      return { in: ["MODERATION_ACTION_FAILED", "AUTOMOD_DELETE_FAILED"] };
+      return {
+        in: [
+          "MODERATION_ACTION_FAILED",
+          "AUTOMOD_DELETE_FAILED",
+          "MANUAL_MESSAGE_DELETE_FAILED"
+        ]
+      };
     case "SETTINGS":
       return { equals: "AUTOMOD_SETTINGS_UPDATED" };
     case "PENDING":
@@ -171,7 +185,8 @@ export async function listModerationJournal(input: {
       createdAt: event.createdAt.toISOString(),
       status:
         event.action === "MODERATION_ACTION_FAILED" ||
-        event.action === "AUTOMOD_DELETE_FAILED"
+        event.action === "AUTOMOD_DELETE_FAILED" ||
+        event.action === "MANUAL_MESSAGE_DELETE_FAILED"
           ? "FAILED"
           : "SUCCEEDED",
       chat: event.chat
