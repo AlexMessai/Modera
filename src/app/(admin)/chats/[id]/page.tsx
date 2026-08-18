@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
 
 const eventLabels: Record<string, string> = {
   AUTOMOD_LINK_DELETED: "Удалена запрещённая ссылка",
+  AUTOMOD_TERM_DELETED: "Удалено запрещённое слово или фраза",
+  AUTOMOD_MEDIA_DELETED: "Удалён запрещённый тип контента",
+  AUTOMOD_MENTIONS_DELETED: "Удалено за массовые упоминания",
+  AUTOMOD_DUPLICATE_DELETED: "Удалено повторяющееся сообщение",
   AUTOMOD_SPAM_DELETED: "Удалено сообщение за флуд",
   AUTOMOD_DELETE_FAILED: "Telegram не удалил сообщение",
   AUTOMOD_SETTINGS_UPDATED: "Настройки автомодерации изменены"
@@ -72,7 +76,7 @@ export default async function ChatModerationPage({
         <div className="panel-header">
           <div>
             <h2>Правила чата</h2>
-            <p>Правила выключены по умолчанию и начинают действовать только после сохранения.</p>
+            <p>Все автоматические удаления выключены по умолчанию и включаются только явно.</p>
           </div>
         </div>
         <ChatModerationSettings
@@ -102,7 +106,7 @@ export default async function ChatModerationPage({
               <div className="audit-row" key={event.id}>
                 <span className="audit-dot" />
                 <div>
-                  <strong>{eventLabels[event.action] ?? event.action}</strong>
+                  <strong>{eventLabels[event.action] ?? "Системное событие"}</strong>
                   <span>
                     {event.affectedUser?.displayName ?? event.actingAdmin?.displayName ?? "Система"}
                     {event.reason ? ` · ${event.reason}` : ""}
