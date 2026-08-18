@@ -7,15 +7,18 @@ import type {
   TelegramUser
 } from "@/server/telegram/types";
 
-type MembershipStatusValue =
-  | "CREATOR"
-  | "ADMINISTRATOR"
-  | "MEMBER"
-  | "RESTRICTED"
-  | "PENDING"
-  | "LEFT"
-  | "BANNED"
-  | "UNKNOWN";
+export const MEMBERSHIP_STATUSES = [
+  "CREATOR",
+  "ADMINISTRATOR",
+  "MEMBER",
+  "RESTRICTED",
+  "PENDING",
+  "LEFT",
+  "BANNED",
+  "UNKNOWN"
+] as const;
+
+export type MembershipStatusValue = (typeof MEMBERSHIP_STATUSES)[number];
 
 const ACTIVE_STATUSES = new Set<MembershipStatusValue>([
   "CREATOR",
@@ -33,6 +36,10 @@ function displayName(user: TelegramUser) {
   if (name) return name;
   if (user.username) return `@${user.username}`;
   return `Telegram ${user.id}`;
+}
+
+export function isMembershipStatus(value: string): value is MembershipStatusValue {
+  return MEMBERSHIP_STATUSES.includes(value as MembershipStatusValue);
 }
 
 export function mapTelegramMembershipStatus(status: string): MembershipStatusValue {
@@ -136,8 +143,11 @@ async function syncMembership(
 
   const previousStatus = existing?.status as MembershipStatusValue | undefined;
   const nextStatus = input.status ?? observedActiveStatus(previousStatus);
-  const becameActive = ACTIVE_STATUSES.has(nextStatus) && !ACTIVE_STATUSES.has(previousStatus ?? "UNKNOWN");
-  const becameInactive = nextStatus === "LEFT" || nextStatus === "BANNED" || nextStatus === "PENDING";
+  const becameActive =
+    ACTIVE_STATUSES.has(nextStatus) &&
+    !ACTIVE_STATUSES.has(previousStatus ?? "UNKNOWN");
+  const becameInactive =
+    nextStatus === "LEFT" || nextStatus === "BANNED" || nextStatus === "PENDING";
 
   const membership = await tx.chatMember.upsert({
     where: {
@@ -151,7 +161,8 @@ async function syncMembership(
       userId: user.id,
       status: nextStatus,
       joinedAt: ACTIVE_STATUSES.has(nextStatus) ? input.seenAt : null,
-      leftAt: nextStatus === "LEFT" || nextStatus === "BANNED" ? input.seenAt : null,
+      leftAt:
+        nextStatus === "LEFT" || nextStatus === "BANNED" ? input.seenAt : null,
       firstSeenAt: input.seenAt,
       lastSeenAt: input.seenAt
     },
@@ -323,10 +334,12 @@ export async function syncObservedMessage(input: {
 export async function syncServiceMemberships(input: {
   chatId: string;
   message: TelegramMessage;
+  skipTelegramUserId?: number;
 }) {
   const jobs: Promise<unknown>[] = [];
 
   for (const user of input.message.new_chat_members ?? []) {
+    if (user.id === input.skipTelegramUserId) continue;
     jobs.push(
       syncMemberStatus({
         chatId: input.chatId,
@@ -336,7 +349,10 @@ export async function syncServiceMemberships(input: {
     );
   }
 
-  if (input.message.left_chat_member) {
+  if (
+    input.message.left_chat_member &&
+    input.message.left_chat_member.id !== input.skipTelegramUserId
+  ) {
     jobs.push(
       syncMemberStatus({
         chatId: input.chatId,
