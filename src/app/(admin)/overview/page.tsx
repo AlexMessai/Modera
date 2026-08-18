@@ -4,14 +4,18 @@ import { prisma } from "@/server/db/prisma";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [chatCount, activeBotLinks, knownUsers, messages24h, latestChat] = await Promise.all([
+  const [chatCount, activeBotLinks, knownUsers, messages24hRows, latestChat] = await Promise.all([
     prisma.chat.count(),
     prisma.botChat.count({ where: { status: "ACTIVE" } }),
     prisma.telegramUser.count({ where: { isBot: false } }),
-    prisma.message.count({ where: { telegramDate: { gte: since } } }),
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "Message"
+      WHERE "telegramDate" >= NOW() - INTERVAL '24 hours'
+    `,
     prisma.chat.findFirst({ orderBy: { lastActivityAt: "desc" } })
   ]);
+  const messages24h = Number(messages24hRows[0]?.count ?? 0n);
 
   return (
     <main className="page">
