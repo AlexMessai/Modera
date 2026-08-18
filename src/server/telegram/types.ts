@@ -33,6 +33,16 @@ export type TelegramChatMember = {
   can_delete_stories?: boolean;
 };
 
+export type TelegramMessageEntity = {
+  type: string;
+  offset: number;
+  length: number;
+  url?: string;
+  user?: TelegramUser;
+  language?: string;
+  custom_emoji_id?: string;
+};
+
 export type TelegramMessage = {
   message_id: number;
   date: number;
@@ -41,6 +51,8 @@ export type TelegramMessage = {
   from?: TelegramUser;
   text?: string;
   caption?: string;
+  entities?: TelegramMessageEntity[];
+  caption_entities?: TelegramMessageEntity[];
   photo?: unknown[];
   video?: unknown;
   animation?: unknown;
