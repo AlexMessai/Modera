@@ -32,7 +32,13 @@ const AUTOMOD_ACTIONS = [
   "AUTOMOD_DUPLICATE_DELETED",
   "AUTOMOD_SPAM_DELETED",
   "AUTOMOD_DELETE_FAILED",
-  "AUTOMOD_SETTINGS_UPDATED"
+  "AUTOMOD_SETTINGS_UPDATED",
+  "GLOBAL_AUTOMOD_SETTINGS_UPDATED"
+];
+
+const SETTINGS_ACTIONS = [
+  "AUTOMOD_SETTINGS_UPDATED",
+  "GLOBAL_AUTOMOD_SETTINGS_UPDATED"
 ];
 
 const JOURNAL_ACTIONS = [...MANUAL_ACTIONS, ...AUTOMOD_ACTIONS];
@@ -52,7 +58,7 @@ function auditActionFilter(category: JournalCategory): Prisma.StringFilter {
         ]
       };
     case "SETTINGS":
-      return { equals: "AUTOMOD_SETTINGS_UPDATED" };
+      return { in: SETTINGS_ACTIONS };
     case "PENDING":
       return { equals: "__PENDING_ONLY__" };
     case "ALL":
