@@ -5,6 +5,7 @@ import type {
 } from "@/server/telegram/types";
 
 const API_BASE = "https://api.telegram.org";
+const BOT_PROFILE_CACHE_MS = 10 * 60 * 1000;
 
 export class TelegramApiError extends Error {
   constructor(
@@ -67,6 +68,12 @@ export class TelegramClient {
     return this.call<number>("getChatMemberCount", { chat_id: chatId });
   }
 
+  getChatAdministrators(chatId: number) {
+    return this.call<TelegramChatMember[]>("getChatAdministrators", {
+      chat_id: chatId
+    });
+  }
+
   getWebhookInfo() {
     return this.call<{
       url: string;
@@ -91,10 +98,35 @@ export class TelegramClient {
   }
 }
 
+let singletonClient: TelegramClient | null = null;
+let singletonToken: string | null = null;
+let cachedBotProfile: { value: TelegramUser; expiresAt: number } | null = null;
+
 export function getTelegramClient() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   }
-  return new TelegramClient(token);
+
+  if (!singletonClient || singletonToken !== token) {
+    singletonClient = new TelegramClient(token);
+    singletonToken = token;
+    cachedBotProfile = null;
+  }
+
+  return singletonClient;
+}
+
+export async function getTelegramBotProfile() {
+  const now = Date.now();
+  if (cachedBotProfile && cachedBotProfile.expiresAt > now) {
+    return cachedBotProfile.value;
+  }
+
+  const value = await getTelegramClient().getMe();
+  cachedBotProfile = {
+    value,
+    expiresAt: now + BOT_PROFILE_CACHE_MS
+  };
+  return value;
 }

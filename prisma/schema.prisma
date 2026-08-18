@@ -35,6 +35,7 @@ enum MembershipStatus {
   ADMINISTRATOR
   MEMBER
   RESTRICTED
+  PENDING
   LEFT
   BANNED
   UNKNOWN
@@ -68,6 +69,7 @@ model Chat {
   updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
   botLinks         BotChat[]
   members          ChatMember[]
+  messages         Message[]
   auditLogs        AuditLog[]
 
   @@index([lastActivityAt(sort: Desc)])
@@ -109,6 +111,7 @@ model TelegramUser {
   createdAt       DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
   memberships     ChatMember[]
+  messages        Message[]
   auditLogs       AuditLog[]   @relation("AffectedUser")
 
   @@index([username])
@@ -116,26 +119,49 @@ model TelegramUser {
 }
 
 model ChatMember {
-  id              String           @id @default(uuid()) @db.Uuid
-  chatId          String           @db.Uuid
-  userId          String           @db.Uuid
-  status          MembershipStatus @default(UNKNOWN)
-  internalRole    String?
-  joinedAt        DateTime?        @db.Timestamptz(3)
-  leftAt          DateTime?        @db.Timestamptz(3)
-  firstSeenAt     DateTime         @default(now()) @db.Timestamptz(3)
-  lastSeenAt      DateTime         @default(now()) @db.Timestamptz(3)
-  messageCount    Int              @default(0)
-  warningCount    Int              @default(0)
-  punishmentState String?
-  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
-  chat            Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user            TelegramUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String           @id @default(uuid()) @db.Uuid
+  chatId               String           @db.Uuid
+  userId               String           @db.Uuid
+  status               MembershipStatus @default(UNKNOWN)
+  internalRole         String?
+  joinedAt             DateTime?        @db.Timestamptz(3)
+  leftAt               DateTime?        @db.Timestamptz(3)
+  firstSeenAt          DateTime          @default(now()) @db.Timestamptz(3)
+  lastSeenAt           DateTime          @default(now()) @db.Timestamptz(3)
+  lastTelegramUpdateId BigInt?
+  messageCount         Int               @default(0)
+  warningCount         Int               @default(0)
+  punishmentState      String?
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+  chat                 Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user                 TelegramUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@index([chatId, status, lastSeenAt(sort: Desc)])
+  @@index([status, lastSeenAt(sort: Desc)])
   @@index([userId])
+}
+
+model Message {
+  id                String        @id @default(uuid()) @db.Uuid
+  chatId            String        @db.Uuid
+  senderUserId      String?       @db.Uuid
+  telegramMessageId BigInt
+  telegramDate      DateTime      @db.Timestamptz(3)
+  editedAt          DateTime?     @db.Timestamptz(3)
+  text              String?       @db.Text
+  caption           String?       @db.Text
+  messageType       String
+  isEdited          Boolean       @default(false)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  chat              Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender            TelegramUser? @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+
+  @@unique([chatId, telegramMessageId])
+  @@index([chatId, telegramDate(sort: Desc)])
+  @@index([senderUserId, telegramDate(sort: Desc)])
 }
 
 model AdminUser {
@@ -158,7 +184,7 @@ model AdminSession {
   id         String    @id @default(uuid()) @db.Uuid
   adminId    String    @db.Uuid
   tokenHash  String    @unique
-  expiresAt  DateTime  @db.Timestamptz(3)
+  expiresAt DateTime  @db.Timestamptz(3)
   lastSeenAt DateTime  @default(now()) @db.Timestamptz(3)
   ipAddress  String?
   userAgent  String?

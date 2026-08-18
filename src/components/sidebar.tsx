@@ -2,11 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, MessageSquareText, LogOut } from "lucide-react";
+import {
+  LayoutDashboard,
+  LogOut,
+  MessageSquareText,
+  UsersRound
+} from "lucide-react";
 
 const navigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
-  { href: "/chats", label: "Чаты", icon: MessageSquareText }
+  { href: "/chats", label: "Чаты", icon: MessageSquareText },
+  { href: "/members", label: "Участники", icon: UsersRound }
 ];
 
 const roleLabels: Record<string, string> = {

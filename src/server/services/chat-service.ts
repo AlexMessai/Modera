@@ -38,10 +38,12 @@ export async function upsertTelegramBot(bot: TelegramUser) {
 export async function syncTelegramChat(input: {
   chat: TelegramChat;
   botDbId: string;
-  member: TelegramChatMember;
+  member?: TelegramChatMember | null;
   memberCount?: number | null;
+  activityAt?: Date;
 }) {
   const now = new Date();
+  const activityAt = input.activityAt ?? now;
   const existing = await prisma.chat.findUnique({
     where: { telegramChatId: BigInt(input.chat.id) },
     select: { id: true }
@@ -56,43 +58,47 @@ export async function syncTelegramChat(input: {
         username: input.chat.username,
         type: input.chat.type,
         knownMemberCount: input.memberCount ?? null,
-        lastActivityAt: now
+        lastActivityAt: activityAt
       },
       update: {
         title: chatTitle(input.chat),
         username: input.chat.username,
         type: input.chat.type,
         knownMemberCount: input.memberCount ?? undefined,
-        lastActivityAt: now
+        lastActivityAt: activityAt
       }
     });
 
-    const permissions = extractBotPermissions(input.member);
-    const status = deriveBotStatus(input.member);
+    let botStatus: ReturnType<typeof deriveBotStatus> | null = null;
 
-    await tx.botChat.upsert({
-      where: {
-        botId_chatId: {
+    if (input.member) {
+      const permissions = extractBotPermissions(input.member);
+      botStatus = deriveBotStatus(input.member);
+
+      await tx.botChat.upsert({
+        where: {
+          botId_chatId: {
+            botId: input.botDbId,
+            chatId: chat.id
+          }
+        },
+        create: {
           botId: input.botDbId,
-          chatId: chat.id
+          chatId: chat.id,
+          telegramStatus: input.member.status,
+          status: botStatus,
+          permissions: permissions as Prisma.InputJsonValue,
+          lastSeenAt: now
+        },
+        update: {
+          telegramStatus: input.member.status,
+          status: botStatus,
+          permissions: permissions as Prisma.InputJsonValue,
+          lastError: null,
+          lastSeenAt: now
         }
-      },
-      create: {
-        botId: input.botDbId,
-        chatId: chat.id,
-        telegramStatus: input.member.status,
-        status,
-        permissions: permissions as Prisma.InputJsonValue,
-        lastSeenAt: now
-      },
-      update: {
-        telegramStatus: input.member.status,
-        status,
-        permissions: permissions as Prisma.InputJsonValue,
-        lastError: null,
-        lastSeenAt: now
-      }
-    });
+      });
+    }
 
     if (!existing) {
       await tx.auditLog.create({
@@ -102,7 +108,7 @@ export async function syncTelegramChat(input: {
           action: "CHAT_DISCOVERED",
           metadata: {
             telegramChatId: String(input.chat.id),
-            botStatus: status
+            botStatus: botStatus ?? "CONNECTED"
           }
         }
       });

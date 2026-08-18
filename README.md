@@ -1,21 +1,28 @@
 # Modera
 
-Production-oriented foundation for a Telegram management and moderation platform.
+Production-oriented Telegram management and moderation platform with a Russian-language admin panel.
 
-## What works in stage 1
+## What works
 
 - protected Russian-language admin panel;
 - owner login backed by PostgreSQL sessions;
-- PostgreSQL schema and migration;
+- PostgreSQL schema and versioned migrations;
 - official Telegram Bot API integration;
 - protected Telegram webhook using `X-Telegram-Bot-Api-Secret-Token`;
 - real group/supergroup discovery;
-- real bot membership and permission detection;
+- real bot membership and moderation-permission detection;
 - real chat persistence in PostgreSQL;
-- real `/api/chats` endpoint with server-side search;
-- chat list with automatic 5-second refresh;
+- real Telegram user and chat-member synchronization from observed updates;
+- administrator bootstrap through `getChatAdministrators`;
+- membership statuses, joined/left timestamps and last activity;
+- observed message persistence with idempotent message counters;
+- Telegram `update_id` ordering protection so stale webhook deliveries cannot regress membership state;
+- protected `/api/chats` and `/api/members` endpoints with server-side search/filtering;
+- chat and participant lists with automatic 5-second refresh;
+- participant profile with memberships and Telegram audit events;
+- real participant/message metrics on the overview page;
 - `/api/health` for backend, database and Telegram integration;
-- audit event when a Telegram chat is first discovered.
+- audit events for discovered chats and membership changes.
 
 No fake users, chats, statistics or moderation actions are used.
 
@@ -26,21 +33,21 @@ Telegram
   -> /api/telegram/webhook
   -> Telegram update handler
   -> Telegram adapter (official Bot API)
-  -> Chat service
+  -> Chat / member services
   -> Prisma
   -> PostgreSQL
-  -> /api/chats
+  -> protected APIs
   -> Admin Panel
 ```
 
-The current stage intentionally uses one Next.js full-stack deployment to keep the first production flow small and reliable. Business logic is still separated into auth, Telegram, services and database layers. A separate worker/queue will be introduced when temporary punishments and retryable moderation jobs are implemented.
+The current stage intentionally uses one Next.js full-stack deployment. Business logic remains separated into auth, Telegram, services and database layers. A separate worker/queue will be introduced for temporary punishments, delayed actions and retryable moderation jobs.
 
 ## Requirements
 
 - Node.js 22.12+
 - PostgreSQL 15+
 - Telegram bot token
-- public HTTPS URL for production webhook
+- public HTTPS URL for the production webhook
 
 ## Local setup
 
@@ -59,16 +66,12 @@ Open `http://localhost:3000`.
 
 1. Create a bot with BotFather.
 2. Put the token in `TELEGRAM_BOT_TOKEN`.
-3. Generate a long random `TELEGRAM_WEBHOOK_SECRET`.
-4. Set `TELEGRAM_WEBHOOK_URL=https://your-domain.example/api/telegram/webhook`.
+3. Optionally generate a long random `TELEGRAM_WEBHOOK_SECRET`. If it is absent, Modera derives a stable webhook secret from the server-side bot token.
+4. Set `TELEGRAM_WEBHOOK_URL=https://your-domain.example/api/telegram/webhook`, or let the Vercel production deployment resolve its production URL automatically.
 5. Deploy the application over HTTPS.
-6. Run:
+6. Run `npm run telegram:set-webhook` when configuring outside the automated Vercel production build.
 
-```bash
-npm run telegram:set-webhook
-```
-
-The script registers these update types:
+The webhook subscribes to:
 
 - `message`
 - `edited_message`
@@ -79,37 +82,38 @@ The script registers these update types:
 
 `chat_member` updates are available only when Telegram's requirements are met, including bot administrator status and explicit subscription to this update type.
 
-## First end-to-end verification
+## End-to-end verification
 
 1. Sign in to the admin panel.
-2. Configure and register the Telegram webhook.
-3. Add the bot to a test group/supergroup.
-4. Promote it to administrator.
-5. Send a message or change the bot's membership.
-6. Open **Чаты**.
-7. Verify the real chat, Telegram ID, member count, bot status and moderation-relevant rights.
+2. Add the bot to a test group/supergroup and promote it to administrator.
+3. Send a message or change a member's status.
+4. Open **Чаты** and verify the real chat, Telegram ID, member count, bot status and moderation-relevant rights.
+5. Open **Участники** and verify users observed from Telegram updates.
+6. Open a participant profile and verify status, activity, message count and audit history.
 
 ## Environment variables
 
 See `.env.example`.
 
-Secrets are never exposed to the browser. `TELEGRAM_BOT_TOKEN` and webhook secret are server-side only.
+Secrets are never exposed to the browser. `TELEGRAM_BOT_TOKEN`, database credentials, admin password and webhook secret are server-side only.
 
-## Database
+## Database and deployment
 
-Prisma ORM 7 with PostgreSQL driver adapter is used.
+Prisma ORM 7 with the PostgreSQL driver adapter is used.
 
-Apply production migrations with:
+Apply migrations with:
 
 ```bash
 npm run db:migrate
 ```
 
-Create/update the initial owner:
+Create/update the initial owner with:
 
 ```bash
 npm run db:seed
 ```
+
+On Vercel, migrations and owner seeding run only for `VERCEL_ENV=production`. Preview deployments build the application but never mutate the production database. Production deployment also registers the Telegram webhook after a successful build.
 
 ## Security foundation
 
@@ -121,10 +125,12 @@ npm run db:seed
 - password hashing with bcrypt;
 - protected API endpoints;
 - constant-time Telegram webhook secret comparison;
+- deterministic webhook-secret fallback without exposing the bot token;
 - no bot token in frontend or logs;
-- server-side authorization guard.
+- server-side authorization guard;
+- ordered Telegram membership processing using `update_id`.
 
-Full RBAC permission matrices, security event UI and rate limiting are planned in the security stage.
+Full RBAC permission matrices, security event UI and rate limiting remain planned for the security stage.
 
 ## Health
 
@@ -134,36 +140,37 @@ Checks:
 
 - backend;
 - PostgreSQL;
-- Telegram Bot API if a token is configured.
+- Telegram Bot API.
 
 The endpoint never returns secrets.
 
 ## CI
 
-GitHub Actions runs:
+GitHub Actions runs against a clean PostgreSQL 17 service:
 
-- Prisma generation
-- TypeScript typecheck
-- ESLint
-- tests
-- production build
+- dependency audit;
+- Prisma generation;
+- all database migrations;
+- owner seed;
+- TypeScript typecheck;
+- ESLint;
+- tests;
+- production build.
 
 ## Telegram limitation
 
-The Bot API does **not** provide a universal endpoint for downloading the full historical member list of an arbitrary group. Modera will accumulate known users from Telegram updates and clearly expose that limitation in the UI instead of fabricating a complete list.
+The Bot API does **not** provide a universal endpoint for downloading the full historical member list of an arbitrary group. Modera accumulates real users from Telegram updates and known administrators and clearly exposes that limitation in the UI instead of fabricating a complete list.
 
 ## Next stage
 
-Member synchronization:
+Real moderation actions and policy engine:
 
-- `TelegramUser`;
-- `ChatMember`;
-- `message`;
-- `edited_message`;
-- `chat_member`;
-- `new_chat_members`;
-- `left_chat_member`;
-- `chat_join_request`;
-- `callback_query`;
-- member search, filters and profile;
-- real-time update channel foundation.
+- warnings with reasons and audit trail;
+- Telegram restrict/mute with expiration;
+- ban/unban;
+- manual actions from participant profile;
+- permission-aware action availability;
+- moderation rules for links/spam and configurable exceptions;
+- worker/queue for delayed unmute/unban and retries;
+- live moderation journal in the admin panel;
+- RBAC enforcement for moderation actions.
