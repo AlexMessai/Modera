@@ -19,6 +19,18 @@ export type TelegramChat = {
 export type TelegramChatMember = {
   status: "creator" | "administrator" | "member" | "restricted" | "left" | "kicked" | string;
   user: TelegramUser;
+  until_date?: number;
+  is_member?: boolean;
+  can_send_messages?: boolean;
+  can_send_audios?: boolean;
+  can_send_documents?: boolean;
+  can_send_photos?: boolean;
+  can_send_videos?: boolean;
+  can_send_video_notes?: boolean;
+  can_send_voice_notes?: boolean;
+  can_send_polls?: boolean;
+  can_send_other_messages?: boolean;
+  can_add_web_page_previews?: boolean;
   can_manage_chat?: boolean;
   can_delete_messages?: boolean;
   can_manage_video_chats?: boolean;
@@ -83,16 +95,8 @@ export type TelegramUpdate = {
   edited_message?: TelegramMessage;
   my_chat_member?: TelegramChatMemberUpdated;
   chat_member?: TelegramChatMemberUpdated;
-  chat_join_request?: {
-    chat: TelegramChat;
-    from: TelegramUser;
-    date: number;
-  };
-  callback_query?: {
-    id: string;
-    from: TelegramUser;
-    message?: TelegramMessage;
-  };
+  chat_join_request?: { chat: TelegramChat; from: TelegramUser; date: number };
+  callback_query?: { id: string; from: TelegramUser; message?: TelegramMessage };
 };
 
 export type TelegramApiEnvelope<T> = {
@@ -100,7 +104,5 @@ export type TelegramApiEnvelope<T> = {
   result?: T;
   description?: string;
   error_code?: number;
-  parameters?: {
-    retry_after?: number;
-  };
+  parameters?: { retry_after?: number };
 };

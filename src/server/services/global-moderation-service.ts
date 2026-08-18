@@ -16,7 +16,11 @@ export const DEFAULT_MODERATION_SETTINGS = {
   duplicateWindowSeconds: 60,
   duplicateMaxMessages: 2,
   blockedMessageTypes: [] as string[],
-  ignoreAdmins: true
+  ignoreAdmins: true,
+  autoEscalationEnabled: false,
+  muteAfterWarnings: 3,
+  muteDurationMinutes: 10,
+  banAfterWarnings: 6
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
@@ -84,11 +88,15 @@ export function normalizeModerationSettings(input: ModerationSettingsValue): Mod
     duplicateWindowSeconds: input.duplicateWindowSeconds,
     duplicateMaxMessages: input.duplicateMaxMessages,
     blockedMessageTypes: normalizeMessageTypes(input.blockedMessageTypes),
-    ignoreAdmins: input.ignoreAdmins
+    ignoreAdmins: input.ignoreAdmins,
+    autoEscalationEnabled: input.autoEscalationEnabled,
+    muteAfterWarnings: input.muteAfterWarnings,
+    muteDurationMinutes: input.muteDurationMinutes,
+    banAfterWarnings: input.banAfterWarnings
   };
 }
 
-function serialize(settings: ModerationSettingsValue): ModerationSettingsValue {
+export function serializeModerationSettings(settings: ModerationSettingsValue): ModerationSettingsValue {
   return {
     blockLinks: settings.blockLinks,
     allowedDomains: [...settings.allowedDomains],
@@ -103,7 +111,11 @@ function serialize(settings: ModerationSettingsValue): ModerationSettingsValue {
     duplicateWindowSeconds: settings.duplicateWindowSeconds,
     duplicateMaxMessages: settings.duplicateMaxMessages,
     blockedMessageTypes: [...settings.blockedMessageTypes],
-    ignoreAdmins: settings.ignoreAdmins
+    ignoreAdmins: settings.ignoreAdmins,
+    autoEscalationEnabled: settings.autoEscalationEnabled,
+    muteAfterWarnings: settings.muteAfterWarnings,
+    muteDurationMinutes: settings.muteDurationMinutes,
+    banAfterWarnings: settings.banAfterWarnings
   };
 }
 
@@ -114,7 +126,7 @@ export async function getGlobalModerationProfile() {
 
   return {
     persisted: Boolean(stored),
-    settings: serialize(stored ?? DEFAULT_MODERATION_SETTINGS)
+    settings: serializeModerationSettings(stored ?? DEFAULT_MODERATION_SETTINGS)
   };
 }
 
@@ -139,14 +151,14 @@ export async function updateGlobalModerationProfile(input: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "GLOBAL_AUTOMOD_SETTINGS_UPDATED",
-        metadata: serialize(settings)
+        metadata: serializeModerationSettings(settings)
       }
     });
 
     return settings;
   });
 
-  return serialize(saved);
+  return serializeModerationSettings(saved);
 }
 
 export async function resolveEffectiveModerationSettings(chatId: string) {
@@ -158,7 +170,7 @@ export async function resolveEffectiveModerationSettings(chatId: string) {
     return {
       source: "CHAT" as const,
       useGlobalProfile: false,
-      settings: serialize(local ?? DEFAULT_MODERATION_SETTINGS)
+      settings: serializeModerationSettings(local ?? DEFAULT_MODERATION_SETTINGS)
     };
   }
 
@@ -169,6 +181,6 @@ export async function resolveEffectiveModerationSettings(chatId: string) {
   return {
     source: "GLOBAL" as const,
     useGlobalProfile: true,
-    settings: serialize(global ?? DEFAULT_MODERATION_SETTINGS)
+    settings: serializeModerationSettings(global ?? DEFAULT_MODERATION_SETTINGS)
   };
 }
