@@ -8,11 +8,12 @@ import {
   MessageSquareText,
   MessagesSquare,
   ScrollText,
+  ServerCog,
   ShieldCheck,
   UsersRound
 } from "lucide-react";
 
-const navigation = [
+const baseNavigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
   { href: "/members", label: "Участники", icon: UsersRound },
@@ -31,6 +32,10 @@ const roleLabels: Record<string, string> = {
 export function Sidebar({ admin }: { admin: { displayName: string; email: string; role: string } }) {
   const pathname = usePathname();
   const router = useRouter();
+  const navigation =
+    admin.role === "OWNER" || admin.role === "ADMIN"
+      ? [...baseNavigation, { href: "/system", label: "Система", icon: ServerCog }]
+      : baseNavigation;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
