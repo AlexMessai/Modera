@@ -5,6 +5,7 @@ import {
   executeModerationAction,
   isModerationAction,
   isProtectedMemberStatus,
+  membershipUpdateFor,
   requiresReason
 } from "./moderation-service";
 
@@ -20,6 +21,20 @@ test("moderation command metadata is explicit", () => {
   assert.equal(isProtectedMemberStatus("CREATOR"), true);
   assert.equal(isProtectedMemberStatus("ADMINISTRATOR"), true);
   assert.equal(isProtectedMemberStatus("MEMBER"), false);
+});
+
+test("timed mute stores expiry and unmute clears it", () => {
+  const now = new Date("2026-08-18T10:00:00.000Z");
+  const expiresAt = new Date("2026-08-18T10:10:00.000Z");
+  const muted = membershipUpdateFor("MUTE", now, expiresAt);
+  assert.equal(muted.status, "RESTRICTED");
+  assert.equal(muted.punishmentState, "MUTED");
+  assert.equal(muted.punishmentExpiresAt?.toISOString(), expiresAt.toISOString());
+
+  const unmuted = membershipUpdateFor("UNMUTE", now);
+  assert.equal(unmuted.status, "MEMBER");
+  assert.equal(unmuted.punishmentState, null);
+  assert.equal(unmuted.punishmentExpiresAt, null);
 });
 
 test("warning is persisted atomically without calling Telegram", async () => {
@@ -87,6 +102,7 @@ test("warning is persisted atomically without calling Telegram", async () => {
 
     assert.equal(savedMember.warningCount, 1);
     assert.equal(action.status, "SUCCEEDED");
+    assert.equal(action.source, "ADMIN");
     assert.equal(action.reason, "Повторная рекламная ссылка");
     assert.equal(audit.actingAdminId, admin.id);
   } finally {
