@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "npm run db:migrate && npm run db:seed && next build && npm run telegram:set-webhook",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npm run db:migrate && npm run db:seed && next build && npm run telegram:set-webhook; else next build && npm run telegram:set-webhook; fi",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
