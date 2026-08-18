@@ -222,7 +222,7 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
 
       <section className="metrics-grid dashboard-metrics" aria-label="Показатели периода">
         <MetricCard label="Сообщения" detail={`За ${periodLabels[period].toLowerCase()}`} metric={data.metrics.messages} />
-        <MetricCard label="Новые участники" detail="Фактически вступили в чаты" metric={data.metrics.newMembers} />
+        <MetricCard label="Новые участники" detail="Впервые замечены Modera" metric={data.metrics.newMembers} />
         <MetricCard label="Заявки" detail="Запросы на вступление" metric={data.metrics.joinRequests} />
         <MetricCard label="Automod" detail="Реальные срабатывания и наказания" metric={data.metrics.automodActions} />
         <MetricCard label="Модерация" detail="Warn / mute / ban / unban" metric={data.metrics.moderationActions} />
