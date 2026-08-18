@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 
@@ -120,7 +121,7 @@ export function ChatsClient() {
 
       {!loading && !error && data && data.items.length > 0 ? <>
         <div className="table-wrap"><table className="data-table"><thead><tr><th>Чат</th><th>Telegram ID</th><th>Тип</th><th>Участники</th><th>Права</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{data.items.map((chat) => <tr key={chat.id}>
-          <td><div className="chat-cell"><span className="chat-avatar">{chat.title.slice(0, 1).toUpperCase()}</span><div><strong>{chat.title}</strong><span>{chat.username ? `@${chat.username}` : "Без username"}</span></div></div></td>
+          <td><Link href={`/chats/${chat.id}`} className="chat-cell chat-cell-link"><span className="chat-avatar">{chat.title.slice(0, 1).toUpperCase()}</span><div><strong>{chat.title}</strong><span>{chat.username ? `@${chat.username}` : "Без username"}</span></div></Link></td>
           <td className="mono">{chat.telegramChatId}</td>
           <td>{chat.type === "supergroup" ? "Супергруппа" : "Группа"}</td>
           <td>{chat.knownMemberCount?.toLocaleString("ru-RU") ?? "—"}</td>

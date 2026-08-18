@@ -70,22 +70,23 @@ model TelegramBot {
 }
 
 model Chat {
-  id                String             @id @default(uuid()) @db.Uuid
-  telegramChatId    BigInt             @unique
-  title             String
-  username          String?
-  type              String
-  photoFileId       String?
-  knownMemberCount  Int?
-  firstSeenAt       DateTime           @default(now()) @db.Timestamptz(3)
-  lastActivityAt    DateTime           @default(now()) @db.Timestamptz(3)
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
-  botLinks          BotChat[]
-  members           ChatMember[]
-  messages          Message[]
-  moderationActions ModerationAction[]
-  auditLogs         AuditLog[]
+  id                 String                  @id @default(uuid()) @db.Uuid
+  telegramChatId     BigInt                  @unique
+  title              String
+  username           String?
+  type               String
+  photoFileId        String?
+  knownMemberCount   Int?
+  firstSeenAt        DateTime                @default(now()) @db.Timestamptz(3)
+  lastActivityAt     DateTime                @default(now()) @db.Timestamptz(3)
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @db.Timestamptz(3)
+  botLinks           BotChat[]
+  members            ChatMember[]
+  messages           Message[]
+  moderationSettings ChatModerationSettings?
+  moderationActions  ModerationAction[]
+  auditLogs          AuditLog[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -171,6 +172,10 @@ model Message {
   caption           String?       @db.Text
   messageType       String
   isEdited          Boolean       @default(false)
+  automodRevisionAt DateTime?     @db.Timestamptz(3)
+  automodClaimedAt  DateTime?     @db.Timestamptz(3)
+  automodResult     String?       @db.VarChar(50)
+  deletedAt         DateTime?     @db.Timestamptz(3)
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
   chat              Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -179,6 +184,20 @@ model Message {
   @@unique([chatId, telegramMessageId])
   @@index([chatId, telegramDate(sort: Desc)])
   @@index([senderUserId, telegramDate(sort: Desc)])
+}
+
+model ChatModerationSettings {
+  id                String   @id @default(uuid()) @db.Uuid
+  chatId            String   @unique @db.Uuid
+  blockLinks        Boolean  @default(false)
+  allowedDomains    String[] @default([])
+  spamEnabled       Boolean  @default(false)
+  spamWindowSeconds Int      @default(10)
+  spamMaxMessages   Int      @default(5)
+  ignoreAdmins      Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  chat              Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
 
 model ModerationAction {

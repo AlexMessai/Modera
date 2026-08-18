@@ -125,6 +125,13 @@ export class TelegramClient {
     });
   }
 
+  deleteMessage(chatId: number, messageId: number) {
+    return this.call<boolean>("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId
+    });
+  }
+
   restrictChatMember(input: {
     chatId: number;
     userId: number;
