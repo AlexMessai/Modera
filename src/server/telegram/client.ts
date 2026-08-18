@@ -7,6 +7,57 @@ import type {
 const API_BASE = "https://api.telegram.org";
 const BOT_PROFILE_CACHE_MS = 10 * 60 * 1000;
 
+export type TelegramChatPermissions = {
+  can_send_messages: boolean;
+  can_send_audios: boolean;
+  can_send_documents: boolean;
+  can_send_photos: boolean;
+  can_send_videos: boolean;
+  can_send_video_notes: boolean;
+  can_send_voice_notes: boolean;
+  can_send_polls: boolean;
+  can_send_other_messages: boolean;
+  can_add_web_page_previews: boolean;
+  can_change_info: boolean;
+  can_invite_users: boolean;
+  can_pin_messages: boolean;
+  can_manage_topics: boolean;
+};
+
+export const MUTED_CHAT_PERMISSIONS: TelegramChatPermissions = {
+  can_send_messages: false,
+  can_send_audios: false,
+  can_send_documents: false,
+  can_send_photos: false,
+  can_send_videos: false,
+  can_send_video_notes: false,
+  can_send_voice_notes: false,
+  can_send_polls: false,
+  can_send_other_messages: false,
+  can_add_web_page_previews: false,
+  can_change_info: false,
+  can_invite_users: false,
+  can_pin_messages: false,
+  can_manage_topics: false
+};
+
+export const UNRESTRICTED_CHAT_PERMISSIONS: TelegramChatPermissions = {
+  can_send_messages: true,
+  can_send_audios: true,
+  can_send_documents: true,
+  can_send_photos: true,
+  can_send_videos: true,
+  can_send_video_notes: true,
+  can_send_voice_notes: true,
+  can_send_polls: true,
+  can_send_other_messages: true,
+  can_add_web_page_previews: true,
+  can_change_info: true,
+  can_invite_users: true,
+  can_pin_messages: true,
+  can_manage_topics: true
+};
+
 export class TelegramApiError extends Error {
   constructor(
     message: string,
@@ -71,6 +122,49 @@ export class TelegramClient {
   getChatAdministrators(chatId: number) {
     return this.call<TelegramChatMember[]>("getChatAdministrators", {
       chat_id: chatId
+    });
+  }
+
+  restrictChatMember(input: {
+    chatId: number;
+    userId: number;
+    permissions: TelegramChatPermissions;
+    untilDate?: number;
+  }) {
+    return this.call<boolean>("restrictChatMember", {
+      chat_id: input.chatId,
+      user_id: input.userId,
+      permissions: input.permissions,
+      use_independent_chat_permissions: true,
+      ...(input.untilDate ? { until_date: input.untilDate } : {})
+    });
+  }
+
+  banChatMember(input: {
+    chatId: number;
+    userId: number;
+    untilDate?: number;
+    revokeMessages?: boolean;
+  }) {
+    return this.call<boolean>("banChatMember", {
+      chat_id: input.chatId,
+      user_id: input.userId,
+      ...(input.untilDate ? { until_date: input.untilDate } : {}),
+      ...(input.revokeMessages !== undefined
+        ? { revoke_messages: input.revokeMessages }
+        : {})
+    });
+  }
+
+  unbanChatMember(input: {
+    chatId: number;
+    userId: number;
+    onlyIfBanned?: boolean;
+  }) {
+    return this.call<boolean>("unbanChatMember", {
+      chat_id: input.chatId,
+      user_id: input.userId,
+      only_if_banned: input.onlyIfBanned ?? true
     });
   }
 
