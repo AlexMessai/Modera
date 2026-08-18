@@ -54,7 +54,7 @@ function comparisonPercent(current: number, previous: number) {
 function hourKey(date: Date) {
   const copy = new Date(date);
   copy.setUTCMinutes(0, 0, 0);
-  return copy.toISOString();
+  return copy.toISOString().replace(".000Z", "Z");
 }
 
 function dayKey(date: Date) {
@@ -72,7 +72,7 @@ function buildTrendSlots(period: DashboardPeriod, from: Date, now: Date) {
       const key = hourKey(cursor);
       result.push({
         key,
-        at: key,
+        at: new Date(cursor).toISOString(),
         label: new Intl.DateTimeFormat("ru-RU", {
           hour: "2-digit",
           minute: "2-digit",
