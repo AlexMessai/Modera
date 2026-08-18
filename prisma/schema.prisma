@@ -173,6 +173,7 @@ model Message {
   messageType       String
   isEdited          Boolean       @default(false)
   automodRevisionAt DateTime?     @db.Timestamptz(3)
+  automodClaimedAt  DateTime?     @db.Timestamptz(3)
   automodResult     String?       @db.VarChar(50)
   deletedAt         DateTime?     @db.Timestamptz(3)
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
