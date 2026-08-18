@@ -20,18 +20,26 @@ async function main() {
   });
 
   try {
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    await prisma.adminUser.upsert({
+    const existing = await prisma.adminUser.findUnique({
       where: { email },
-      create: {
+      select: { id: true }
+    });
+
+    if (existing) {
+      console.log(`Admin bootstrap already initialized: ${email}`);
+      return;
+    }
+
+    const adminCount = await prisma.adminUser.count();
+    if (adminCount > 0) {
+      console.log("Admin bootstrap skipped: administrator accounts already exist");
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.adminUser.create({
+      data: {
         email,
-        displayName,
-        passwordHash,
-        role: "OWNER",
-        isActive: true
-      },
-      update: {
         displayName,
         passwordHash,
         role: "OWNER",
@@ -39,7 +47,7 @@ async function main() {
       }
     });
 
-    console.log(`Owner account ready: ${email}`);
+    console.log(`Initial owner account created: ${email}`);
   } finally {
     await prisma.$disconnect();
   }
