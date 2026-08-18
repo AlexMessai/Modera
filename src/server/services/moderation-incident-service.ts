@@ -3,6 +3,7 @@ import { prisma } from "@/server/db/prisma";
 import { deleteStoredMessage } from "@/server/services/message-service";
 import { incidentSeverityFor } from "@/server/services/moderation-incident-rules";
 import { executeModerationAction } from "@/server/services/moderation-service";
+import { effectiveMembershipStatus, effectivePunishmentState, isMuteExpired } from "@/server/services/punishment-state";
 
 export const INCIDENT_STATUSES = ["NEW", "IN_REVIEW", "RESOLVED", "SKIPPED", "AUTO_RESOLVED"] as const;
 export const INCIDENT_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
@@ -195,7 +196,12 @@ export async function getModerationIncident(id: string) {
     },
     context: [...before.reverse().map(serializeMessage), ...(incident.message ? [{ ...incident.message, telegramDate: incident.message.telegramDate.toISOString(), deletedAt: incident.message.deletedAt?.toISOString() ?? null, sender: incident.affectedUser, isIncident: true }] : []), ...after.map(serializeMessage)],
     previous: previous.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
-    membership: membership ? { ...membership, punishmentExpiresAt: membership.punishmentExpiresAt?.toISOString() ?? null } : null
+    membership: membership ? {
+      ...membership,
+      status: effectiveMembershipStatus(membership),
+      punishmentState: effectivePunishmentState(membership),
+      punishmentExpiresAt: isMuteExpired(membership) ? null : membership.punishmentExpiresAt?.toISOString() ?? null
+    } : null
   };
 }
 

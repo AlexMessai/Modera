@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { effectiveMembershipStatus, effectivePunishmentState } from "@/server/services/punishment-state";
 import type {
   TelegramChatMember,
   TelegramChatMemberUpdated,
@@ -459,7 +460,7 @@ export async function listMembers(input: {
   return {
     items: memberships.map((membership) => ({
       id: membership.id,
-      status: membership.status,
+      status: effectiveMembershipStatus(membership),
       internalRole: membership.internalRole,
       joinedAt: membership.joinedAt?.toISOString() ?? null,
       leftAt: membership.leftAt?.toISOString() ?? null,
@@ -467,7 +468,7 @@ export async function listMembers(input: {
       lastSeenAt: membership.lastSeenAt.toISOString(),
       messageCount: membership.messageCount,
       warningCount: membership.warningCount,
-      punishmentState: membership.punishmentState,
+      punishmentState: effectivePunishmentState(membership),
       user: {
         id: membership.user.id,
         telegramUserId: membership.user.telegramUserId.toString(),
@@ -530,14 +531,14 @@ export async function getMemberProfile(membershipId: string) {
 
   return {
     id: membership.id,
-    status: membership.status,
+    status: effectiveMembershipStatus(membership),
     joinedAt: membership.joinedAt,
     leftAt: membership.leftAt,
     firstSeenAt: membership.firstSeenAt,
     lastSeenAt: membership.lastSeenAt,
     messageCount: membership.messageCount,
     warningCount: membership.warningCount,
-    punishmentState: membership.punishmentState,
+    punishmentState: effectivePunishmentState(membership),
     chat: {
       id: membership.chat.id,
       telegramChatId: membership.chat.telegramChatId.toString(),

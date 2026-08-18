@@ -9,7 +9,7 @@
   "crons": [
     {
       "path": "/api/cron/moderation-expirations",
-      "schedule": "*/5 * * * *"
+      "schedule": "17 3 * * *"
     }
   ]
 }

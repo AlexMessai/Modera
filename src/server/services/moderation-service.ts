@@ -8,6 +8,7 @@ import {
   UNRESTRICTED_CHAT_PERMISSIONS
 } from "@/server/telegram/client";
 import { extractBotPermissions } from "@/server/telegram/status";
+import { isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN"] as const;
@@ -56,6 +57,7 @@ function assertLocalActionAllowed(
   member: {
     status: string;
     punishmentState: string | null;
+    punishmentExpiresAt: Date | null;
     user: { isBot: boolean };
     chat: { type: string };
   }
@@ -67,7 +69,7 @@ function assertLocalActionAllowed(
   if ((action === "MUTE" || action === "UNMUTE") && member.chat.type !== "supergroup") {
     throw new ModerationError("SUPERGROUP_REQUIRED", "Mute и unmute доступны только для Telegram supergroup.", 409);
   }
-  if (action === "MUTE" && member.punishmentState === "MUTED") {
+  if (action === "MUTE" && member.punishmentState === "MUTED" && !isMuteExpired(member)) {
     throw new ModerationError("ALREADY_MUTED", "Участник уже находится в mute.", 409);
   }
   if (action === "UNMUTE" && member.status !== "RESTRICTED" && member.punishmentState !== "MUTED") {
