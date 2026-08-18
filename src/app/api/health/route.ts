@@ -26,9 +26,17 @@ export async function GET() {
     }
   }
 
-  const healthy = checks.backend === "ok" && checks.database === "ok" && checks.telegram !== "error";
+  const healthy =
+    checks.backend === "ok" &&
+    checks.database === "ok" &&
+    checks.telegram === "ok";
+
   return Response.json(
-    { status: healthy ? "ok" : "degraded", checks, timestamp: new Date().toISOString() },
+    {
+      status: healthy ? "ok" : "degraded",
+      checks,
+      timestamp: new Date().toISOString()
+    },
     { status: healthy ? 200 : 503 }
   );
 }
