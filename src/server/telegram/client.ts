@@ -175,6 +175,20 @@ export class TelegramClient {
     });
   }
 
+  approveChatJoinRequest(chatId: number, userId: number) {
+    return this.call<boolean>("approveChatJoinRequest", {
+      chat_id: chatId,
+      user_id: userId
+    });
+  }
+
+  declineChatJoinRequest(chatId: number, userId: number) {
+    return this.call<boolean>("declineChatJoinRequest", {
+      chat_id: chatId,
+      user_id: userId
+    });
+  }
+
   getWebhookInfo() {
     return this.call<{
       url: string;
