@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Onest } from "next/font/google";
 import "./globals.css";
 import "./members.css";
+import "./automod.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],
