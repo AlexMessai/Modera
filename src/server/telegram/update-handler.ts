@@ -6,6 +6,7 @@ import { recordTelegramJoinRequest } from "@/server/services/join-request-servic
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
+import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
 
@@ -40,9 +41,12 @@ function isNewMemberJoin(update: TelegramChatMemberUpdated) {
 }
 
 async function runAutomod(input: { chatId: string; message: TelegramMessage; isEdited: boolean }) {
+  if (!input.message.from || input.message.from.is_bot) return;
+  if (await isTrustedTelegramMember(input.chatId, input.message.from.id)) return;
+
   const result = await processAutomodMessage(input);
   const rule = RULE_BY_AUTOMOD_RESULT[result.result];
-  if (!rule || !input.message.from || input.message.from.is_bot) return;
+  if (!rule) return;
   await recordAutomodViolationAndEscalate({
     chatId: input.chatId,
     telegramUserId: input.message.from.id,
@@ -164,7 +168,10 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       eventAt: new Date(update.chat_member.date * 1000)
     }).catch(() => undefined);
 
-    if (isNewMemberJoin(update.chat_member)) {
+    if (
+      isNewMemberJoin(update.chat_member) &&
+      syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE
+    ) {
       await processAntiRaidSignal({
         chatId: syncedChat.id,
         kind: "JOIN",
@@ -175,7 +182,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   }
 
   if (update.chat_join_request && update.chat_join_request.from.id !== botProfile.id) {
-    await syncJoinRequest({
+    const syncedMember = await syncJoinRequest({
       chatId: syncedChat.id,
       user: update.chat_join_request.from,
       date: update.chat_join_request.date,
@@ -186,11 +193,13 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       request: update.chat_join_request,
       updateId: update.update_id
     });
-    await processAntiRaidSignal({
-      chatId: syncedChat.id,
-      kind: "JOIN_REQUEST",
-      occurredAt: new Date(update.chat_join_request.date * 1000)
-    }).catch(() => undefined);
+    if (syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE) {
+      await processAntiRaidSignal({
+        chatId: syncedChat.id,
+        kind: "JOIN_REQUEST",
+        occurredAt: new Date(update.chat_join_request.date * 1000)
+      }).catch(() => undefined);
+    }
   }
 
   if (update.callback_query?.message && update.callback_query.from.id !== botProfile.id) {
