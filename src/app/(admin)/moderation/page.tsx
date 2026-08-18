@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Globe2, ShieldCheck } from "lucide-react";
+import { ChatModerationSettings } from "@/components/chat-moderation-settings";
+import { requireAdminPage } from "@/server/auth/guards";
+import { canManageChatSettings } from "@/server/auth/permissions";
 import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +36,11 @@ function formatDate(value: string) {
 }
 
 export default async function ModerationPage() {
-  const data = await getModerationDashboard();
+  const [admin, data] = await Promise.all([
+    requireAdminPage(),
+    getModerationDashboard()
+  ]);
+  const canEdit = canManageChatSettings(admin.role);
 
   return (
     <main className="page">
@@ -41,15 +48,30 @@ export default async function ModerationPage() {
         <div>
           <span className="eyebrow">Политики и автоматизация</span>
           <h1>Модерация</h1>
-          <p>Состояние правил по всем чатам, права Telegram-бота и реальные срабатывания за последние 24 часа.</p>
+          <p>Глобальная политика, индивидуальные правила чатов, права Telegram-бота и реальные срабатывания.</p>
         </div>
       </header>
 
+      <section className="panel profile-section">
+        <div className="panel-header">
+          <div>
+            <h2>Глобальная политика</h2>
+            <p>Единый набор правил для чатов, которые явно включили наследование. Существующие чаты не переключаются автоматически.</p>
+          </div>
+          <Globe2 size={19} />
+        </div>
+        <ChatModerationSettings
+          scope="global"
+          initial={data.globalProfile.settings}
+          canEdit={canEdit}
+        />
+      </section>
+
       <section className="metrics-grid moderation-metrics">
         <article className="metric-card"><span>Чатов</span><strong>{data.metrics.totalChats.toLocaleString("ru-RU")}</strong><small>Получены через Telegram</small></article>
-        <article className="metric-card"><span>С правилами</span><strong>{data.metrics.configuredChats.toLocaleString("ru-RU")}</strong><small>Хотя бы одно правило включено</small></article>
-        <article className="metric-card"><span>Срабатываний за 24 ч</span><strong>{data.metrics.automod24h.toLocaleString("ru-RU")}</strong><small>Успешные автоматические удаления</small></article>
-        <article className="metric-card"><span>Ошибок за 24 ч</span><strong>{data.metrics.errors24h.toLocaleString("ru-RU")}</strong><small>Telegram не выполнил удаление</small></article>
+        <article className="metric-card"><span>С правилами</span><strong>{data.metrics.configuredChats.toLocaleString("ru-RU")}</strong><small>По эффективной политике</small></article>
+        <article className="metric-card"><span>Наследуют глобальные</span><strong>{data.metrics.inheritedChats.toLocaleString("ru-RU")}</strong><small>Переключены вручную</small></article>
+        <article className="metric-card"><span>Срабатываний за 24 ч</span><strong>{data.metrics.automod24h.toLocaleString("ru-RU")}</strong><small>{data.metrics.errors24h.toLocaleString("ru-RU")} ошибок удаления</small></article>
       </section>
 
       {data.metrics.chatsWithoutDeletePermission > 0 ? (
@@ -65,7 +87,7 @@ export default async function ModerationPage() {
         <div className="panel-header">
           <div>
             <h2>Политики чатов</h2>
-            <p>Нажмите на чат, чтобы изменить правила. Все автоматические удаления остаются opt-in.</p>
+            <p>Нажмите на чат, чтобы выбрать глобальное наследование или изменить индивидуальные правила.</p>
           </div>
           <ShieldCheck size={19} />
         </div>
@@ -75,11 +97,12 @@ export default async function ModerationPage() {
         ) : (
           <div className="table-wrap">
             <table className="data-table moderation-chat-table">
-              <thead><tr><th>Чат</th><th>Правила</th><th>Удаление сообщений</th><th>Статус бота</th><th>Активность</th><th /></tr></thead>
+              <thead><tr><th>Чат</th><th>Профиль</th><th>Правила</th><th>Удаление сообщений</th><th>Статус бота</th><th>Активность</th><th /></tr></thead>
               <tbody>
                 {data.chats.map((chat) => (
                   <tr key={chat.id}>
                     <td><div className="stacked-cell"><strong>{chat.title}</strong><span>{chat.username ? `@${chat.username}` : chat.telegramChatId}</span></div></td>
+                    <td><span className={`badge ${chat.policySource === "GLOBAL" ? "badge--active" : ""}`}>{chat.policySource === "GLOBAL" ? "Глобальный" : "Индивидуальный"}</span></td>
                     <td>
                       {chat.rules.length ? <div className="rule-chip-list">{chat.rules.map((rule) => <span className="rule-chip" key={rule}>{ruleLabels[rule] ?? rule}</span>)}</div> : <span className="muted">Выключены</span>}
                     </td>
