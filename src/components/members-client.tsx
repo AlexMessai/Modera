@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { RefreshCw, Search, Users } from "lucide-react";
+import { RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
 import {
   memberStatusBadgeClass,
   memberStatusLabel
@@ -21,6 +21,7 @@ type MemberStatus =
 type MemberItem = {
   id: string;
   status: MemberStatus;
+  internalRole: string | null;
   joinedAt: string | null;
   leftAt: string | null;
   firstSeenAt: string;
@@ -104,7 +105,7 @@ async function requestChats(): Promise<ChatFilterItem[]> {
   return (payload.data?.items ?? []) as ChatFilterItem[];
 }
 
-export function MembersClient() {
+export function MembersClient({ canManageTrust = false }: { canManageTrust?: boolean }) {
   const [data, setData] = useState<MembersResponse | null>(null);
   const [chats, setChats] = useState<ChatFilterItem[]>([]);
   const [search, setSearch] = useState("");
@@ -114,6 +115,8 @@ export function MembersClient() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [trustingId, setTrustingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -182,6 +185,40 @@ export function MembersClient() {
       .finally(() => setLoading(false));
   }
 
+  async function toggleTrusted(member: MemberItem) {
+    if (!canManageTrust || member.user.isBot) return;
+    const trusted = member.internalRole !== "TRUSTED";
+    setTrustingId(member.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/members/${member.id}/trusted`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trusted })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Не удалось изменить исключение.");
+      }
+      setData((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.id === member.id
+          ? { ...item, internalRole: trusted ? "TRUSTED" : null }
+          : item)
+      } : current);
+      setNotice(
+        trusted
+          ? `${member.user.displayName} добавлен в исключения для «${member.chat.title}».`
+          : `${member.user.displayName} удалён из исключений для «${member.chat.title}».`
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось изменить исключение.");
+    } finally {
+      setTrustingId(null);
+    }
+  }
+
   function changeChat(nextChatId: string) {
     setLoading(true);
     setPage(1);
@@ -243,6 +280,7 @@ export function MembersClient() {
         </div>
       </div>
 
+      {notice ? <div className="moderation-feedback moderation-feedback--success">{notice}</div> : null}
       {loading ? <MembersSkeleton /> : null}
       {!loading && error ? (
         <div className="state-box state-box--error" role="alert">
@@ -270,6 +308,7 @@ export function MembersClient() {
                   <th>Участник</th>
                   <th>Чат</th>
                   <th>Статус</th>
+                  <th>Исключение</th>
                   <th>Сообщения</th>
                   <th>Предупреждения</th>
                   <th>Последняя активность</th>
@@ -277,46 +316,71 @@ export function MembersClient() {
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((member) => (
-                  <tr key={member.id}>
-                    <td>
-                      <div className="chat-cell">
-                        <span className="chat-avatar">
-                          {member.user.displayName.slice(0, 1).toUpperCase()}
-                        </span>
-                        <div>
-                          <Link className="table-link" href={`/members/${member.id}`}>
-                            {member.user.displayName}
-                          </Link>
-                          <span>
-                            {member.user.username
-                              ? `@${member.user.username}`
-                              : member.user.isBot
-                                ? "Telegram-бот"
-                                : "Без username"}
+                {data.items.map((member) => {
+                  const trusted = member.internalRole === "TRUSTED";
+                  return (
+                    <tr key={member.id}>
+                      <td>
+                        <div className="chat-cell">
+                          <span className="chat-avatar">
+                            {member.user.displayName.slice(0, 1).toUpperCase()}
                           </span>
+                          <div>
+                            <Link className="table-link" href={`/members/${member.id}`}>
+                              {member.user.displayName}
+                            </Link>
+                            <span>
+                              {member.user.username
+                                ? `@${member.user.username}`
+                                : member.user.isBot
+                                  ? "Telegram-бот"
+                                  : "Без username"}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="stacked-cell">
-                        <strong>{member.chat.title}</strong>
-                        <span className="mono">{member.chat.telegramChatId}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${memberStatusBadgeClass(member.status)}`}
-                      >
-                        {memberStatusLabel(member.status)}
-                      </span>
-                    </td>
-                    <td>{member.messageCount.toLocaleString("ru-RU")}</td>
-                    <td>{member.warningCount.toLocaleString("ru-RU")}</td>
-                    <td>{formatDate(member.lastSeenAt)}</td>
-                    <td className="mono">{member.user.telegramUserId}</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <div className="stacked-cell">
+                          <strong>{member.chat.title}</strong>
+                          <span className="mono">{member.chat.telegramChatId}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${memberStatusBadgeClass(member.status)}`}>
+                          {memberStatusLabel(member.status)}
+                        </span>
+                      </td>
+                      <td>
+                        {member.user.isBot ? (
+                          <span className="muted-text">Не требуется</span>
+                        ) : canManageTrust ? (
+                          <button
+                            className={`button button--compact ${trusted ? "button--secondary" : ""}`}
+                            type="button"
+                            disabled={trustingId !== null}
+                            onClick={() => void toggleTrusted(member)}
+                            title={trusted ? "Убрать из исключений" : "Не применять автоматические действия"}
+                          >
+                            <ShieldCheck size={14} />
+                            {trustingId === member.id
+                              ? "Сохраняю…"
+                              : trusted
+                                ? "Доверенный"
+                                : "Добавить"}
+                          </button>
+                        ) : trusted ? (
+                          <span className="badge badge--active">Доверенный</span>
+                        ) : (
+                          <span className="muted-text">—</span>
+                        )}
+                      </td>
+                      <td>{member.messageCount.toLocaleString("ru-RU")}</td>
+                      <td>{member.warningCount.toLocaleString("ru-RU")}</td>
+                      <td>{formatDate(member.lastSeenAt)}</td>
+                      <td className="mono">{member.user.telegramUserId}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -338,9 +402,7 @@ export function MembersClient() {
               </span>
               <button
                 className="button button--secondary button--compact"
-                disabled={
-                  data.pagination.page >= data.pagination.totalPages || loading
-                }
+                disabled={data.pagination.page >= data.pagination.totalPages || loading}
                 onClick={() => {
                   setLoading(true);
                   setPage((current) => current + 1);
