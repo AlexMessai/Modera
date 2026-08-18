@@ -55,6 +55,12 @@ enum ModerationActionStatus {
   FAILED
 }
 
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -84,6 +90,7 @@ model Chat {
   botLinks           BotChat[]
   members            ChatMember[]
   messages           Message[]
+  joinRequests       JoinRequest[]
   moderationSettings ChatModerationSettings?
   moderationActions  ModerationAction[]
   auditLogs          AuditLog[]
@@ -128,6 +135,7 @@ model TelegramUser {
   updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
   memberships       ChatMember[]
   messages          Message[]
+  joinRequests      JoinRequest[]
   moderationActions ModerationAction[] @relation("ModeratedUser")
   auditLogs         AuditLog[]         @relation("AffectedUser")
 
@@ -187,6 +195,32 @@ model Message {
   @@unique([chatId, telegramMessageId])
   @@index([chatId, telegramDate(sort: Desc)])
   @@index([senderUserId, telegramDate(sort: Desc)])
+}
+
+model JoinRequest {
+  id                String            @id @default(uuid()) @db.Uuid
+  chatId            String            @db.Uuid
+  userId            String            @db.Uuid
+  telegramUpdateId  BigInt            @unique
+  userChatId        BigInt?
+  bio               String?           @db.VarChar(500)
+  inviteLink        String?           @db.Text
+  status            JoinRequestStatus @default(PENDING)
+  requestedAt       DateTime          @db.Timestamptz(3)
+  processingAt      DateTime?         @db.Timestamptz(3)
+  resolvedAt        DateTime?         @db.Timestamptz(3)
+  resolvedByAdminId String?           @db.Uuid
+  telegramError     String?           @db.VarChar(500)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+  chat              Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user              TelegramUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resolvedByAdmin   AdminUser?        @relation("JoinRequestResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, requestedAt(sort: Desc)])
+  @@index([chatId, status, requestedAt(sort: Desc)])
+  @@index([userId, requestedAt(sort: Desc)])
+  @@index([processingAt])
 }
 
 model ChatModerationSettings {
@@ -269,18 +303,19 @@ model ModerationAction {
 }
 
 model AdminUser {
-  id                String             @id @default(uuid()) @db.Uuid
-  email             String             @unique
-  displayName       String
-  passwordHash      String
-  role              AdminRole          @default(VIEWER)
-  isActive          Boolean            @default(true)
-  lastLoginAt       DateTime?          @db.Timestamptz(3)
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
-  sessions          AdminSession[]
-  moderationActions ModerationAction[] @relation("ModerationActor")
-  auditLogs         AuditLog[]         @relation("ActingAdmin")
+  id                   String             @id @default(uuid()) @db.Uuid
+  email                String             @unique
+  displayName          String
+  passwordHash         String
+  role                 AdminRole          @default(VIEWER)
+  isActive             Boolean            @default(true)
+  lastLoginAt          DateTime?          @db.Timestamptz(3)
+  createdAt            DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime           @updatedAt @db.Timestamptz(3)
+  sessions             AdminSession[]
+  moderationActions    ModerationAction[] @relation("ModerationActor")
+  resolvedJoinRequests JoinRequest[]       @relation("JoinRequestResolver")
+  auditLogs            AuditLog[]         @relation("ActingAdmin")
 
   @@index([role, isActive])
 }
