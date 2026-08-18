@@ -23,6 +23,8 @@ const auditLabels: Record<string, string> = {
   AUTOMOD_AUTO_MUTE: "Автоматический mute",
   AUTOMOD_AUTO_BAN: "Автоматическая блокировка",
   AUTOMOD_ESCALATION_FAILED: "Ошибка автоматического наказания",
+  TRUSTED_MEMBER_ADDED: "Добавлен в исключения",
+  TRUSTED_MEMBER_REMOVED: "Удалён из исключений",
   PUNISHMENT_STATE_CONFIRMED: "Состояние наказания подтверждено Telegram",
   PUNISHMENT_STATE_CLEARED: "Telegram снял наказание"
 };
@@ -87,7 +89,8 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           <div className="panel-header"><div><h2>В этом чате</h2><p>{member.chat.title}</p></div></div>
           <div className="profile-stat-grid">
             <div><span>Сообщения</span><strong>{member.messageCount.toLocaleString("ru-RU")}</strong></div>
-            <div><span>Предупреждения</span><strong>{member.warningCount.toLocaleString("ru-RU")}</strong></div>
+            <div><span>Предупреждения всего</span><strong>{member.warningCount.toLocaleString("ru-RU")}</strong></div>
+            <div><span>Активные предупреждения</span><strong>{moderation.activeWarningCount.toLocaleString("ru-RU")}</strong></div>
           </div>
           <dl className="detail-list detail-list--compact">
             <Detail label="Статус" value={memberStatusLabel(member.status)} />
@@ -97,6 +100,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             <Detail label="Вышел / заблокирован" value={member.leftAt ? formatDate(member.leftAt) : "—"} />
             <Detail label="Ограничение" value={member.punishmentState ?? "Нет"} />
             <Detail label="Срок ограничения" value={moderation.punishmentExpiresAt ? formatDate(moderation.punishmentExpiresAt) : "—"} />
+            <Detail label="Срок предупреждений" value={moderation.warningExpiryDays > 0 ? `${moderation.warningExpiryDays} дн.` : "Не сгорают"} />
           </dl>
         </article>
       </section>

@@ -28,6 +28,7 @@ export type ModerationSettingsValue = {
   muteAfterWarnings: number;
   muteDurationMinutes: number;
   banAfterWarnings: number;
+  warningExpiryDays: number;
 };
 
 type Props = {
@@ -160,8 +161,9 @@ export function ChatModerationSettings({
           <label className="automod-field"><span>Mute после предупреждений</span><input type="number" min={2} max={20} value={visibleSettings.muteAfterWarnings} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, muteAfterWarnings: Number(event.target.value) }))} /></label>
           <label className="automod-field"><span>Срок mute, минут</span><input type="number" min={1} max={10080} value={visibleSettings.muteDurationMinutes} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, muteDurationMinutes: Number(event.target.value) }))} /></label>
           <label className="automod-field"><span>Ban после предупреждений</span><input type="number" min={3} max={50} value={visibleSettings.banAfterWarnings} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, banAfterWarnings: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /><small>0 — предупреждения не сгорают. При значении больше 0 старые предупреждения остаются в журнале, но перестают влиять на пороги.</small></label>
         </div>
-        <small className="row-note">Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute.</small>
+        <small className="row-note">Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute. Исторический счётчик предупреждений не удаляется.</small>
       </div>
 
       <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={visibleSettings.ignoreAdmins} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, ignoreAdmins: event.target.checked }))} /><span><strong>Не применять к администраторам Telegram</strong><small>Рекомендуется оставить включённым. Автоматический mute/ban владельца или администратора в любом случае заблокирован сервером.</small></span></label>

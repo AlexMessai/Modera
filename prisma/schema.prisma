@@ -257,6 +257,7 @@ model ChatModerationSettings {
   muteAfterWarnings      Int      @default(3)
   muteDurationMinutes    Int      @default(10)
   banAfterWarnings       Int      @default(6)
+  warningExpiryDays      Int      @default(0)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -282,6 +283,7 @@ model GlobalModerationSettings {
   muteAfterWarnings      Int      @default(3)
   muteDurationMinutes    Int      @default(10)
   banAfterWarnings       Int      @default(6)
+  warningExpiryDays      Int      @default(0)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }

@@ -150,6 +150,7 @@ export async function updateChatModerationSettings(input: {
   muteAfterWarnings: number;
   muteDurationMinutes: number;
   banAfterWarnings: number;
+  warningExpiryDays: number;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
 
@@ -162,6 +163,7 @@ export async function updateChatModerationSettings(input: {
   const allowedDomains = normalizeAllowedDomains(input.allowedDomains);
   const blockedTerms = normalizeBlockedTerms(input.blockedTerms);
   const blockedMessageTypes = normalizeBlockedMessageTypes(input.blockedMessageTypes);
+  const warningExpiryDays = Math.min(3650, Math.max(0, Math.trunc(input.warningExpiryDays)));
   const values = {
     useGlobalProfile: input.useGlobalProfile,
     blockLinks: input.blockLinks,
@@ -181,7 +183,8 @@ export async function updateChatModerationSettings(input: {
     autoEscalationEnabled: input.autoEscalationEnabled,
     muteAfterWarnings: input.muteAfterWarnings,
     muteDurationMinutes: input.muteDurationMinutes,
-    banAfterWarnings: input.banAfterWarnings
+    banAfterWarnings: input.banAfterWarnings,
+    warningExpiryDays
   };
 
   const saved = await prisma.$transaction(async (tx) => {
