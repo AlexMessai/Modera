@@ -93,7 +93,7 @@ export async function listModerationJournal(input: { page: number; pageSize: num
   const includePending = ["ALL", "MANUAL", "AUTOMOD", "PENDING"].includes(input.category);
   const pendingWhere: Prisma.ModerationActionWhereInput = { status: "PENDING", ...(input.category === "AUTOMOD" ? { source: "SYSTEM" } : {}), ...(input.category === "MANUAL" ? { source: "ADMIN" } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(search ? { OR: pendingSearchFilter(search) } : {}) };
 
-  const [total, events, pendingRows, chats] = await prisma.$transaction([
+  const [total, events, pendingRows, chats] = await Promise.all([
     prisma.auditLog.count({ where: auditWhere }),
     prisma.auditLog.findMany({
       where: auditWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize,

@@ -440,7 +440,7 @@ export async function listMembers(input: {
     ...(userWhere ? { user: userWhere } : {})
   };
 
-  const [total, memberships] = await prisma.$transaction([
+  const [total, memberships] = await Promise.all([
     prisma.chatMember.count({ where }),
     prisma.chatMember.findMany({
       where,

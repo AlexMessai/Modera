@@ -39,7 +39,7 @@ function enabledRules(settings: {
 
 export async function getModerationDashboard() {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [chats, globalStored, automod24h, errors24h] = await prisma.$transaction([
+  const [chats, globalStored, automod24h, errors24h] = await Promise.all([
     prisma.chat.findMany({
       orderBy: { lastActivityAt: "desc" },
       take: 200,

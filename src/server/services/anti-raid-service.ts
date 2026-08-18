@@ -75,7 +75,7 @@ export async function closeExpiredRaidIncidents(chatId?: string, at = new Date()
 }
 
 async function loadSignalCounts(chatId: string, since: Date, until: Date) {
-  const [joinRequestCount, joinCount] = await prisma.$transaction([
+  const [joinRequestCount, joinCount] = await Promise.all([
     prisma.joinRequest.count({
       where: { chatId, requestedAt: { gte: since, lte: until } }
     }),

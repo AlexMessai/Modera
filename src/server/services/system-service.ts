@@ -157,7 +157,7 @@ export async function getSystemDiagnostics() {
         messages24h,
         problemRows,
         errorRows
-      ] = await prisma.$transaction([
+      ] = await Promise.all([
         prisma.chat.count(),
         prisma.botChat.count({ where: { status: "ACTIVE" } }),
         prisma.botChat.count({ where: { status: { in: [...problemStatuses] } } }),
