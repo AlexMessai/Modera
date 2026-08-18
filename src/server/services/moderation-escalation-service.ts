@@ -48,7 +48,10 @@ export async function recordAutomodViolationAndEscalate(input: {
   const reason = `Автомодерация: ${RULE_LABELS[input.rule] ?? "нарушение правила"}`;
   const now = new Date();
   const warning = await prisma.$transaction(async (tx) => {
-    const updated = await tx.chatMember.update({ where: { id: member.id }, data: { warningCount: { increment: 1 } } });
+    const updated = await tx.chatMember.update({
+      where: { id: member.id },
+      data: { warningCount: { increment: 1 } }
+    });
     const action = await tx.moderationAction.create({
       data: {
         chatId: input.chatId,
@@ -88,9 +91,45 @@ export async function recordAutomodViolationAndEscalate(input: {
   });
 
   let action: "MUTE" | "BAN" | null = null;
-  if (warning.warningCount >= policy.banAfterWarnings && warning.lastAutoEscalationWarningCount < policy.banAfterWarnings) action = "BAN";
-  else if (warning.warningCount >= policy.muteAfterWarnings && warning.lastAutoEscalationWarningCount < policy.muteAfterWarnings) action = "MUTE";
-  if (!action) return { enabled: true, escalated: false, warningCount: warning.warningCount } as const;
+  let threshold = 0;
+  if (
+    warning.warningCount >= policy.banAfterWarnings &&
+    warning.lastAutoEscalationWarningCount < policy.banAfterWarnings
+  ) {
+    action = "BAN";
+    threshold = policy.banAfterWarnings;
+  } else if (
+    warning.warningCount >= policy.muteAfterWarnings &&
+    warning.lastAutoEscalationWarningCount < policy.muteAfterWarnings
+  ) {
+    action = "MUTE";
+    threshold = policy.muteAfterWarnings;
+  }
+
+  if (!action) {
+    return { enabled: true, escalated: false, warningCount: warning.warningCount } as const;
+  }
+
+  const previousMarker = warning.lastAutoEscalationWarningCount;
+  const claim = await prisma.chatMember.updateMany({
+    where: {
+      id: warning.id,
+      lastAutoEscalationWarningCount: previousMarker
+    },
+    data: {
+      lastAutoEscalationWarningCount: threshold
+    }
+  });
+
+  if (claim.count === 0) {
+    return {
+      enabled: true,
+      escalated: false,
+      warningCount: warning.warningCount,
+      attemptedAction: action,
+      skippedConcurrentClaim: true
+    } as const;
+  }
 
   try {
     const result = await executeAutomatedModerationAction({
@@ -103,9 +142,35 @@ export async function recordAutomodViolationAndEscalate(input: {
       triggerRule: input.rule,
       ...(action === "MUTE" ? { muteDurationMinutes: policy.muteDurationMinutes } : {})
     });
-    return { enabled: true, escalated: true, warningCount: warning.warningCount, action, result } as const;
+    return {
+      enabled: true,
+      escalated: true,
+      warningCount: warning.warningCount,
+      action,
+      result
+    } as const;
   } catch (error) {
-    const message = error instanceof ModerationError ? error.message : "Не удалось применить автоматическое наказание.";
-    return { enabled: true, escalated: false, warningCount: warning.warningCount, attemptedAction: action, error: message } as const;
+    if (!(error instanceof ModerationError && error.code === "ACTION_RECONCILIATION_REQUIRED")) {
+      await prisma.chatMember.updateMany({
+        where: {
+          id: warning.id,
+          lastAutoEscalationWarningCount: threshold
+        },
+        data: {
+          lastAutoEscalationWarningCount: previousMarker
+        }
+      }).catch(() => undefined);
+    }
+
+    const message = error instanceof ModerationError
+      ? error.message
+      : "Не удалось применить автоматическое наказание.";
+    return {
+      enabled: true,
+      escalated: false,
+      warningCount: warning.warningCount,
+      attemptedAction: action,
+      error: message
+    } as const;
   }
 }
