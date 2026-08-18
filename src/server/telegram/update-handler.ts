@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { processAntiRaidSignal } from "@/server/services/anti-raid-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
@@ -6,7 +7,7 @@ import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdminist
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
-import type { TelegramChat, TelegramChatMember, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
+import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
 const RULE_BY_AUTOMOD_RESULT: Record<string, string> = {
@@ -30,6 +31,12 @@ function updateDate(update: TelegramUpdate) {
 function explicitBotMember(update: TelegramUpdate, botId: number) {
   const member = update.my_chat_member?.new_chat_member;
   return member?.user.id === botId ? member : null;
+}
+
+function isNewMemberJoin(update: TelegramChatMemberUpdated) {
+  const previous = update.old_chat_member.status;
+  const next = update.new_chat_member.status;
+  return (previous === "left" || previous === "kicked") && (next === "member" || next === "restricted");
 }
 
 async function runAutomod(input: { chatId: string; message: TelegramMessage; isEdited: boolean }) {
@@ -146,7 +153,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   }
 
   if (update.chat_member && update.chat_member.new_chat_member.user.id !== botProfile.id) {
-    await syncChatMemberUpdate({
+    const syncedMember = await syncChatMemberUpdate({
       chatId: syncedChat.id,
       update: update.chat_member,
       updateId: update.update_id
@@ -156,6 +163,15 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       member: update.chat_member.new_chat_member,
       eventAt: new Date(update.chat_member.date * 1000)
     }).catch(() => undefined);
+
+    if (isNewMemberJoin(update.chat_member)) {
+      await processAntiRaidSignal({
+        chatId: syncedChat.id,
+        kind: "JOIN",
+        occurredAt: new Date(update.chat_member.date * 1000),
+        membershipId: syncedMember.membership.id
+      }).catch(() => undefined);
+    }
   }
 
   if (update.chat_join_request && update.chat_join_request.from.id !== botProfile.id) {
@@ -170,6 +186,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       request: update.chat_join_request,
       updateId: update.update_id
     });
+    await processAntiRaidSignal({
+      chatId: syncedChat.id,
+      kind: "JOIN_REQUEST",
+      occurredAt: new Date(update.chat_join_request.date * 1000)
+    }).catch(() => undefined);
   }
 
   if (update.callback_query?.message && update.callback_query.from.id !== botProfile.id) {
