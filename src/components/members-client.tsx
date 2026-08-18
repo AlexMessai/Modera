@@ -7,6 +7,7 @@ import {
   memberStatusBadgeClass,
   memberStatusLabel
 } from "@/lib/member-status";
+import { TelegramAvatar } from "@/components/telegram-avatar";
 
 type MemberStatus =
   | "CREATOR"
@@ -322,9 +323,12 @@ export function MembersClient({ canManageTrust = false }: { canManageTrust?: boo
                     <tr key={member.id}>
                       <td>
                         <div className="chat-cell">
-                          <span className="chat-avatar">
-                            {member.user.displayName.slice(0, 1).toUpperCase()}
-                          </span>
+                          <TelegramAvatar
+                            userId={member.user.id}
+                            displayName={member.user.displayName}
+                            size={34}
+                            className="chat-avatar"
+                          />
                           <div>
                             <Link className="table-link" href={`/members/${member.id}`}>
                               {member.user.displayName}

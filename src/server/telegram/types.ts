@@ -119,3 +119,23 @@ export type TelegramApiEnvelope<T> = {
   error_code?: number;
   parameters?: { retry_after?: number };
 };
+
+export type TelegramPhotoSize = {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+};
+
+export type TelegramUserProfilePhotos = {
+  total_count: number;
+  photos: TelegramPhotoSize[][];
+};
+
+export type TelegramFile = {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  file_path?: string;
+};

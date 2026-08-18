@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, ShieldAlert, UserRound } from "lucide-react";
+import { ArrowLeft, ShieldAlert, UserRound } from "lucide-react";
 import { ModerationActions } from "@/components/moderation-actions";
+import { TelegramAvatar } from "@/components/telegram-avatar";
 import { memberStatusBadgeClass, memberStatusLabel } from "@/lib/member-status";
 import { canModerate } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
@@ -64,7 +65,12 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
         <div>
           <Link className="back-link" href="/members"><ArrowLeft size={15} /> Участники</Link>
           <div className="profile-title-row">
-            <span className="profile-avatar">{member.user.isBot ? <Bot size={24} /> : member.user.displayName.slice(0, 1).toUpperCase()}</span>
+            <TelegramAvatar
+              userId={member.user.id}
+              displayName={member.user.displayName}
+              size={52}
+              className="profile-avatar"
+            />
             <div>
               <div className="profile-heading-line"><h1>{member.user.displayName}</h1><span className={`badge ${memberStatusBadgeClass(member.status)}`}>{memberStatusLabel(member.status)}</span></div>
               <p>{member.user.username ? `@${member.user.username}` : member.user.isBot ? "Telegram-бот" : "Username не указан"}</p>

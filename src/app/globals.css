@@ -79,6 +79,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .data-table tbody tr:hover { background: #fafbfc; }
 .chat-cell { display: flex; align-items: center; gap: 10px; min-width: 210px; }
 .chat-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 9px; background: #edf0f5; font-weight: 700; }
+.telegram-avatar { flex: 0 0 auto; display: inline-grid; place-items: center; overflow: hidden; background: #edf0f5; }
+.telegram-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .chat-cell > div { min-width: 0; display: grid; }
 .chat-cell strong { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-cell span:not(.chat-avatar) { color: var(--muted); font-size: 12px; }
