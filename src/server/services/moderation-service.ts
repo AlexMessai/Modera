@@ -430,3 +430,33 @@ export async function executeAutomatedModerationAction(input: {
     }
   });
 }
+
+export async function executeExpiredMuteRelease(input: {
+  membershipId: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const member = await loadMember(input.membershipId);
+  if (!member) return { outcome: "skipped" as const, reason: "MEMBER_NOT_FOUND" as const };
+  if (
+    member.punishmentState !== "MUTED" ||
+    !member.punishmentExpiresAt ||
+    member.punishmentExpiresAt > now
+  ) {
+    return { outcome: "skipped" as const, reason: "NOT_EXPIRED" as const };
+  }
+
+  const result = await executeTelegramBackedAction({
+    member,
+    actingAdminId: null,
+    source: "SYSTEM",
+    action: "UNMUTE",
+    reason: "Истёк срок временного mute.",
+    auditAction: "MODERATION_EXPIRED_UNMUTE",
+    metadata: {
+      automaticExpiration: true,
+      scheduledFor: member.punishmentExpiresAt.toISOString()
+    }
+  });
+  return { outcome: "released" as const, result };
+}
