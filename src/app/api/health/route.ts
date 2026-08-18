@@ -7,7 +7,8 @@ export async function GET() {
   const checks = {
     backend: "ok" as "ok" | "error" | "not_configured",
     database: "error" as "ok" | "error" | "not_configured",
-    telegram: "not_configured" as "ok" | "error" | "not_configured"
+    telegram: "not_configured" as "ok" | "error" | "not_configured",
+    webhook: "not_configured" as "ok" | "error" | "not_configured"
   };
 
   try {
@@ -19,17 +20,30 @@ export async function GET() {
 
   if (process.env.TELEGRAM_BOT_TOKEN) {
     try {
-      await getTelegramClient().getMe();
-      checks.telegram = "ok";
+      const client = getTelegramClient();
+      const [bot, info] = await Promise.all([
+        client.getMe(),
+        client.getWebhookInfo()
+      ]);
+      checks.telegram = bot.id ? "ok" : "error";
+
+      const expectedUrl = process.env.TELEGRAM_WEBHOOK_URL?.trim();
+      if (!expectedUrl) {
+        checks.webhook = "not_configured";
+      } else {
+        checks.webhook = info.url === expectedUrl ? "ok" : "error";
+      }
     } catch {
       checks.telegram = "error";
+      if (process.env.TELEGRAM_WEBHOOK_URL) checks.webhook = "error";
     }
   }
 
   const healthy =
     checks.backend === "ok" &&
     checks.database === "ok" &&
-    checks.telegram === "ok";
+    checks.telegram === "ok" &&
+    checks.webhook === "ok";
 
   return Response.json(
     {
