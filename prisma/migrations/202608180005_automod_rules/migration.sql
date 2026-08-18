@@ -1,5 +1,6 @@
 ALTER TABLE "Message"
 ADD COLUMN "automodRevisionAt" TIMESTAMPTZ(3),
+ADD COLUMN "automodClaimedAt" TIMESTAMPTZ(3),
 ADD COLUMN "automodResult" VARCHAR(50),
 ADD COLUMN "deletedAt" TIMESTAMPTZ(3);
 
