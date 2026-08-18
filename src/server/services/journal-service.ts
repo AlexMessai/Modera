@@ -6,6 +6,7 @@ export type JournalCategory = (typeof JOURNAL_CATEGORIES)[number];
 
 const MANUAL_ACTIONS = [
   "MODERATION_WARNING", "MODERATION_MUTE", "MODERATION_UNMUTE", "MODERATION_BAN", "MODERATION_UNBAN", "MODERATION_ACTION_FAILED",
+  "MODERATION_RECONCILIATION_CHECKED", "MODERATION_RECONCILIATION_CHECK_FAILED",
   "MANUAL_MESSAGE_DELETED", "MANUAL_MESSAGE_ALREADY_GONE", "MANUAL_MESSAGE_DELETE_FAILED"
 ];
 
@@ -16,12 +17,19 @@ const AUTOMOD_ACTIONS = [
 ];
 const SETTINGS_ACTIONS = ["AUTOMOD_SETTINGS_UPDATED", "GLOBAL_AUTOMOD_SETTINGS_UPDATED"];
 const JOURNAL_ACTIONS = [...MANUAL_ACTIONS, ...AUTOMOD_ACTIONS, "PUNISHMENT_STATE_CONFIRMED", "PUNISHMENT_STATE_CLEARED"];
+const ERROR_ACTIONS = [
+  "MODERATION_ACTION_FAILED",
+  "MODERATION_RECONCILIATION_CHECK_FAILED",
+  "AUTOMOD_DELETE_FAILED",
+  "AUTOMOD_ESCALATION_FAILED",
+  "MANUAL_MESSAGE_DELETE_FAILED"
+];
 
 function auditActionFilter(category: JournalCategory): Prisma.StringFilter {
   switch (category) {
     case "MANUAL": return { in: MANUAL_ACTIONS };
     case "AUTOMOD": return { in: AUTOMOD_ACTIONS };
-    case "ERRORS": return { in: ["MODERATION_ACTION_FAILED", "AUTOMOD_DELETE_FAILED", "AUTOMOD_ESCALATION_FAILED", "MANUAL_MESSAGE_DELETE_FAILED"] };
+    case "ERRORS": return { in: ERROR_ACTIONS };
     case "SETTINGS": return { in: SETTINGS_ACTIONS };
     case "PENDING": return { equals: "__PENDING_ONLY__" };
     case "ALL": return { in: JOURNAL_ACTIONS };
@@ -87,7 +95,7 @@ export async function listModerationJournal(input: { page: number; pageSize: num
     })),
     items: events.map((event) => ({
       id: event.id, source: event.source, action: event.action, reason: event.reason, metadata: event.metadata, createdAt: event.createdAt.toISOString(),
-      status: ["MODERATION_ACTION_FAILED", "AUTOMOD_DELETE_FAILED", "AUTOMOD_ESCALATION_FAILED", "MANUAL_MESSAGE_DELETE_FAILED"].includes(event.action) ? "FAILED" : "SUCCEEDED",
+      status: ERROR_ACTIONS.includes(event.action) ? "FAILED" : "SUCCEEDED",
       chat: event.chat ? { id: event.chat.id, title: event.chat.title, telegramChatId: event.chat.telegramChatId.toString() } : null,
       affectedUser: event.affectedUser ? { id: event.affectedUser.id, displayName: event.affectedUser.displayName, username: event.affectedUser.username, telegramUserId: event.affectedUser.telegramUserId.toString() } : null,
       actingAdmin: event.actingAdmin
