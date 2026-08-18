@@ -1,27 +1,61 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, UserRound } from "lucide-react";
+import { ModerationActions } from "@/components/moderation-actions";
 import {
   memberStatusBadgeClass,
   memberStatusLabel
 } from "@/lib/member-status";
+import { canModerate } from "@/server/auth/permissions";
+import { requireAdminPage } from "@/server/auth/guards";
 import { getMemberProfile } from "@/server/services/member-service";
+import { getModerationContext } from "@/server/services/moderation-context";
 
 export const dynamic = "force-dynamic";
 
 const auditLabels: Record<string, string> = {
   MEMBER_STATUS_CHANGED: "Изменён статус участника",
-  MEMBER_JOIN_REQUESTED: "Запрос на вступление"
+  MEMBER_JOIN_REQUESTED: "Запрос на вступление",
+  MODERATION_WARNING: "Выдано предупреждение",
+  MODERATION_MUTE: "Выдан mute",
+  MODERATION_UNMUTE: "Mute снят",
+  MODERATION_BAN: "Участник заблокирован",
+  MODERATION_UNBAN: "Участник разблокирован",
+  MODERATION_ACTION_FAILED: "Действие модерации не выполнено"
 };
+
+const actionLabels: Record<string, string> = {
+  WARNING: "Предупреждение",
+  MUTE: "Mute",
+  UNMUTE: "Снятие mute",
+  BAN: "Блокировка",
+  UNBAN: "Разблокировка"
+};
+
+const actionStatusLabels: Record<string, string> = {
+  PENDING: "Требует сверки",
+  SUCCEEDED: "Выполнено",
+  FAILED: "Ошибка"
+};
+
+function actionStatusClass(status: string) {
+  if (status === "SUCCEEDED") return "badge--active";
+  if (status === "FAILED") return "badge--danger";
+  return "badge--warning";
+}
 
 export default async function MemberProfilePage({
   params
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const admin = await requireAdminPage();
   const { id } = await params;
-  const member = await getMemberProfile(id);
-  if (!member) notFound();
+  const [member, moderation] = await Promise.all([
+    getMemberProfile(id),
+    getModerationContext(id)
+  ]);
+  if (!member || !moderation) notFound();
 
   return (
     <main className="page">
@@ -108,6 +142,61 @@ export default async function MemberProfilePage({
         </article>
       </section>
 
+      <section className="panel profile-section moderation-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Действия модерации</h2>
+            <p>Перед mute, ban и обратными действиями права бота проверяются в Telegram заново.</p>
+          </div>
+        </div>
+        <ModerationActions
+          membershipId={moderation.membershipId}
+          userDisplayName={moderation.userDisplayName}
+          status={moderation.status}
+          punishmentState={moderation.punishmentState}
+          userIsBot={moderation.userIsBot}
+          chatType={moderation.chatType}
+          adminCanModerate={canModerate(admin.role)}
+          botStatus={moderation.botStatus}
+          storedBotCanRestrict={moderation.storedBotCanRestrict}
+        />
+      </section>
+
+      <section className="panel profile-section">
+        <div className="panel-header">
+          <div>
+            <h2>Журнал модерации</h2>
+            <p>Результат каждой ручной команды, включая ошибки Telegram и незавершённые записи.</p>
+          </div>
+        </div>
+        {moderation.actions.length === 0 ? (
+          <div className="state-box state-box--compact">
+            <strong>Действий пока не было</strong>
+            <p>Здесь появятся только реальные команды, выполненные из Modera.</p>
+          </div>
+        ) : (
+          <div className="moderation-history">
+            {moderation.actions.map((action) => (
+              <div className="moderation-history-row" key={action.id}>
+                <div>
+                  <strong>{actionLabels[action.type] ?? action.type}</strong>
+                  <span>
+                    {action.actingAdmin.displayName} · {formatDate(action.createdAt)}
+                  </span>
+                </div>
+                <span className={`badge ${actionStatusClass(action.status)}`}>
+                  {actionStatusLabels[action.status] ?? action.status}
+                </span>
+                <div className="moderation-history-reason">
+                  <span>{action.reason ?? "Без причины"}</span>
+                  {action.telegramError ? <small>{action.telegramError}</small> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="panel profile-section">
         <div className="panel-header">
           <div>
@@ -141,7 +230,7 @@ export default async function MemberProfilePage({
         <div className="panel-header">
           <div>
             <h2>Журнал событий</h2>
-            <p>Последние события Telegram, связанные с этим пользователем.</p>
+            <p>События Telegram и административные изменения, связанные с пользователем.</p>
           </div>
         </div>
         {member.auditLogs.length === 0 ? (
