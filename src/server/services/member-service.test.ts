@@ -82,6 +82,69 @@ test("older Telegram update cannot overwrite newer membership status", async () 
   }
 });
 
+test("Telegram event older than manual moderation cannot regress status", async () => {
+  const telegramChatId = -1009000000002n;
+  const telegramUserId = 900000002;
+  const chat = await prisma.chat.create({
+    data: {
+      telegramChatId,
+      title: "CI manual ordering chat",
+      type: "supergroup"
+    }
+  });
+
+  const user = {
+    id: telegramUserId,
+    is_bot: false,
+    first_name: "Manual ordering"
+  } as const;
+
+  try {
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: { status: "member", user },
+      date: 1_700_000_100,
+      updateId: 300
+    });
+
+    const existing = await prisma.chatMember.findFirstOrThrow({
+      where: {
+        chatId: chat.id,
+        user: { telegramUserId: BigInt(telegramUserId) }
+      }
+    });
+
+    await prisma.chatMember.update({
+      where: { id: existing.id },
+      data: {
+        status: "BANNED",
+        punishmentState: "BANNED",
+        lastModerationAt: new Date(1_700_000_200_500)
+      }
+    });
+
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: { status: "member", user },
+      date: 1_700_000_150,
+      updateId: 999
+    });
+
+    const after = await prisma.chatMember.findUniqueOrThrow({
+      where: { id: existing.id }
+    });
+
+    assert.equal(after.status, "BANNED");
+    assert.equal(after.punishmentState, "BANNED");
+    assert.equal(after.lastTelegramUpdateId, 300n);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.deleteMany({
+      where: { telegramUserId: BigInt(telegramUserId) }
+    });
+  }
+});
+
 test("invalid member profile id returns not found without querying UUID", async () => {
   assert.equal(await getMemberProfile("not-a-uuid"), null);
 });

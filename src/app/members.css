@@ -54,12 +54,46 @@
 .audit-row > div span, .audit-row time { color: var(--muted); font-size: 12px; }
 .audit-row time { white-space: nowrap; }
 
+.moderation-panel { overflow: hidden; }
+.moderation-controls { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.moderation-readonly, .moderation-notice { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fbfbfc; color: var(--muted); }
+.moderation-readonly strong { display: block; margin-bottom: 2px; color: var(--text); }
+.moderation-readonly p { margin: 0; }
+.moderation-notice { border-color: #f0dfae; background: var(--warning-soft); color: var(--warning); font-size: 12px; }
+.moderation-notice svg, .moderation-readonly svg { flex: 0 0 auto; margin-top: 1px; }
+.moderation-reason { display: grid; gap: 7px; }
+.moderation-reason > span { font-size: 12px; font-weight: 650; }
+.moderation-reason textarea { width: 100%; resize: vertical; min-height: 84px; padding: 10px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; line-height: 1.45; outline: 0; }
+.moderation-reason textarea:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
+.moderation-reason small { justify-self: end; color: var(--muted); }
+.moderation-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.button--danger { border-color: #f0c5c1; background: var(--danger-soft); color: var(--danger); }
+.button--danger:hover { background: #ffe6e3; }
+.moderation-confirm { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 14px; border: 1px solid #c9d8f5; border-radius: 10px; background: var(--accent-soft); }
+.moderation-confirm--danger { border-color: #f0c5c1; background: var(--danger-soft); }
+.moderation-confirm strong { display: block; margin-bottom: 3px; }
+.moderation-confirm p { margin: 0 0 4px; color: var(--muted); }
+.moderation-confirm span { color: var(--muted); font-size: 12px; }
+.moderation-confirm-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.moderation-feedback { padding: 10px 11px; border-radius: 8px; font-size: 12px; }
+.moderation-feedback--error { background: var(--danger-soft); color: var(--danger); }
+.moderation-feedback--success { background: var(--success-soft); color: var(--success); }
+.moderation-history { margin-top: 14px; border-top: 1px solid var(--line); }
+.moderation-history-row { display: grid; grid-template-columns: minmax(170px, .8fr) auto minmax(240px, 1.5fr); gap: 14px; align-items: center; min-height: 64px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.moderation-history-row > div:first-child { display: grid; gap: 2px; }
+.moderation-history-row > div:first-child span { color: var(--muted); font-size: 12px; }
+.moderation-history-reason { display: grid; gap: 3px; min-width: 0; }
+.moderation-history-reason > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.moderation-history-reason small { color: var(--danger); overflow-wrap: anywhere; }
+
 @media (max-width: 1100px) {
   .toolbar--members { align-items: stretch; flex-direction: column; }
   .toolbar-filters { flex-wrap: wrap; }
   .profile-grid { grid-template-columns: 1fr; }
   .membership-row { grid-template-columns: 34px minmax(160px, 1fr) auto; padding: 9px 0; }
   .membership-row > span:nth-last-child(-n+2) { display: none; }
+  .moderation-history-row { grid-template-columns: minmax(160px, 1fr) auto; }
+  .moderation-history-reason { grid-column: 1 / -1; padding-bottom: 8px; }
 }
 
 @media (max-width: 760px) {
@@ -73,4 +107,12 @@
   .membership-row .badge { justify-self: start; grid-column: 2; }
   .audit-row { grid-template-columns: 10px minmax(0, 1fr); padding: 9px 0; }
   .audit-row time { grid-column: 2; }
+  .moderation-buttons { display: grid; grid-template-columns: 1fr; }
+  .moderation-buttons .button { width: 100%; }
+  .moderation-confirm { align-items: stretch; flex-direction: column; }
+  .moderation-confirm-actions { width: 100%; }
+  .moderation-confirm-actions .button { flex: 1; }
+  .moderation-history-row { grid-template-columns: 1fr; gap: 6px; padding: 11px 0; }
+  .moderation-history-row .badge { justify-self: start; }
+  .moderation-history-reason { grid-column: auto; }
 }
