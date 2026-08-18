@@ -36,8 +36,23 @@ export type TelegramChatMember = {
 export type TelegramMessage = {
   message_id: number;
   date: number;
+  edit_date?: number;
   chat: TelegramChat;
   from?: TelegramUser;
+  text?: string;
+  caption?: string;
+  photo?: unknown[];
+  video?: unknown;
+  animation?: unknown;
+  document?: unknown;
+  sticker?: unknown;
+  voice?: unknown;
+  audio?: unknown;
+  video_note?: unknown;
+  poll?: unknown;
+  dice?: unknown;
+  location?: unknown;
+  contact?: unknown;
   new_chat_members?: TelegramUser[];
   left_chat_member?: TelegramUser;
 };
