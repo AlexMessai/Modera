@@ -32,7 +32,7 @@ test("dashboard aggregates persisted Telegram and moderation activity", async ()
       lastSeenAt: recent
     }
   });
-  const member = await prisma.chatMember.create({
+  await prisma.chatMember.create({
     data: {
       chatId: chat.id,
       userId: user.id,
