@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { TelegramClient } from "../src/server/telegram/client";
+import { resolveTelegramWebhookSecret } from "../src/server/telegram/webhook-secret";
 
 const DEFAULT_PRODUCTION_HOST = "modera-silk.vercel.app";
 
@@ -24,21 +25,20 @@ async function main() {
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const url = resolveWebhookUrl();
-  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const secretToken = resolveTelegramWebhookSecret();
 
-  const missing = [
-    !token ? "TELEGRAM_BOT_TOKEN" : null,
-    !secretToken ? "TELEGRAM_WEBHOOK_SECRET" : null
-  ].filter(Boolean);
-
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  if (!token) {
+    throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
   }
 
-  const client = new TelegramClient(token!);
+  if (!secretToken) {
+    throw new Error("Unable to resolve Telegram webhook secret");
+  }
+
+  const client = new TelegramClient(token);
   const success = await client.setWebhook({
     url,
-    secretToken: secretToken!,
+    secretToken,
     allowedUpdates: [
       "message",
       "edited_message",
