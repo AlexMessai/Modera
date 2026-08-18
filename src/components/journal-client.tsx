@@ -55,6 +55,9 @@ const actionLabels: Record<string, string> = {
   MODERATION_BAN: "Блокировка",
   MODERATION_UNBAN: "Разблокировка",
   MODERATION_ACTION_FAILED: "Ошибка ручной модерации",
+  MANUAL_MESSAGE_DELETED: "Сообщение удалено вручную",
+  MANUAL_MESSAGE_ALREADY_GONE: "Сообщение уже отсутствовало",
+  MANUAL_MESSAGE_DELETE_FAILED: "Ошибка ручного удаления сообщения",
   AUTOMOD_LINK_DELETED: "Удалена запрещённая ссылка",
   AUTOMOD_SPAM_DELETED: "Удалено за флуд",
   AUTOMOD_DELETE_FAILED: "Ошибка автоматического удаления",
@@ -166,6 +169,8 @@ export function JournalClient() {
       .finally(() => setLoading(false));
   }
 
+  const hasPendingOnly = category === "PENDING" && Boolean(data?.pending.length);
+
   return (
     <div className="journal-stack">
       {data && data.pending.length > 0 ? (
@@ -241,7 +246,7 @@ export function JournalClient() {
 
         {loading && !data ? <div className="state-box">Загрузка журнала…</div> : null}
         {error ? <div className="state-box state-box--error" role="alert">{error}</div> : null}
-        {!error && data && data.items.length === 0 ? (
+        {!error && data && data.items.length === 0 && !hasPendingOnly ? (
           <div className="state-box">
             <strong>Событий по выбранным фильтрам нет</strong>
             <p>Журнал показывает только реальные действия модерации и изменения правил.</p>
@@ -258,7 +263,7 @@ export function JournalClient() {
                     <tr key={item.id}>
                       <td>
                         <div className="stacked-cell journal-event-cell">
-                          <strong>{actionLabels[item.action] ?? item.action}</strong>
+                          <strong>{actionLabels[item.action] ?? "Системное событие"}</strong>
                           <span>{item.reason ?? (item.source === "SYSTEM" ? "Автоматическое правило" : "Без причины")}</span>
                         </div>
                       </td>
