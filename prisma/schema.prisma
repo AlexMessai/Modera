@@ -61,6 +61,16 @@ enum JoinRequestStatus {
   DECLINED
 }
 
+enum AntiRaidMode {
+  ALERT
+  MUTE_NEW_MEMBERS
+}
+
+enum RaidIncidentStatus {
+  ACTIVE
+  ENDED
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -92,6 +102,8 @@ model Chat {
   messages           Message[]
   joinRequests       JoinRequest[]
   moderationSettings ChatModerationSettings?
+  antiRaidSettings   ChatAntiRaidSettings?
+  raidIncidents      RaidIncident[]
   moderationActions  ModerationAction[]
   auditLogs          AuditLog[]
 
@@ -272,6 +284,55 @@ model GlobalModerationSettings {
   banAfterWarnings       Int      @default(6)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model ChatAntiRaidSettings {
+  id                        String       @id @default(uuid()) @db.Uuid
+  chatId                    String       @unique @db.Uuid
+  useGlobalProfile          Boolean      @default(false)
+  enabled                   Boolean      @default(false)
+  joinThreshold             Int          @default(10)
+  windowSeconds             Int          @default(60)
+  protectionDurationMinutes Int          @default(30)
+  mode                      AntiRaidMode @default(ALERT)
+  newMemberMuteMinutes      Int          @default(10)
+  createdAt                 DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime     @updatedAt @db.Timestamptz(3)
+  chat                      Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalAntiRaidSettings {
+  id                        String       @id @default("global")
+  enabled                   Boolean      @default(false)
+  joinThreshold             Int          @default(10)
+  windowSeconds             Int          @default(60)
+  protectionDurationMinutes Int          @default(30)
+  mode                      AntiRaidMode @default(ALERT)
+  newMemberMuteMinutes      Int          @default(10)
+  createdAt                 DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime     @updatedAt @db.Timestamptz(3)
+}
+
+model RaidIncident {
+  id               String             @id @default(uuid()) @db.Uuid
+  chatId           String             @db.Uuid
+  status           RaidIncidentStatus @default(ACTIVE)
+  mode             AntiRaidMode
+  triggeredBy      String             @db.VarChar(50)
+  signalCount      Int
+  joinRequestCount Int
+  joinCount        Int
+  windowStartedAt  DateTime           @db.Timestamptz(3)
+  startedAt        DateTime           @db.Timestamptz(3)
+  activeUntil      DateTime           @db.Timestamptz(3)
+  endedAt          DateTime?          @db.Timestamptz(3)
+  metadata         Json?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+  chat             Chat               @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, status, startedAt(sort: Desc)])
+  @@index([status, activeUntil])
 }
 
 model ModerationAction {

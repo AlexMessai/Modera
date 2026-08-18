@@ -8,6 +8,7 @@ import "./messages.css";
 import "./moderation.css";
 import "./system.css";
 import "./join-requests.css";
+import "./anti-raid.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],

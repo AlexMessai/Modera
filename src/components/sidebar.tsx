@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   ScrollText,
   ServerCog,
+  ShieldAlert,
   ShieldCheck,
   UserRoundPlus,
   UsersRound
@@ -21,6 +22,7 @@ const baseNavigation = [
   { href: "/join-requests", label: "Заявки", icon: UserRoundPlus },
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
   { href: "/moderation", label: "Модерация", icon: ShieldCheck },
+  { href: "/anti-raid", label: "Anti-Raid", icon: ShieldAlert },
   { href: "/journal", label: "Журнал", icon: ScrollText }
 ];
 
