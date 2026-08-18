@@ -20,7 +20,8 @@ export const DEFAULT_MODERATION_SETTINGS = {
   autoEscalationEnabled: false,
   muteAfterWarnings: 3,
   muteDurationMinutes: 10,
-  banAfterWarnings: 6
+  banAfterWarnings: 6,
+  warningExpiryDays: 0
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
@@ -73,6 +74,11 @@ function normalizeMessageTypes(values: string[]) {
   return Array.from(new Set(values.filter((value) => BLOCKABLE_TYPES.has(value)))).slice(0, 20);
 }
 
+function boundedInteger(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
 export function normalizeModerationSettings(input: ModerationSettingsValue): ModerationSettingsValue {
   return {
     blockLinks: input.blockLinks,
@@ -92,7 +98,8 @@ export function normalizeModerationSettings(input: ModerationSettingsValue): Mod
     autoEscalationEnabled: input.autoEscalationEnabled,
     muteAfterWarnings: input.muteAfterWarnings,
     muteDurationMinutes: input.muteDurationMinutes,
-    banAfterWarnings: input.banAfterWarnings
+    banAfterWarnings: input.banAfterWarnings,
+    warningExpiryDays: boundedInteger(input.warningExpiryDays, 0, 3650)
   };
 }
 
@@ -115,7 +122,8 @@ export function serializeModerationSettings(settings: ModerationSettingsValue): 
     autoEscalationEnabled: settings.autoEscalationEnabled,
     muteAfterWarnings: settings.muteAfterWarnings,
     muteDurationMinutes: settings.muteDurationMinutes,
-    banAfterWarnings: settings.banAfterWarnings
+    banAfterWarnings: settings.banAfterWarnings,
+    warningExpiryDays: settings.warningExpiryDays
   };
 }
 
