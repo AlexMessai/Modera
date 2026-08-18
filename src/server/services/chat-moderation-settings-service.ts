@@ -5,29 +5,38 @@ import {
   RESTRICTABLE_MESSAGE_TYPES,
   type RestrictableMessageType
 } from "@/server/services/automod-service";
+import {
+  DEFAULT_MODERATION_SETTINGS,
+  getGlobalModerationProfile,
+  resolveEffectiveModerationSettings
+} from "@/server/services/global-moderation-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const DEFAULT_CHAT_MODERATION_SETTINGS = {
-  blockLinks: false,
-  allowedDomains: [] as string[],
-  spamEnabled: false,
-  spamWindowSeconds: 10,
-  spamMaxMessages: 5,
-  blockedTermsEnabled: false,
-  blockedTerms: [] as string[],
-  massMentionsEnabled: false,
-  maxMentions: 5,
-  duplicateEnabled: false,
-  duplicateWindowSeconds: 60,
-  duplicateMaxMessages: 2,
-  blockedMessageTypes: [] as string[],
-  ignoreAdmins: true
-};
+export const DEFAULT_CHAT_MODERATION_SETTINGS = DEFAULT_MODERATION_SETTINGS;
 
 function normalizeBlockedMessageTypes(values: string[]) {
   const allowed = new Set<string>(RESTRICTABLE_MESSAGE_TYPES);
   return Array.from(new Set(values.filter((value) => allowed.has(value)))).slice(0, 20) as RestrictableMessageType[];
+}
+
+function serializeSettings(settings: typeof DEFAULT_MODERATION_SETTINGS) {
+  return {
+    blockLinks: settings.blockLinks,
+    allowedDomains: [...settings.allowedDomains],
+    spamEnabled: settings.spamEnabled,
+    spamWindowSeconds: settings.spamWindowSeconds,
+    spamMaxMessages: settings.spamMaxMessages,
+    blockedTermsEnabled: settings.blockedTermsEnabled,
+    blockedTerms: [...settings.blockedTerms],
+    massMentionsEnabled: settings.massMentionsEnabled,
+    maxMentions: settings.maxMentions,
+    duplicateEnabled: settings.duplicateEnabled,
+    duplicateWindowSeconds: settings.duplicateWindowSeconds,
+    duplicateMaxMessages: settings.duplicateMaxMessages,
+    blockedMessageTypes: [...settings.blockedMessageTypes],
+    ignoreAdmins: settings.ignoreAdmins
+  };
 }
 
 export async function getChatModerationProfile(chatId: string) {
@@ -52,45 +61,49 @@ export async function getChatModerationProfile(chatId: string) {
 
   if (!chat) return null;
 
-  const events = await prisma.auditLog.findMany({
-    where: {
-      chatId,
-      action: {
-        in: [
-          "AUTOMOD_LINK_DELETED",
-          "AUTOMOD_SPAM_DELETED",
-          "AUTOMOD_TERM_DELETED",
-          "AUTOMOD_MEDIA_DELETED",
-          "AUTOMOD_MENTIONS_DELETED",
-          "AUTOMOD_DUPLICATE_DELETED",
-          "AUTOMOD_DELETE_FAILED",
-          "AUTOMOD_SETTINGS_UPDATED"
-        ]
-      }
-    },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    include: {
-      affectedUser: {
-        select: {
-          displayName: true,
-          username: true
+  const [events, effective, globalProfile] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: {
+        chatId,
+        action: {
+          in: [
+            "AUTOMOD_LINK_DELETED",
+            "AUTOMOD_SPAM_DELETED",
+            "AUTOMOD_TERM_DELETED",
+            "AUTOMOD_MEDIA_DELETED",
+            "AUTOMOD_MENTIONS_DELETED",
+            "AUTOMOD_DUPLICATE_DELETED",
+            "AUTOMOD_DELETE_FAILED",
+            "AUTOMOD_SETTINGS_UPDATED"
+          ]
         }
       },
-      actingAdmin: {
-        select: {
-          displayName: true
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: {
+        affectedUser: {
+          select: {
+            displayName: true,
+            username: true
+          }
+        },
+        actingAdmin: {
+          select: {
+            displayName: true
+          }
         }
       }
-    }
-  });
+    }),
+    resolveEffectiveModerationSettings(chatId),
+    getGlobalModerationProfile()
+  ]);
 
   const link = chat.botLinks[0];
   const permissions = link?.permissions as
     | { canDeleteMessages?: boolean; canRestrictMembers?: boolean }
     | null
     | undefined;
-  const settings = chat.moderationSettings ?? DEFAULT_CHAT_MODERATION_SETTINGS;
+  const localSettings = chat.moderationSettings ?? DEFAULT_CHAT_MODERATION_SETTINGS;
 
   return {
     chat: {
@@ -109,22 +122,14 @@ export async function getChatModerationProfile(chatId: string) {
       lastError: link?.lastError ?? null,
       checkedAt: link?.lastSeenAt?.toISOString() ?? null
     },
-    settings: {
-      blockLinks: settings.blockLinks,
-      allowedDomains: [...settings.allowedDomains],
-      spamEnabled: settings.spamEnabled,
-      spamWindowSeconds: settings.spamWindowSeconds,
-      spamMaxMessages: settings.spamMaxMessages,
-      blockedTermsEnabled: settings.blockedTermsEnabled,
-      blockedTerms: [...settings.blockedTerms],
-      massMentionsEnabled: settings.massMentionsEnabled,
-      maxMentions: settings.maxMentions,
-      duplicateEnabled: settings.duplicateEnabled,
-      duplicateWindowSeconds: settings.duplicateWindowSeconds,
-      duplicateMaxMessages: settings.duplicateMaxMessages,
-      blockedMessageTypes: [...settings.blockedMessageTypes],
-      ignoreAdmins: settings.ignoreAdmins
+    policy: {
+      useGlobalProfile: chat.moderationSettings?.useGlobalProfile ?? false,
+      effectiveSource: effective.source,
+      globalProfilePersisted: globalProfile.persisted
     },
+    settings: serializeSettings(localSettings),
+    effectiveSettings: serializeSettings(effective.settings),
+    globalSettings: serializeSettings(globalProfile.settings),
     events: events.map((event) => ({
       id: event.id,
       action: event.action,
@@ -140,6 +145,7 @@ export async function getChatModerationProfile(chatId: string) {
 export async function updateChatModerationSettings(input: {
   chatId: string;
   actingAdminId: string;
+  useGlobalProfile: boolean;
   blockLinks: boolean;
   allowedDomains: string[];
   spamEnabled: boolean;
@@ -171,6 +177,7 @@ export async function updateChatModerationSettings(input: {
       where: { chatId: input.chatId },
       create: {
         chatId: input.chatId,
+        useGlobalProfile: input.useGlobalProfile,
         blockLinks: input.blockLinks,
         allowedDomains,
         spamEnabled: input.spamEnabled,
@@ -187,6 +194,7 @@ export async function updateChatModerationSettings(input: {
         ignoreAdmins: input.ignoreAdmins
       },
       update: {
+        useGlobalProfile: input.useGlobalProfile,
         blockLinks: input.blockLinks,
         allowedDomains,
         spamEnabled: input.spamEnabled,
@@ -211,6 +219,7 @@ export async function updateChatModerationSettings(input: {
         source: "ADMIN",
         action: "AUTOMOD_SETTINGS_UPDATED",
         metadata: {
+          useGlobalProfile: settings.useGlobalProfile,
           blockLinks: settings.blockLinks,
           allowedDomains: settings.allowedDomains,
           spamEnabled: settings.spamEnabled,
@@ -233,19 +242,7 @@ export async function updateChatModerationSettings(input: {
   });
 
   return {
-    blockLinks: saved.blockLinks,
-    allowedDomains: saved.allowedDomains,
-    spamEnabled: saved.spamEnabled,
-    spamWindowSeconds: saved.spamWindowSeconds,
-    spamMaxMessages: saved.spamMaxMessages,
-    blockedTermsEnabled: saved.blockedTermsEnabled,
-    blockedTerms: saved.blockedTerms,
-    massMentionsEnabled: saved.massMentionsEnabled,
-    maxMentions: saved.maxMentions,
-    duplicateEnabled: saved.duplicateEnabled,
-    duplicateWindowSeconds: saved.duplicateWindowSeconds,
-    duplicateMaxMessages: saved.duplicateMaxMessages,
-    blockedMessageTypes: saved.blockedMessageTypes,
-    ignoreAdmins: saved.ignoreAdmins
+    useGlobalProfile: saved.useGlobalProfile,
+    ...serializeSettings(saved)
   };
 }
