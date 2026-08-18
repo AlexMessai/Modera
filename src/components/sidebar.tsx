@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   ScrollText,
   ServerCog,
+  Siren,
   ShieldAlert,
   ShieldCheck,
   UserRoundPlus,
@@ -17,6 +18,7 @@ import {
 
 const baseNavigation = [
   { href: "/overview", label: "Обзор", icon: LayoutDashboard },
+  { href: "/incidents", label: "Центр модерации", icon: Siren },
   { href: "/chats", label: "Чаты", icon: MessageSquareText },
   { href: "/members", label: "Участники", icon: UsersRound },
   { href: "/join-requests", label: "Заявки", icon: UserRoundPlus },

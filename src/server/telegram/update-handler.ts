@@ -4,6 +4,7 @@ import { processAutomodMessage } from "@/server/services/automod-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
+import { recordAutomodIncident } from "@/server/services/moderation-incident-service";
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
@@ -47,12 +48,16 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   const result = await processAutomodMessage(input);
   const rule = RULE_BY_AUTOMOD_RESULT[result.result];
   if (!rule) return;
-  await recordAutomodViolationAndEscalate({
+  const violation = {
     chatId: input.chatId,
     telegramUserId: input.message.from.id,
     rule,
     telegramMessageId: String(input.message.message_id)
-  }).catch(() => undefined);
+  };
+  await Promise.all([
+    recordAutomodViolationAndEscalate(violation).catch(() => undefined),
+    recordAutomodIncident(violation).catch(() => undefined)
+  ]);
 }
 
 export async function processTelegramUpdate(update: TelegramUpdate) {
