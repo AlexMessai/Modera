@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import { countActiveWarnings } from "@/server/services/moderation-escalation-service";
+import { effectiveMembershipStatus, effectivePunishmentState, isMuteExpired } from "@/server/services/punishment-state";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,12 +54,13 @@ export async function getModerationContext(membershipId: string) {
 
   const botLink = membership.chat.botLinks[0];
   const permissions = botLink?.permissions as { canRestrictMembers?: boolean } | null | undefined;
+  const expiredMute = isMuteExpired(membership);
 
   return {
     membershipId: membership.id,
-    status: membership.status,
-    punishmentState: membership.punishmentState,
-    punishmentExpiresAt: membership.punishmentExpiresAt,
+    status: effectiveMembershipStatus(membership),
+    punishmentState: effectivePunishmentState(membership),
+    punishmentExpiresAt: expiredMute ? null : membership.punishmentExpiresAt,
     warningCount: membership.warningCount,
     activeWarningCount,
     warningExpiryDays: policy.settings.warningExpiryDays,

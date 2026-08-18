@@ -13,7 +13,7 @@ const MANUAL_ACTIONS = [
 const AUTOMOD_ACTIONS = [
   "AUTOMOD_LINK_DELETED", "AUTOMOD_TERM_DELETED", "AUTOMOD_MEDIA_DELETED", "AUTOMOD_MENTIONS_DELETED", "AUTOMOD_DUPLICATE_DELETED", "AUTOMOD_SPAM_DELETED",
   "AUTOMOD_WARNING", "AUTOMOD_AUTO_MUTE", "AUTOMOD_AUTO_BAN", "AUTOMOD_ESCALATION_FAILED", "AUTOMOD_ESCALATION_SKIPPED_PROTECTED",
-  "AUTOMOD_DELETE_FAILED", "AUTOMOD_SETTINGS_UPDATED", "GLOBAL_AUTOMOD_SETTINGS_UPDATED"
+  "AUTOMOD_DELETE_FAILED", "AUTOMOD_SETTINGS_UPDATED", "GLOBAL_AUTOMOD_SETTINGS_UPDATED", "MODERATION_EXPIRED_UNMUTE"
 ];
 
 const ANTI_RAID_ACTIONS = [
@@ -93,7 +93,7 @@ export async function listModerationJournal(input: { page: number; pageSize: num
   const includePending = ["ALL", "MANUAL", "AUTOMOD", "PENDING"].includes(input.category);
   const pendingWhere: Prisma.ModerationActionWhereInput = { status: "PENDING", ...(input.category === "AUTOMOD" ? { source: "SYSTEM" } : {}), ...(input.category === "MANUAL" ? { source: "ADMIN" } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(search ? { OR: pendingSearchFilter(search) } : {}) };
 
-  const [total, events, pendingRows, chats] = await prisma.$transaction([
+  const [total, events, pendingRows, chats] = await Promise.all([
     prisma.auditLog.count({ where: auditWhere }),
     prisma.auditLog.findMany({
       where: auditWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize,

@@ -200,7 +200,7 @@ export async function listJoinRequests(input: {
       : {})
   };
 
-  const [total, pendingCount, items, chats] = await prisma.$transaction([
+  const [total, pendingCount, items, chats] = await Promise.all([
     prisma.joinRequest.count({ where }),
     prisma.joinRequest.count({ where: { status: "PENDING" } }),
     prisma.joinRequest.findMany({

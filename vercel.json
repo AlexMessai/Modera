@@ -5,5 +5,11 @@
       "main": true,
       "*": false
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/moderation-expirations",
+      "schedule": "17 3 * * *"
+    }
+  ]
 }

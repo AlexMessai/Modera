@@ -137,7 +137,7 @@ export async function listMessages(input: {
       : {})
   };
 
-  const [total, items, chats] = await prisma.$transaction([
+  const [total, items, chats] = await Promise.all([
     prisma.message.count({ where }),
     prisma.message.findMany({
       where,

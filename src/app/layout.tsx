@@ -10,6 +10,7 @@ import "./system.css";
 import "./join-requests.css";
 import "./anti-raid.css";
 import "./dashboard.css";
+import "./incidents.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],

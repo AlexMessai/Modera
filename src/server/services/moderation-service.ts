@@ -8,6 +8,7 @@ import {
   UNRESTRICTED_CHAT_PERMISSIONS
 } from "@/server/telegram/client";
 import { extractBotPermissions } from "@/server/telegram/status";
+import { isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN"] as const;
@@ -56,6 +57,7 @@ function assertLocalActionAllowed(
   member: {
     status: string;
     punishmentState: string | null;
+    punishmentExpiresAt: Date | null;
     user: { isBot: boolean };
     chat: { type: string };
   }
@@ -67,7 +69,7 @@ function assertLocalActionAllowed(
   if ((action === "MUTE" || action === "UNMUTE") && member.chat.type !== "supergroup") {
     throw new ModerationError("SUPERGROUP_REQUIRED", "Mute и unmute доступны только для Telegram supergroup.", 409);
   }
-  if (action === "MUTE" && member.punishmentState === "MUTED") {
+  if (action === "MUTE" && member.punishmentState === "MUTED" && !isMuteExpired(member)) {
     throw new ModerationError("ALREADY_MUTED", "Участник уже находится в mute.", 409);
   }
   if (action === "UNMUTE" && member.status !== "RESTRICTED" && member.punishmentState !== "MUTED") {
@@ -429,4 +431,34 @@ export async function executeAutomatedModerationAction(input: {
       ...(input.muteDurationMinutes ? { muteDurationMinutes: input.muteDurationMinutes } : {})
     }
   });
+}
+
+export async function executeExpiredMuteRelease(input: {
+  membershipId: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const member = await loadMember(input.membershipId);
+  if (!member) return { outcome: "skipped" as const, reason: "MEMBER_NOT_FOUND" as const };
+  if (
+    member.punishmentState !== "MUTED" ||
+    !member.punishmentExpiresAt ||
+    member.punishmentExpiresAt > now
+  ) {
+    return { outcome: "skipped" as const, reason: "NOT_EXPIRED" as const };
+  }
+
+  const result = await executeTelegramBackedAction({
+    member,
+    actingAdminId: null,
+    source: "SYSTEM",
+    action: "UNMUTE",
+    reason: "Истёк срок временного mute.",
+    auditAction: "MODERATION_EXPIRED_UNMUTE",
+    metadata: {
+      automaticExpiration: true,
+      scheduledFor: member.punishmentExpiresAt.toISOString()
+    }
+  });
+  return { outcome: "released" as const, result };
 }
