@@ -145,6 +145,7 @@ model ChatMember {
   firstSeenAt          DateTime          @default(now()) @db.Timestamptz(3)
   lastSeenAt           DateTime          @default(now()) @db.Timestamptz(3)
   lastTelegramUpdateId BigInt?
+  lastModerationAt     DateTime?         @db.Timestamptz(3)
   messageCount         Int               @default(0)
   warningCount         Int               @default(0)
   punishmentState      String?
