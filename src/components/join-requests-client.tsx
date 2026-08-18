@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { Check, RefreshCw, Search, UserRoundCheck, X } from "lucide-react";
+import { TelegramAvatar } from "@/components/telegram-avatar";
 
 type Status = "PENDING" | "APPROVED" | "DECLINED";
 type JoinRequest = {
@@ -165,7 +166,7 @@ export function JoinRequestsClient({ canModerate }: { canModerate: boolean }) {
                 <tbody>
                   {data.items.map((item) => (
                     <tr key={item.id}>
-                      <td><Link className="stacked-cell table-link" href={`/members/${item.user.id}`}><strong>{item.user.displayName}</strong><span>{item.user.username ? `@${item.user.username}` : item.user.telegramUserId}</span></Link></td>
+                      <td><div className="chat-cell"><TelegramAvatar userId={item.user.id} displayName={item.user.displayName} size={34} className="chat-avatar" /><Link className="stacked-cell table-link" href={`/members/${item.user.id}`}><strong>{item.user.displayName}</strong><span>{item.user.username ? `@${item.user.username}` : item.user.telegramUserId}</span></Link></div></td>
                       <td><Link className="table-link" href={`/chats/${item.chat.id}`}>{item.chat.title}</Link></td>
                       <td className="join-request-bio">{item.bio ?? "—"}</td>
                       <td>{item.hasInviteLink ? "Invite link" : "Запрос чата"}</td>

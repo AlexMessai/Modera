@@ -157,6 +157,7 @@ model TelegramUser {
   isBot             Boolean            @default(false)
   languageCode      String?
   avatarFileId      String?
+  avatarSyncedAt    DateTime?          @db.Timestamptz(3)
   firstSeenAt       DateTime           @default(now()) @db.Timestamptz(3)
   lastSeenAt        DateTime           @default(now()) @db.Timestamptz(3)
   createdAt         DateTime           @default(now()) @db.Timestamptz(3)

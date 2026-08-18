@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Eye, RefreshCw, Search, ShieldAlert, X } from "lucide-react";
+import { TelegramAvatar } from "@/components/telegram-avatar";
 
 type IncidentItem = {
   id: string; type: string; rule: string | null; status: string; severity: string; reason: string;
@@ -113,6 +114,7 @@ export function ModerationCenterClient({ canModerate }: { canModerate: boolean }
         <div className="incidents-list-header"><div><strong>Очередь</strong><span>{data?.pagination.total ?? 0} инцидентов</span></div><small>↑ ↓ или J K — навигация</small></div>
         {loading ? <div className="state-box">Загрузка…</div> : error ? <div className="state-box state-box--error"><AlertTriangle size={20} /><strong>{error}</strong></div> : !data?.items.length ? <div className="state-box"><ShieldAlert size={24} /><strong>Очередь пуста</strong><p>Новые срабатывания automod появятся здесь автоматически.</p></div> : data.items.map((item) => <button type="button" key={item.id} className={`incident-row ${selectedId === item.id ? "incident-row--active" : ""}`} onClick={() => { setSelectedId(item.id); setReason(item.reason); }}>
           <span className={`incident-severity incident-severity--${item.severity.toLowerCase()}`}>{severityLabels[item.severity] ?? item.severity}</span>
+          <TelegramAvatar userId={item.affectedUser.id} displayName={item.affectedUser.displayName} size={34} className="incident-avatar" />
           <span className="incident-row-main"><strong>{item.affectedUser.displayName}</strong><span>{item.chat.title} · {ruleLabels[item.rule ?? ""] ?? item.rule ?? item.type}</span><small>{content(item.message ?? { text: item.reason, caption: null })}</small></span>
           <span className="incident-row-meta"><span className={`badge badge--${item.status === "NEW" ? "danger" : "active"}`}>{statusLabels[item.status] ?? item.status}</span><small>{formatDate(item.createdAt)}</small></span>
         </button>)}

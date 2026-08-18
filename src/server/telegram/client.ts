@@ -1,6 +1,8 @@
 import type {
   TelegramApiEnvelope,
   TelegramChatMember,
+  TelegramFile,
+  TelegramUserProfilePhotos,
   TelegramUser
 } from "@/server/telegram/types";
 
@@ -123,6 +125,52 @@ export class TelegramClient {
     return this.call<TelegramChatMember[]>("getChatAdministrators", {
       chat_id: chatId
     });
+  }
+
+  getUserProfilePhotos(userId: number, limit = 1) {
+    return this.call<TelegramUserProfilePhotos>("getUserProfilePhotos", {
+      user_id: userId,
+      offset: 0,
+      limit
+    });
+  }
+
+  getFile(fileId: string) {
+    return this.call<TelegramFile>("getFile", { file_id: fileId });
+  }
+
+  async downloadFile(fileId: string) {
+    const file = await this.getFile(fileId);
+    const filePath = file.file_path;
+    if (!filePath || filePath.startsWith("/") || filePath.includes("..")) {
+      throw new TelegramApiError("Telegram returned an invalid file path");
+    }
+
+    const encodedPath = filePath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    const response = await fetch(
+      `${API_BASE}/file/bot${this.token}/${encodedPath}`,
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new TelegramApiError(
+        "Telegram file download failed",
+        response.status
+      );
+    }
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    if (!contentType.toLowerCase().startsWith("image/")) {
+      throw new TelegramApiError("Telegram returned a non-image file");
+    }
+
+    return {
+      bytes: await response.arrayBuffer(),
+      contentType
+    };
   }
 
   deleteMessage(chatId: number, messageId: number) {

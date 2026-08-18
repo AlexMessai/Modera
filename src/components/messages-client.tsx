@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search, Trash2, X } from "lucide-react";
+import { TelegramAvatar } from "@/components/telegram-avatar";
 
 type MessageState = "ALL" | "ACTIVE" | "DELETED" | "AUTOMOD_DELETED" | "DELETE_FAILED" | "EDITED";
 
@@ -328,10 +329,13 @@ export function MessagesClient({ canModerate }: { canModerate: boolean }) {
                       </td>
                       <td>
                         {message.sender ? (
-                          <Link className="stacked-cell table-link" href={`/members/${message.sender.id}`}>
-                            <strong>{message.sender.displayName}</strong>
-                            <span>{message.sender.username ? `@${message.sender.username}` : message.sender.telegramUserId}</span>
-                          </Link>
+                          <div className="chat-cell">
+                            <TelegramAvatar userId={message.sender.id} displayName={message.sender.displayName} size={34} className="chat-avatar" />
+                            <Link className="stacked-cell table-link" href={`/members/${message.sender.id}`}>
+                              <strong>{message.sender.displayName}</strong>
+                              <span>{message.sender.username ? `@${message.sender.username}` : message.sender.telegramUserId}</span>
+                            </Link>
+                          </div>
                         ) : <span className="muted">Системное сообщение</span>}
                       </td>
                       <td><Link className="table-link" href={`/chats/${message.chat.id}`}>{message.chat.title}</Link></td>
