@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search, TriangleAlert } from "lucide-react";
 
-type JournalCategory = "ALL" | "MANUAL" | "AUTOMOD" | "ERRORS" | "SETTINGS" | "PENDING";
+type JournalCategory = "ALL" | "MANUAL" | "AUTOMOD" | "ANTI_RAID" | "ERRORS" | "SETTINGS" | "PENDING";
 type Person = { id: string; displayName: string; username: string | null; telegramUserId: string };
 type Chat = { id: string; title: string; telegramChatId: string };
 type Admin = { id: string; displayName: string; email: string };
@@ -46,6 +46,13 @@ const actionLabels: Record<string, string> = {
   AUTOMOD_DELETE_FAILED: "Ошибка автоматического удаления",
   AUTOMOD_SETTINGS_UPDATED: "Изменены правила чата",
   GLOBAL_AUTOMOD_SETTINGS_UPDATED: "Изменена глобальная политика",
+  RAID_STARTED: "Обнаружен рейд",
+  RAID_ENDED: "Рейд завершён",
+  RAID_MEMBER_MUTED: "Anti-Raid mute нового участника",
+  RAID_MITIGATION_FAILED: "Ошибка Anti-Raid ограничения",
+  RAID_MITIGATION_SKIPPED_PROTECTED: "Anti-Raid пропущен для администратора",
+  ANTI_RAID_SETTINGS_UPDATED: "Изменены Anti-Raid настройки чата",
+  GLOBAL_ANTI_RAID_SETTINGS_UPDATED: "Изменена глобальная Anti-Raid политика",
   PUNISHMENT_STATE_CONFIRMED: "Состояние наказания подтверждено Telegram",
   PUNISHMENT_STATE_CLEARED: "Telegram снял наказание"
 };
@@ -62,6 +69,7 @@ const categoryLabels: Record<JournalCategory, string> = {
   ALL: "Все события",
   MANUAL: "Ручная модерация",
   AUTOMOD: "Автомодерация",
+  ANTI_RAID: "Anti-Raid",
   ERRORS: "Только ошибки",
   SETTINGS: "Изменения правил",
   PENDING: "Требуют сверки"
@@ -76,6 +84,18 @@ function formatDate(value: string) {
     minute: "2-digit",
     second: "2-digit"
   }).format(new Date(value));
+}
+
+function systemActorLabel(item: { action: string; source: string }) {
+  if (item.source !== "SYSTEM") return "Система";
+  if (item.action.startsWith("RAID_") || item.action.includes("ANTI_RAID")) return "Anti-Raid";
+  return "Автомодерация";
+}
+
+function pendingActorLabel(item: PendingItem) {
+  if (item.actingAdmin) return item.actingAdmin.displayName;
+  if (item.reason?.startsWith("Anti-Raid")) return "Anti-Raid";
+  return item.source === "SYSTEM" ? "Автомодерация" : "Система";
 }
 
 async function requestJournal(input: { page: number; category: JournalCategory; chatId: string; search: string }) {
@@ -189,7 +209,7 @@ export function JournalClient({ canReconcile = false }: { canReconcile?: boolean
                 <div>
                   <strong>{pendingLabels[item.type] ?? item.type} · {item.affectedUser.displayName}</strong>
                   <span>
-                    {item.chat.title} · {item.actingAdmin?.displayName ?? (item.source === "SYSTEM" ? "Автомодерация" : "Система")}
+                    {item.chat.title} · {pendingActorLabel(item)}
                     {item.reason ? ` · ${item.reason}` : ""}
                     {item.expiresAt ? ` · до ${formatDate(item.expiresAt)}` : ""}
                   </span>
@@ -244,7 +264,7 @@ export function JournalClient({ canReconcile = false }: { canReconcile?: boolean
                       <td><div className="stacked-cell journal-event-cell"><strong>{actionLabels[item.action] ?? "Системное событие"}</strong><span>{item.reason ?? (item.source === "SYSTEM" ? "Автоматическое правило" : "Без причины")}</span></div></td>
                       <td>{item.chat ? <Link className="table-link" href={`/chats/${item.chat.id}`}>{item.chat.title}</Link> : "—"}</td>
                       <td>{item.affectedUser ? <Link className="stacked-cell table-link" href={`/members/${item.affectedUser.id}`}><strong>{item.affectedUser.displayName}</strong><span>{item.affectedUser.username ? `@${item.affectedUser.username}` : item.affectedUser.telegramUserId}</span></Link> : "—"}</td>
-                      <td>{item.actingAdmin?.displayName ?? (item.source === "SYSTEM" ? "Автомодерация" : "Система")}</td>
+                      <td>{item.actingAdmin?.displayName ?? systemActorLabel(item)}</td>
                       <td><span className={`badge ${item.status === "FAILED" ? "badge--danger" : "badge--active"}`}>{item.status === "FAILED" ? "Ошибка" : "Выполнено"}</span></td>
                       <td>{formatDate(item.createdAt)}</td>
                     </tr>
