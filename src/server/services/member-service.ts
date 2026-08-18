@@ -117,10 +117,7 @@ async function upsertUser(
   });
 
   await tx.telegramUser.updateMany({
-    where: {
-      id: record.id,
-      lastSeenAt: { lt: seenAt }
-    },
+    where: { id: record.id, lastSeenAt: { lt: seenAt } },
     data: { lastSeenAt: seenAt }
   });
 
@@ -142,27 +139,27 @@ async function syncMembership(
   const incomingUpdateId = BigInt(input.updateId);
   const existing = await tx.chatMember.findUnique({
     where: {
-      chatId_userId: {
-        chatId: input.chatId,
-        userId: user.id
-      }
+      chatId_userId: { chatId: input.chatId, userId: user.id }
     },
     select: {
       id: true,
       status: true,
       joinedAt: true,
-      leftAt: true,
-      lastSeenAt: true,
-      lastTelegramUpdateId: true
+      lastTelegramUpdateId: true,
+      lastModerationAt: true
     }
   });
 
   const previousStatus = existing?.status as MembershipStatusValue | undefined;
-  const isStale = Boolean(
+  const staleByUpdateId = Boolean(
     existing?.lastTelegramUpdateId !== null &&
       existing?.lastTelegramUpdateId !== undefined &&
       incomingUpdateId <= existing.lastTelegramUpdateId
   );
+  const staleByModeration = Boolean(
+    existing?.lastModerationAt && input.seenAt < existing.lastModerationAt
+  );
+  const isStale = staleByUpdateId || staleByModeration;
   const proposedStatus = input.status ?? observedActiveStatus(previousStatus);
   const nextStatus = isStale && previousStatus ? previousStatus : proposedStatus;
   const becameActive =
@@ -175,18 +172,14 @@ async function syncMembership(
 
   const membership = await tx.chatMember.upsert({
     where: {
-      chatId_userId: {
-        chatId: input.chatId,
-        userId: user.id
-      }
+      chatId_userId: { chatId: input.chatId, userId: user.id }
     },
     create: {
       chatId: input.chatId,
       userId: user.id,
       status: nextStatus,
       joinedAt: ACTIVE_STATUSES.has(nextStatus) ? input.seenAt : null,
-      leftAt:
-        nextStatus === "LEFT" || nextStatus === "BANNED" ? input.seenAt : null,
+      leftAt: nextStatus === "LEFT" || nextStatus === "BANNED" ? input.seenAt : null,
       firstSeenAt: input.seenAt,
       lastSeenAt: input.seenAt,
       lastTelegramUpdateId: incomingUpdateId
@@ -327,19 +320,17 @@ export async function syncObservedMessage(input: {
     }
 
     const inserted = await tx.message.createMany({
-      data: [
-        {
-          chatId: input.chatId,
-          senderUserId,
-          telegramMessageId: BigInt(input.message.message_id),
-          telegramDate: messageDate,
-          editedAt: input.isEdited ? seenAt : null,
-          text: input.message.text,
-          caption: input.message.caption,
-          messageType: messageType(input.message),
-          isEdited: input.isEdited
-        }
-      ],
+      data: [{
+        chatId: input.chatId,
+        senderUserId,
+        telegramMessageId: BigInt(input.message.message_id),
+        telegramDate: messageDate,
+        editedAt: input.isEdited ? seenAt : null,
+        text: input.message.text,
+        caption: input.message.caption,
+        messageType: messageType(input.message),
+        isEdited: input.isEdited
+      }],
       skipDuplicates: true
     });
 
@@ -381,28 +372,24 @@ export async function syncServiceMemberships(input: {
 
   for (const user of input.message.new_chat_members ?? []) {
     if (user.id === input.skipTelegramUserId) continue;
-    jobs.push(
-      syncMemberStatus({
-        chatId: input.chatId,
-        member: { status: "member", user },
-        date: input.message.date,
-        updateId: input.updateId
-      })
-    );
+    jobs.push(syncMemberStatus({
+      chatId: input.chatId,
+      member: { status: "member", user },
+      date: input.message.date,
+      updateId: input.updateId
+    }));
   }
 
   if (
     input.message.left_chat_member &&
     input.message.left_chat_member.id !== input.skipTelegramUserId
   ) {
-    jobs.push(
-      syncMemberStatus({
-        chatId: input.chatId,
-        member: { status: "left", user: input.message.left_chat_member },
-        date: input.message.date,
-        updateId: input.updateId
-      })
-    );
+    jobs.push(syncMemberStatus({
+      chatId: input.chatId,
+      member: { status: "left", user: input.message.left_chat_member },
+      date: input.message.date,
+      updateId: input.updateId
+    }));
   }
 
   await Promise.all(jobs);
@@ -463,12 +450,7 @@ export async function listMembers(input: {
       include: {
         user: true,
         chat: {
-          select: {
-            id: true,
-            telegramChatId: true,
-            title: true,
-            username: true
-          }
+          select: { id: true, telegramChatId: true, title: true, username: true }
         }
       }
     })
@@ -525,12 +507,7 @@ export async function getMemberProfile(membershipId: string) {
             orderBy: { lastSeenAt: "desc" },
             include: {
               chat: {
-                select: {
-                  id: true,
-                  telegramChatId: true,
-                  title: true,
-                  username: true
-                }
+                select: { id: true, telegramChatId: true, title: true, username: true }
               }
             }
           }
