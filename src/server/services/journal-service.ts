@@ -25,7 +25,7 @@ const JOURNAL_ACTIONS = [
   "AUTOMOD_SETTINGS_UPDATED"
 ];
 
-function auditActionFilter(category: JournalCategory): Prisma.StringFilter | undefined {
+function auditActionFilter(category: JournalCategory): Prisma.StringFilter {
   switch (category) {
     case "MANUAL":
       return { startsWith: "MODERATION_" };
@@ -36,7 +36,7 @@ function auditActionFilter(category: JournalCategory): Prisma.StringFilter | und
     case "SETTINGS":
       return { equals: "AUTOMOD_SETTINGS_UPDATED" };
     case "PENDING":
-      return { in: [] };
+      return { equals: "__PENDING_ONLY__" };
     case "ALL":
       return { in: JOURNAL_ACTIONS };
   }
@@ -97,7 +97,7 @@ export async function listModerationJournal(input: {
     ...(search ? { OR: pendingSearchFilter(search) } : {})
   };
 
-  const [total, events, pending, chats] = await prisma.$transaction([
+  const [total, events, pendingRows, chats] = await prisma.$transaction([
     prisma.auditLog.count({ where: auditWhere }),
     prisma.auditLog.findMany({
       where: auditWhere,
@@ -117,31 +117,31 @@ export async function listModerationJournal(input: {
         actingAdmin: { select: { id: true, displayName: true, email: true } }
       }
     }),
-    includePending
-      ? prisma.moderationAction.findMany({
-          where: pendingWhere,
-          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-          take: 20,
-          include: {
-            chat: { select: { id: true, title: true, telegramChatId: true } },
-            affectedUser: {
-              select: {
-                id: true,
-                displayName: true,
-                username: true,
-                telegramUserId: true
-              }
-            },
-            actingAdmin: { select: { id: true, displayName: true, email: true } }
+    prisma.moderationAction.findMany({
+      where: pendingWhere,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 20,
+      include: {
+        chat: { select: { id: true, title: true, telegramChatId: true } },
+        affectedUser: {
+          select: {
+            id: true,
+            displayName: true,
+            username: true,
+            telegramUserId: true
           }
-        })
-      : prisma.moderationAction.findMany({ where: { id: "__never__" }, take: 0 }),
+        },
+        actingAdmin: { select: { id: true, displayName: true, email: true } }
+      }
+    }),
     prisma.chat.findMany({
       orderBy: { title: "asc" },
       take: 200,
       select: { id: true, title: true, telegramChatId: true }
     })
   ]);
+
+  const pending = includePending ? pendingRows : [];
 
   return {
     pending: pending.map((item) => ({
