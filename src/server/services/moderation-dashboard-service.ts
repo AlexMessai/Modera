@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { DEFAULT_MODERATION_SETTINGS } from "@/server/services/global-moderation-service";
 
 const AUTOMOD_ACTIONS = [
   "AUTOMOD_LINK_DELETED",
@@ -28,9 +29,28 @@ function enabledRules(settings: {
   return rules;
 }
 
+function serializeSettings(settings: typeof DEFAULT_MODERATION_SETTINGS) {
+  return {
+    blockLinks: settings.blockLinks,
+    allowedDomains: [...settings.allowedDomains],
+    spamEnabled: settings.spamEnabled,
+    spamWindowSeconds: settings.spamWindowSeconds,
+    spamMaxMessages: settings.spamMaxMessages,
+    blockedTermsEnabled: settings.blockedTermsEnabled,
+    blockedTerms: [...settings.blockedTerms],
+    massMentionsEnabled: settings.massMentionsEnabled,
+    maxMentions: settings.maxMentions,
+    duplicateEnabled: settings.duplicateEnabled,
+    duplicateWindowSeconds: settings.duplicateWindowSeconds,
+    duplicateMaxMessages: settings.duplicateMaxMessages,
+    blockedMessageTypes: [...settings.blockedMessageTypes],
+    ignoreAdmins: settings.ignoreAdmins
+  };
+}
+
 export async function getModerationDashboard() {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [chats, automod24h, errors24h] = await prisma.$transaction([
+  const [chats, globalStored, automod24h, errors24h] = await prisma.$transaction([
     prisma.chat.findMany({
       orderBy: { lastActivityAt: "desc" },
       take: 200,
@@ -48,6 +68,9 @@ export async function getModerationDashboard() {
         }
       }
     }),
+    prisma.globalModerationSettings.findUnique({
+      where: { id: "global" }
+    }),
     prisma.auditLog.count({
       where: {
         action: { in: AUTOMOD_ACTIONS },
@@ -62,13 +85,19 @@ export async function getModerationDashboard() {
     })
   ]);
 
+  const globalSettings = globalStored ?? DEFAULT_MODERATION_SETTINGS;
   const items = chats.map((chat) => {
     const link = chat.botLinks[0];
     const permissions = link?.permissions as
       | { canDeleteMessages?: boolean; canRestrictMembers?: boolean }
       | null
       | undefined;
-    const rules = enabledRules(chat.moderationSettings);
+    const useGlobalProfile = chat.moderationSettings?.useGlobalProfile ?? false;
+    const effectiveSettings = useGlobalProfile
+      ? globalSettings
+      : chat.moderationSettings;
+    const rules = enabledRules(effectiveSettings);
+
     return {
       id: chat.id,
       telegramChatId: chat.telegramChatId.toString(),
@@ -79,6 +108,7 @@ export async function getModerationDashboard() {
       botStatus: link?.status ?? "DISABLED",
       canDeleteMessages: Boolean(permissions?.canDeleteMessages),
       lastError: link?.lastError ?? null,
+      policySource: useGlobalProfile ? "GLOBAL" as const : "CHAT" as const,
       rules
     };
   });
@@ -87,11 +117,16 @@ export async function getModerationDashboard() {
     metrics: {
       totalChats: items.length,
       configuredChats: items.filter((item) => item.rules.length > 0).length,
+      inheritedChats: items.filter((item) => item.policySource === "GLOBAL").length,
       chatsWithoutDeletePermission: items.filter(
         (item) => item.rules.length > 0 && !item.canDeleteMessages
       ).length,
       automod24h,
       errors24h
+    },
+    globalProfile: {
+      persisted: Boolean(globalStored),
+      settings: serializeSettings(globalSettings)
     },
     chats: items
   };
