@@ -32,8 +32,8 @@
 .dashboard-chart-line { fill: none; stroke: currentColor; color: #212327; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .dashboard-chart-point { fill: #fff; stroke: currentColor; color: #212327; stroke-width: 2; }
 .dashboard-chart-scale { position: absolute; left: 0; top: 12px; bottom: 28px; display: flex; flex-direction: column; justify-content: space-between; color: var(--muted); font-size: 10px; }
-.dashboard-chart-labels { display: grid; grid-template-columns: repeat(var(--dashboard-points, 24), minmax(0, 1fr)); gap: 0; margin-top: -2px; color: var(--muted); font-size: 9px; }
-.dashboard-chart-labels span { text-align: center; white-space: nowrap; overflow: visible; }
+.dashboard-chart-labels { display: flex; gap: 0; margin-top: -2px; color: var(--muted); font-size: 9px; }
+.dashboard-chart-labels span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; overflow: visible; }
 .dashboard-chart-label--hidden { visibility: hidden; }
 
 .dashboard-attention { display: grid; align-content: start; }
