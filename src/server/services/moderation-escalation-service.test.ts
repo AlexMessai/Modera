@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { recordAutomodViolationAndEscalate } from "./moderation-escalation-service";
+import {
+  countActiveWarnings,
+  recordAutomodViolationAndEscalate,
+  warningCutoff
+} from "./moderation-escalation-service";
 
 async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEMBER") {
   const chat = await prisma.chat.create({
@@ -43,6 +47,7 @@ test("automod violation creates one system warning below punishment threshold", 
     });
     assert.equal(result.enabled, true);
     assert.equal(result.escalated, false);
+    assert.equal(result.activeWarningCount, 1);
 
     const member = await prisma.chatMember.findUniqueOrThrow({ where: { id: data.member.id } });
     assert.equal(member.warningCount, 1);
@@ -85,4 +90,116 @@ test("automatic punishment escalation skips protected Telegram administrators", 
     await prisma.chat.delete({ where: { id: data.chat.id } });
     await prisma.telegramUser.delete({ where: { id: data.user.id } });
   }
+});
+
+test("warning expiry keeps history but excludes old warnings from escalation", async () => {
+  const data = await fixture(3);
+  const now = new Date();
+  const days = (value: number) => new Date(now.getTime() - value * 24 * 60 * 60 * 1000);
+
+  try {
+    await prisma.chatModerationSettings.update({
+      where: { chatId: data.chat.id },
+      data: { warningExpiryDays: 30 }
+    });
+    await prisma.chatMember.update({
+      where: { id: data.member.id },
+      data: { warningCount: 3 }
+    });
+
+    await prisma.moderationAction.createMany({
+      data: [
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "SYSTEM",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          reason: "Старое предупреждение",
+          completedAt: days(60),
+          createdAt: days(60)
+        },
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "ADMIN",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          reason: "Недавнее ручное предупреждение",
+          completedAt: days(10),
+          createdAt: days(10)
+        },
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "SYSTEM",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          reason: "Недавнее автоматическое предупреждение",
+          completedAt: days(1),
+          createdAt: days(1)
+        }
+      ]
+    });
+
+    assert.equal(
+      await countActiveWarnings({
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        warningExpiryDays: 30,
+        now
+      }),
+      2
+    );
+    assert.equal(
+      await countActiveWarnings({
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        warningExpiryDays: 0,
+        now
+      }),
+      3
+    );
+
+    const result = await recordAutomodViolationAndEscalate({
+      chatId: data.chat.id,
+      telegramUserId: Number(data.user.telegramUserId),
+      rule: "TERM",
+      telegramMessageId: "503"
+    });
+
+    assert.equal(result.enabled, true);
+    assert.equal(result.escalated, false);
+    assert.equal(result.warningCount, 4);
+    assert.equal(result.activeWarningCount, 3);
+
+    const member = await prisma.chatMember.findUniqueOrThrow({ where: { id: data.member.id } });
+    assert.equal(member.warningCount, 4);
+    assert.equal(member.lastAutoEscalationWarningCount, 0);
+
+    const latest = await prisma.moderationAction.findFirstOrThrow({
+      where: {
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        type: "WARNING",
+        reason: { contains: "Автомодерация" }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    const metadata = latest.metadata as Record<string, unknown> | null;
+    assert.equal(metadata?.activeWarningCount, 3);
+    assert.equal(metadata?.warningExpiryDays, 30);
+  } finally {
+    await prisma.chat.delete({ where: { id: data.chat.id } });
+    await prisma.telegramUser.delete({ where: { id: data.user.id } });
+  }
+});
+
+test("warning cutoff is disabled at zero and stable for positive days", () => {
+  const now = new Date("2026-08-18T12:00:00.000Z");
+  assert.equal(warningCutoff(now, 0), null);
+  assert.equal(
+    warningCutoff(now, 30)?.toISOString(),
+    "2026-07-19T12:00:00.000Z"
+  );
 });
