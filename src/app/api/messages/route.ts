@@ -39,13 +39,15 @@ export async function GET(request: Request) {
     );
   }
 
+  const type = typeValue && isMessageType(typeValue) ? typeValue : undefined;
+
   const data = await listMessages({
     page: Number.isFinite(page) ? page : 1,
     pageSize: Number.isFinite(pageSize) ? pageSize : 50,
     search: url.searchParams.get("search")?.trim() || undefined,
     sender: url.searchParams.get("sender")?.trim() || undefined,
     chatId,
-    type: typeValue,
+    type,
     state: stateValue,
     dateFrom: url.searchParams.get("dateFrom")?.trim() || undefined,
     dateTo: url.searchParams.get("dateTo")?.trim() || undefined
