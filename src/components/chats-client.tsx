@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 
 type ChatItem = {
@@ -31,6 +31,20 @@ const statusLabels: Record<ChatItem["status"], string> = {
   TELEGRAM_ERROR: "Ошибка Telegram"
 };
 
+async function requestChats(query: string): Promise<ResponseData> {
+  const params = new URLSearchParams({ page: "1", pageSize: "50" });
+  if (query) params.set("search", query);
+
+  const response = await fetch(`/api/chats?${params.toString()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.error?.message ?? "Не удалось загрузить чаты.");
+  }
+
+  return payload.data as ResponseData;
+}
+
 export function ChatsClient() {
   const [data, setData] = useState<ResponseData | null>(null);
   const [search, setSearch] = useState("");
@@ -38,29 +52,32 @@ export function ChatsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({ page: "1", pageSize: "50" });
-    if (query) params.set("search", query);
-
-    const response = await fetch(`/api/chats?${params.toString()}`, { cache: "no-store" });
-    const payload = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "Не удалось загрузить чаты.");
-      setLoading(false);
-      return;
-    }
-
-    setData(payload.data);
-    setError(null);
-    setLoading(false);
-  }, [query]);
-
   useEffect(() => {
-    void load();
-    const interval = window.setInterval(() => void load(), 5000);
-    return () => window.clearInterval(interval);
-  }, [load]);
+    let active = true;
+
+    const update = () => {
+      void requestChats(query)
+        .then((nextData) => {
+          if (!active) return;
+          setData(nextData);
+          setError(null);
+          setLoading(false);
+        })
+        .catch((reason: unknown) => {
+          if (!active) return;
+          setError(reason instanceof Error ? reason.message : "Не удалось загрузить чаты.");
+          setLoading(false);
+        });
+    };
+
+    update();
+    const interval = window.setInterval(update, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [query]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -72,7 +89,15 @@ export function ChatsClient() {
   function refresh() {
     setLoading(true);
     setError(null);
-    void load();
+    void requestChats(query)
+      .then((nextData) => {
+        setData(nextData);
+        setError(null);
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : "Не удалось загрузить чаты.");
+      })
+      .finally(() => setLoading(false));
   }
 
   return (
