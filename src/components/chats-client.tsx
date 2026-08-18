@@ -38,42 +38,61 @@ export function ChatsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
     const params = new URLSearchParams({ page: "1", pageSize: "50" });
     if (query) params.set("search", query);
+
     const response = await fetch(`/api/chats?${params.toString()}`, { cache: "no-store" });
     const payload = await response.json().catch(() => null);
+
     if (!response.ok) {
       setError(payload?.error?.message ?? "Не удалось загрузить чаты.");
-      if (!silent) setLoading(false);
+      setLoading(false);
       return;
     }
+
     setData(payload.data);
-    if (!silent) setLoading(false);
+    setError(null);
+    setLoading(false);
   }, [query]);
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => void load(true), 5000);
+    const interval = window.setInterval(() => void load(), 5000);
     return () => window.clearInterval(interval);
   }, [load]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
+    setLoading(true);
+    setError(null);
     setQuery(search.trim());
+  }
+
+  function refresh() {
+    setLoading(true);
+    setError(null);
+    void load();
   }
 
   return (
     <section className="panel table-panel">
       <div className="toolbar">
-        <form className="search-box" onSubmit={onSearch}><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Имя, @username или Telegram ID" aria-label="Поиск чатов" /></form>
-        <button className="button button--secondary" onClick={() => void load()}><RefreshCw size={16} />Обновить</button>
+        <form className="search-box" onSubmit={onSearch}>
+          <Search size={17} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Имя, @username или Telegram ID" aria-label="Поиск чатов" />
+        </form>
+        <button className="button button--secondary" onClick={refresh} disabled={loading}>
+          <RefreshCw size={16} />Обновить
+        </button>
       </div>
+
       {loading ? <ChatsSkeleton /> : null}
       {!loading && error ? <div className="state-box state-box--error" role="alert">{error}</div> : null}
-      {!loading && !error && data?.items.length === 0 ? <div className="state-box"><strong>Чаты пока не найдены</strong><p>Бот автоматически добавит группу после получения события через Telegram webhook.</p></div> : null}
+      {!loading && !error && data?.items.length === 0 ? (
+        <div className="state-box"><strong>Чаты пока не найдены</strong><p>Бот автоматически добавит группу после получения события через Telegram webhook.</p></div>
+      ) : null}
+
       {!loading && !error && data && data.items.length > 0 ? <>
         <div className="table-wrap"><table className="data-table"><thead><tr><th>Чат</th><th>Telegram ID</th><th>Тип</th><th>Участники</th><th>Права</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{data.items.map((chat) => <tr key={chat.id}>
           <td><div className="chat-cell"><span className="chat-avatar">{chat.title.slice(0, 1).toUpperCase()}</span><div><strong>{chat.title}</strong><span>{chat.username ? `@${chat.username}` : "Без username"}</span></div></div></td>
