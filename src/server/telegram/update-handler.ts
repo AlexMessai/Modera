@@ -130,6 +130,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       chatId: syncedChat.id,
       administrators,
       date: timestamp,
+      updateId: update.update_id,
       currentBotTelegramId: botProfile.id
     });
   }
@@ -138,11 +139,13 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     await syncObservedMessage({
       chatId: syncedChat.id,
       message: update.message,
-      isEdited: false
+      isEdited: false,
+      updateId: update.update_id
     });
     await syncServiceMemberships({
       chatId: syncedChat.id,
       message: update.message,
+      updateId: update.update_id,
       skipTelegramUserId: botProfile.id
     });
   }
@@ -151,7 +154,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     await syncObservedMessage({
       chatId: syncedChat.id,
       message: update.edited_message,
-      isEdited: true
+      isEdited: true,
+      updateId: update.update_id
     });
   }
 
@@ -161,7 +165,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   ) {
     await syncChatMemberUpdate({
       chatId: syncedChat.id,
-      update: update.chat_member
+      update: update.chat_member,
+      updateId: update.update_id
     });
   }
 
@@ -169,7 +174,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     await syncJoinRequest({
       chatId: syncedChat.id,
       user: update.chat_join_request.from,
-      date: update.chat_join_request.date
+      date: update.chat_join_request.date,
+      updateId: update.update_id
     });
   }
 
@@ -180,7 +186,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     await observeMember({
       chatId: syncedChat.id,
       user: update.callback_query.from,
-      date: update.callback_query.message.date
+      date: update.callback_query.message.date,
+      updateId: update.update_id
     });
   }
 
@@ -191,7 +198,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     await observeMember({
       chatId: syncedChat.id,
       user: update.my_chat_member.from,
-      date: update.my_chat_member.date
+      date: update.my_chat_member.date,
+      updateId: update.update_id
     });
   }
 
