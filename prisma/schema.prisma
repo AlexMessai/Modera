@@ -61,21 +61,6 @@ enum JoinRequestStatus {
   DECLINED
 }
 
-enum IncidentStatus {
-  NEW
-  IN_REVIEW
-  RESOLVED
-  SKIPPED
-  AUTO_RESOLVED
-}
-
-enum IncidentSeverity {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
 enum CaptchaFailAction {
   KICK
   BAN
@@ -120,7 +105,6 @@ model Chat {
   moderationSettings ChatModerationSettings?
   captchaSettings    ChatCaptchaSettings?
   moderationActions  ModerationAction[]
-  moderationIncidents ModerationIncident[]
   auditLogs          AuditLog[]
   appeals            Appeal[]
 
@@ -169,7 +153,6 @@ model TelegramUser {
   messages          Message[]
   joinRequests      JoinRequest[]
   moderationActions ModerationAction[] @relation("ModeratedUser")
-  moderationIncidents ModerationIncident[]
   auditLogs         AuditLog[]         @relation("AffectedUser")
   appeals           Appeal[]
 
@@ -239,7 +222,6 @@ model Message {
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
   chat              Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender            TelegramUser? @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
-  moderationIncidents ModerationIncident[]
 
   @@unique([chatId, telegramMessageId])
   @@index([chatId, telegramDate(sort: Desc)])
@@ -397,39 +379,6 @@ model Appeal {
   @@index([userId, createdAt(sort: Desc)])
 }
 
-model ModerationIncident {
-  id                     String           @id @default(uuid()) @db.Uuid
-  chatId                 String           @db.Uuid
-  affectedUserId         String           @db.Uuid
-  messageId              String?          @db.Uuid
-  assignedAdminId        String?          @db.Uuid
-  resolvedByAdminId      String?          @db.Uuid
-  type                   String           @db.VarChar(50)
-  rule                   String?          @db.VarChar(100)
-  status                 IncidentStatus   @default(NEW)
-  severity               IncidentSeverity @default(MEDIUM)
-  reason                 String           @db.VarChar(500)
-  moderatorNote          String?          @db.VarChar(1000)
-  previousViolationCount Int              @default(0)
-  reportCount            Int              @default(0)
-  metadata               Json?
-  reviewedAt             DateTime?        @db.Timestamptz(3)
-  resolvedAt             DateTime?        @db.Timestamptz(3)
-  createdAt              DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime         @updatedAt @db.Timestamptz(3)
-  chat                   Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  affectedUser           TelegramUser     @relation(fields: [affectedUserId], references: [id], onDelete: Cascade)
-  message                Message?         @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  assignedAdmin          AdminUser?       @relation("IncidentAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
-  resolvedByAdmin        AdminUser?       @relation("IncidentResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
-
-  @@unique([messageId, rule])
-  @@index([status, severity, createdAt(sort: Desc)])
-  @@index([chatId, status, createdAt(sort: Desc)])
-  @@index([affectedUserId, createdAt(sort: Desc)])
-  @@index([messageId])
-}
-
 model AdminUser {
   id                   String             @id @default(uuid()) @db.Uuid
   email                String             @unique
@@ -442,8 +391,6 @@ model AdminUser {
   updatedAt            DateTime           @updatedAt @db.Timestamptz(3)
   sessions             AdminSession[]
   moderationActions    ModerationAction[] @relation("ModerationActor")
-  assignedIncidents    ModerationIncident[] @relation("IncidentAssignee")
-  resolvedIncidents    ModerationIncident[] @relation("IncidentResolver")
   resolvedJoinRequests JoinRequest[]       @relation("JoinRequestResolver")
   auditLogs            AuditLog[]         @relation("ActingAdmin")
   resolvedAppeals      Appeal[]           @relation("AppealResolver")
