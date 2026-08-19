@@ -240,13 +240,13 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       if (result.outcome === "verified") {
         await client.answerCallbackQuery({
           callbackQueryId: update.callback_query.id,
-          text: "Проверка пройдена, добро пожаловать!"
+          text: "✅ Проверка пройдена, добро пожаловать!",
+          showAlert: true
         }).catch(() => undefined);
-        await client.editMessageText({
-          chatId: Number(chat.id),
-          messageId: update.callback_query.message.message_id,
-          text: "✅ Проверка пройдена."
-        }).catch(() => undefined);
+        await client.deleteMessage(
+          Number(chat.id),
+          update.callback_query.message.message_id
+        ).catch(() => undefined);
       } else if (result.outcome === "wrong_user") {
         await client.answerCallbackQuery({
           callbackQueryId: update.callback_query.id,
