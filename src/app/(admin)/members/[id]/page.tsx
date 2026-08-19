@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ShieldAlert, UserRound } from "lucide-react";
 import { ModerationActions } from "@/components/moderation-actions";
 import { MemberTagControl } from "@/components/member-tag-control";
+import { MemberMessageHistory } from "@/components/member-message-history";
 import { TelegramAvatar } from "@/components/telegram-avatar";
 import { memberStatusBadgeClass, memberStatusLabel } from "@/lib/member-status";
 import { canModerate } from "@/server/auth/permissions";
@@ -132,6 +133,11 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           </dl>
         </article>
       </section>
+
+      <MemberMessageHistory
+        telegramUserId={member.user.telegramUserId}
+        chatId={member.chat.id}
+      />
 
       <section className="panel profile-section risk-panel">
         <div className="panel-header">

@@ -17,7 +17,7 @@ export function TelegramAvatar({
       style={{ width: size, height: size }}
     >
       <Image
-        src={`/api/telegram/users/${userId}/avatar`}
+        src={`/api/telegram/users/${userId}/avatar?v=2`}
         alt={`Аватар ${displayName}`}
         width={size}
         height={size}

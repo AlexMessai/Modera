@@ -86,6 +86,11 @@ enum IncidentSeverity {
   CRITICAL
 }
 
+enum CaptchaFailAction {
+  KICK
+  BAN
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -118,6 +123,7 @@ model Chat {
   joinRequests       JoinRequest[]
   moderationSettings ChatModerationSettings?
   antiRaidSettings   ChatAntiRaidSettings?
+  captchaSettings    ChatCaptchaSettings?
   raidIncidents      RaidIncident[]
   moderationActions  ModerationAction[]
   moderationIncidents ModerationIncident[]
@@ -347,6 +353,27 @@ model GlobalAntiRaidSettings {
   newMemberMuteMinutes      Int          @default(10)
   createdAt                 DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime     @updatedAt @db.Timestamptz(3)
+}
+
+model ChatCaptchaSettings {
+  id               String            @id @default(uuid()) @db.Uuid
+  chatId           String            @unique @db.Uuid
+  useGlobalProfile Boolean           @default(false)
+  enabled          Boolean           @default(false)
+  timeoutMinutes   Int               @default(5)
+  failAction       CaptchaFailAction @default(KICK)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  chat             Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalCaptchaSettings {
+  id             String            @id @default("global")
+  enabled        Boolean           @default(false)
+  timeoutMinutes Int               @default(5)
+  failAction     CaptchaFailAction @default(KICK)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
 }
 
 model RaidIncident {

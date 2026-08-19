@@ -1,3 +1,4 @@
+import { processExpiredCaptchaChallenges } from "@/server/services/captcha-service";
 import { processExpiredPunishments } from "@/server/services/punishment-expiration-service";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,9 @@ export async function GET(request: Request) {
   if (!isAuthorized(request)) {
     return Response.json({ error: { code: "UNAUTHORIZED", message: "Недействительный ключ задания." } }, { status: 401 });
   }
-  const result = await processExpiredPunishments();
-  return Response.json({ data: result });
+  const [mutes, captcha] = await Promise.all([
+    processExpiredPunishments(),
+    processExpiredCaptchaChallenges()
+  ]);
+  return Response.json({ data: { mutes, captcha } });
 }

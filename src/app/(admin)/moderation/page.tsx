@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, Globe2, ShieldCheck } from "lucide-react";
+import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
+import { getGlobalCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,11 @@ function formatDate(value: string) {
 }
 
 export default async function ModerationPage() {
-  const [admin, data] = await Promise.all([requireAdminPage(), getModerationDashboard()]);
+  const [admin, data, captchaProfile] = await Promise.all([
+    requireAdminPage(),
+    getModerationDashboard(),
+    getGlobalCaptchaProfile()
+  ]);
   const canEdit = canManageChatSettings(admin.role);
 
   return (
@@ -30,6 +36,11 @@ export default async function ModerationPage() {
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Глобальная политика</h2><p>Единый набор правил для чатов, которые явно включили наследование. Автонаказания и destructive-правила по умолчанию выключены.</p></div><Globe2 size={19} /></div>
         <ChatModerationSettings scope="global" initial={data.globalProfile.settings} canEdit={canEdit} />
+      </section>
+
+      <section className="panel profile-section">
+        <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Значение по умолчанию для чатов, которые включили наследование глобальной политики.</p></div><ShieldCheck size={19} /></div>
+        <CaptchaSettings scope="global" initial={captchaProfile.settings} canEdit={canEdit} />
       </section>
 
       <section className="metrics-grid moderation-metrics">

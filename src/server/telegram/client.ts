@@ -2,9 +2,12 @@ import type {
   TelegramApiEnvelope,
   TelegramChatMember,
   TelegramFile,
+  TelegramInlineKeyboardMarkup,
+  TelegramMessage,
   TelegramUserProfilePhotos,
   TelegramUser
 } from "@/server/telegram/types";
+import { resolveTelegramImageContentType } from "@/server/telegram/avatar-utils";
 
 const API_BASE = "https://api.telegram.org";
 const BOT_PROFILE_CACHE_MS = 10 * 60 * 1000;
@@ -162,8 +165,11 @@ export class TelegramClient {
       );
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    if (!contentType.toLowerCase().startsWith("image/")) {
+    const contentType = resolveTelegramImageContentType(
+      response.headers.get("content-type"),
+      filePath
+    );
+    if (!contentType) {
       throw new TelegramApiError("Telegram returned a non-image file");
     }
 
@@ -234,6 +240,44 @@ export class TelegramClient {
     return this.call<boolean>("declineChatJoinRequest", {
       chat_id: chatId,
       user_id: userId
+    });
+  }
+
+  sendMessage(input: {
+    chatId: number;
+    text: string;
+    replyMarkup?: TelegramInlineKeyboardMarkup;
+  }) {
+    return this.call<TelegramMessage>("sendMessage", {
+      chat_id: input.chatId,
+      text: input.text,
+      ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {})
+    });
+  }
+
+  editMessageText(input: {
+    chatId: number;
+    messageId: number;
+    text: string;
+    replyMarkup?: TelegramInlineKeyboardMarkup;
+  }) {
+    return this.call<TelegramMessage | boolean>("editMessageText", {
+      chat_id: input.chatId,
+      message_id: input.messageId,
+      text: input.text,
+      reply_markup: input.replyMarkup ?? { inline_keyboard: [] }
+    });
+  }
+
+  answerCallbackQuery(input: {
+    callbackQueryId: string;
+    text?: string;
+    showAlert?: boolean;
+  }) {
+    return this.call<boolean>("answerCallbackQuery", {
+      callback_query_id: input.callbackQueryId,
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.showAlert ? { show_alert: input.showAlert } : {})
     });
   }
 

@@ -55,6 +55,19 @@
 .member-tag-form small.text-danger { color: var(--danger); }
 .member-tag-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .member-tag-limitation { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.member-message-panel { overflow: hidden; }
+.member-message-list { margin-top: 14px; border-top: 1px solid var(--line); }
+.member-message-row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 11px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.member-message-row--deleted { opacity: .72; }
+.member-message-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--surface-2); color: var(--muted); }
+.member-message-content { min-width: 0; display: grid; gap: 6px; }
+.member-message-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 11px; }
+.member-message-meta strong { color: var(--text); font-size: 12px; }
+.member-message-meta time { margin-left: auto; white-space: nowrap; }
+.member-message-content p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--text); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.member-message-state { display: flex; flex-wrap: wrap; gap: 5px; }
+.member-message-state .badge { font-size: 10px; }
+.member-message-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; color: var(--muted); font-size: 12px; }
 .profile-section { margin-top: 12px; }
 .risk-score-summary { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .risk-score-summary > strong { color: var(--text); font-size: 28px; letter-spacing: -.04em; }
@@ -140,4 +153,6 @@
   .moderation-history-row { grid-template-columns: 1fr; gap: 6px; padding: 11px 0; }
   .moderation-history-row .badge { justify-self: start; }
   .moderation-history-reason { grid-column: auto; }
+  .member-message-meta time { width: 100%; margin-left: 0; }
+  .member-message-footer { align-items: flex-start; flex-direction: column; }
 }
