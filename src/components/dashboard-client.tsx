@@ -251,7 +251,7 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
             <Link href="/join-requests"><UserRoundPlus size={17} /><span><strong>Заявки ожидают решения</strong><small>Очередь PENDING</small></span><b>{data.attention.pendingJoinRequests}</b></Link>
             <Link href="/incidents?tab=journal"><RefreshCw size={17} /><span><strong>Действия требуют сверки</strong><small>PENDING moderation actions</small></span><b>{data.attention.pendingModerationActions}</b></Link>
             <Link href="/system"><Bot size={17} /><span><strong>Проблемные подключения</strong><small>Бот не в ACTIVE</small></span><b>{data.attention.problematicBotLinks}</b></Link>
-            <Link href="/anti-raid"><ShieldAlert size={17} /><span><strong>Активные рейды</strong><small>Защитный режим сейчас</small></span><b>{data.attention.activeRaids}</b></Link>
+            <Link href="/moderation"><ShieldAlert size={17} /><span><strong>Активные рейды</strong><small>Защитный режим сейчас</small></span><b>{data.attention.activeRaids}</b></Link>
             <Link href="/incidents?tab=journal"><AlertTriangle size={17} /><span><strong>Ошибки за период</strong><small>Модерация / automod / Anti-Raid</small></span><b>{data.attention.errors}</b></Link>
           </div>
         </article>

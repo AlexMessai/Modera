@@ -10,7 +10,6 @@ import {
   MessageCircleQuestion,
   ServerCog,
   Siren,
-  ShieldAlert,
   ShieldCheck,
   UserRoundPlus,
   UsersRound
@@ -24,8 +23,7 @@ const baseNavigation = [
   { href: "/join-requests", label: "Заявки", icon: UserRoundPlus },
   { href: "/appeals", label: "Апелляции", icon: MessageCircleQuestion },
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
-  { href: "/moderation", label: "Модерация", icon: ShieldCheck },
-  { href: "/anti-raid", label: "Anti-Raid", icon: ShieldAlert }
+  { href: "/moderation", label: "Модерация", icon: ShieldCheck }
 ];
 
 const roleLabels: Record<string, string> = {
