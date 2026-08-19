@@ -3,8 +3,8 @@
 .chat-detail-status { display: grid; justify-items: end; gap: 7px; }
 .chat-detail-status small { color: var(--muted); }
 
-.automod-settings { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
-.automod-rule { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
+.automod-settings { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.automod-rule { display: grid; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
 .automod-rule-heading { display: grid; gap: 3px; }
 .automod-rule-heading strong { font-size: 13px; }
 .automod-rule-heading small { color: var(--muted); font-size: 12px; }
@@ -14,15 +14,15 @@
 .automod-toggle-row > span { display: grid; gap: 2px; }
 .automod-toggle-row strong { font-size: 13px; }
 .automod-toggle-row small, .automod-field small { color: var(--muted); font-size: 12px; }
-.automod-field { display: grid; gap: 7px; }
+.automod-field { display: grid; gap: 5px; }
 .automod-field--short { max-width: 220px; }
 .automod-field > span { font-size: 12px; font-weight: 650; }
 .automod-field textarea, .automod-field input { width: 100%; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; outline: 0; }
-.automod-field textarea { min-height: 104px; resize: vertical; padding: 10px 11px; line-height: 1.45; }
-.automod-field input { height: 38px; padding: 0 10px; }
+.automod-field textarea { min-height: 76px; resize: vertical; padding: 8px 11px; line-height: 1.45; }
+.automod-field input { height: 36px; padding: 0 10px; }
 .automod-field textarea:focus, .automod-field input:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
 .automod-field textarea:disabled, .automod-field input:disabled { background: var(--surface-2); color: #9aa0aa; }
-.automod-number-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.automod-number-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 170px)); gap: 8px; }
 .automod-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .automod-media-option { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
@@ -33,6 +33,7 @@
 
 @media (max-width: 900px) {
   .automod-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .automod-number-grid { grid-template-columns: repeat(2, minmax(0, 170px)); }
 }
 
 @media (max-width: 760px) {
