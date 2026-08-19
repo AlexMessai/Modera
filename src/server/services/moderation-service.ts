@@ -15,7 +15,21 @@ import type { TelegramChatMember } from "@/server/telegram/types";
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN"] as const;
 export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
 type TelegramModerationAction = Exclude<ModerationActionValue, "WARNING">;
-type ActionSource = "ADMIN" | "SYSTEM";
+type ActionSource = "ADMIN" | "SYSTEM" | "TELEGRAM";
+
+export type TelegramActor = {
+  telegramUserId: number;
+  username?: string | null;
+  displayName?: string | null;
+};
+
+function telegramActorMetadata(actor: TelegramActor): Prisma.InputJsonObject {
+  return {
+    telegramActorId: actor.telegramUserId,
+    ...(actor.username ? { telegramActorUsername: actor.username } : {}),
+    ...(actor.displayName ? { telegramActorDisplayName: actor.displayName } : {})
+  };
+}
 
 const ACTION_AUDIT_LABELS: Record<ModerationActionValue, string> = {
   WARNING: "MODERATION_WARNING",
@@ -152,8 +166,10 @@ async function recordWarning(input: {
     chat: { title: string };
     user: { telegramUserId: bigint };
   };
-  actingAdminId: string;
+  actingAdminId: string | null;
+  source: ActionSource;
   reason: string | null;
+  metadata?: Prisma.InputJsonObject;
 }) {
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -162,12 +178,16 @@ async function recordWarning(input: {
         chatId: input.member.chatId,
         affectedUserId: input.member.userId,
         actingAdminId: input.actingAdminId,
-        source: "ADMIN",
+        source: input.source,
         type: "WARNING",
         status: "SUCCEEDED",
         reason: input.reason,
         completedAt: now,
-        metadata: { previousStatus: input.member.status, previousPunishmentState: input.member.punishmentState }
+        metadata: {
+          previousStatus: input.member.status,
+          previousPunishmentState: input.member.punishmentState,
+          ...(input.metadata ?? {})
+        }
       }
     });
     const membership = await tx.chatMember.update({ where: { id: input.membershipId }, data: { warningCount: { increment: 1 } } });
@@ -176,10 +196,10 @@ async function recordWarning(input: {
         chatId: input.member.chatId,
         affectedUserId: input.member.userId,
         actingAdminId: input.actingAdminId,
-        source: "ADMIN",
+        source: input.source,
         action: ACTION_AUDIT_LABELS.WARNING,
         reason: input.reason,
-        metadata: { moderationActionId: action.id, warningCount: membership.warningCount }
+        metadata: { moderationActionId: action.id, warningCount: membership.warningCount, ...(input.metadata ?? {}) }
       }
     });
     return { action, membership };
@@ -414,7 +434,7 @@ export async function executeModerationAction(input: {
   assertLocalActionAllowed(input.action, member);
 
   if (input.action === "WARNING") {
-    return recordWarning({ membershipId: member.id, member, actingAdminId: input.actingAdminId, reason });
+    return recordWarning({ membershipId: member.id, member, actingAdminId: input.actingAdminId, source: "ADMIN", reason });
   }
 
   const expiresAt = input.action === "MUTE" && input.muteDurationMinutes
@@ -430,6 +450,53 @@ export async function executeModerationAction(input: {
     expiresAt,
     auditAction: ACTION_AUDIT_LABELS[input.action],
     metadata: input.muteDurationMinutes ? { muteDurationMinutes: input.muteDurationMinutes } : undefined
+  });
+}
+
+async function loadMemberByTelegramUser(chatId: string, telegramUserId: number) {
+  return prisma.chatMember.findFirst({
+    where: { chatId, user: { telegramUserId: BigInt(telegramUserId) } },
+    include: { user: true, chat: true }
+  });
+}
+
+export async function executeTelegramActorModerationAction(input: {
+  chatId: string;
+  targetTelegramUserId: number;
+  action: ModerationActionValue;
+  reason?: string | null;
+  muteDurationMinutes?: number | null;
+  telegramActor: TelegramActor;
+}) {
+  const reason = normalizeReason(input.reason);
+  if (requiresReason(input.action) && !reason) throw new ModerationError("REASON_REQUIRED", "Укажите причину действия модерации.", 400);
+  if (input.muteDurationMinutes !== undefined && input.muteDurationMinutes !== null && (input.muteDurationMinutes < 1 || input.muteDurationMinutes > 10080)) {
+    throw new ModerationError("INVALID_MUTE_DURATION", "Срок mute должен быть от 1 минуты до 7 дней.", 400);
+  }
+
+  const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
+  if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+  assertLocalActionAllowed(input.action, member);
+
+  const metadata = telegramActorMetadata(input.telegramActor);
+
+  if (input.action === "WARNING") {
+    return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata });
+  }
+
+  const expiresAt = input.action === "MUTE" && input.muteDurationMinutes
+    ? new Date(Date.now() + input.muteDurationMinutes * 60_000)
+    : null;
+
+  return executeTelegramBackedAction({
+    member,
+    actingAdminId: null,
+    source: "TELEGRAM",
+    action: input.action,
+    reason,
+    expiresAt,
+    auditAction: ACTION_AUDIT_LABELS[input.action],
+    metadata: input.muteDurationMinutes ? { ...metadata, muteDurationMinutes: input.muteDurationMinutes } : metadata
   });
 }
 
