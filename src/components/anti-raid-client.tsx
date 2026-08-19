@@ -2,17 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
+import { RefreshCw, ShieldAlert } from "lucide-react";
+import { AntiRaidSettings, type AntiRaidMode, type AntiRaidSettingsValue } from "@/components/anti-raid-settings";
 
-type Mode = "ALERT" | "MUTE_NEW_MEMBERS";
-type Settings = {
-  enabled: boolean;
-  joinThreshold: number;
-  windowSeconds: number;
-  protectionDurationMinutes: number;
-  mode: Mode;
-  newMemberMuteMinutes: number;
-};
 type ChatRow = {
   id: string;
   title: string;
@@ -23,7 +15,7 @@ type ChatRow = {
   canRestrictMembers: boolean;
   activeIncident: null | {
     id: string;
-    mode: Mode;
+    mode: AntiRaidMode;
     signalCount: number;
     startedAt: string;
     activeUntil: string;
@@ -32,7 +24,7 @@ type ChatRow = {
 type Incident = {
   id: string;
   status: "ACTIVE" | "ENDED";
-  mode: Mode;
+  mode: AntiRaidMode;
   triggeredBy: string;
   signalCount: number;
   joinRequestCount: number;
@@ -52,16 +44,11 @@ type Overview = {
 type ChatProfile = {
   chat: { id: string; title: string; telegramChatId: string; type: string };
   policy: { useGlobalProfile: boolean; effectiveSource: "CHAT" | "GLOBAL"; globalProfilePersisted: boolean };
-  settings: Settings;
-  effectiveSettings: Settings;
-  globalSettings: Settings;
+  settings: AntiRaidSettingsValue;
+  effectiveSettings: AntiRaidSettingsValue;
+  globalSettings: AntiRaidSettingsValue;
   bot: { status: string; canRestrictMembers: boolean; canInviteUsers: boolean; lastError: string | null; checkedAt: string | null };
-  activeIncident: null | { id: string; mode: Mode; triggeredBy: string; signalCount: number; startedAt: string; activeUntil: string };
-};
-
-const modeLabels: Record<Mode, string> = {
-  ALERT: "Только зафиксировать и предупредить",
-  MUTE_NEW_MEMBERS: "Временно mute новых участников"
+  activeIncident: null | { id: string; mode: AntiRaidMode; triggeredBy: string; signalCount: number; startedAt: string; activeUntil: string };
 };
 
 function formatDate(value: string) {
@@ -81,81 +68,13 @@ async function readJson<T>(url: string): Promise<T> {
   return payload.data as T;
 }
 
-async function patchJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить Anti-Raid настройки.");
-  return payload.data as T;
-}
-
-function SettingsFields({
-  value,
-  onChange,
-  disabled
-}: {
-  value: Settings;
-  onChange: (next: Settings) => void;
-  disabled: boolean;
-}) {
-  const setNumber = (key: keyof Settings, raw: string) => {
-    const number = Number(raw);
-    if (Number.isFinite(number)) onChange({ ...value, [key]: number });
-  };
-
-  return (
-    <div className="anti-raid-form-grid">
-      <label className="anti-raid-toggle-row">
-        <input
-          type="checkbox"
-          checked={value.enabled}
-          onChange={(event) => onChange({ ...value, enabled: event.target.checked })}
-          disabled={disabled}
-        />
-        <span><strong>Anti-Raid включён</strong><small>Режим активируется только после достижения заданного порога.</small></span>
-      </label>
-
-      <label>
-        <span>Порог вступлений / заявок</span>
-        <input className="input-control" type="number" min={3} max={500} value={value.joinThreshold} disabled={disabled} onChange={(event) => setNumber("joinThreshold", event.target.value)} />
-      </label>
-      <label>
-        <span>Окно, секунд</span>
-        <input className="input-control" type="number" min={10} max={600} value={value.windowSeconds} disabled={disabled} onChange={(event) => setNumber("windowSeconds", event.target.value)} />
-      </label>
-      <label>
-        <span>Защитный режим, минут</span>
-        <input className="input-control" type="number" min={1} max={1440} value={value.protectionDurationMinutes} disabled={disabled} onChange={(event) => setNumber("protectionDurationMinutes", event.target.value)} />
-      </label>
-      <label>
-        <span>Реакция</span>
-        <select className="select-control" value={value.mode} disabled={disabled} onChange={(event) => onChange({ ...value, mode: event.target.value as Mode })}>
-          <option value="ALERT">{modeLabels.ALERT}</option>
-          <option value="MUTE_NEW_MEMBERS">{modeLabels.MUTE_NEW_MEMBERS}</option>
-        </select>
-      </label>
-      <label>
-        <span>Mute нового участника, минут</span>
-        <input className="input-control" type="number" min={1} max={10080} value={value.newMemberMuteMinutes} disabled={disabled || value.mode !== "MUTE_NEW_MEMBERS"} onChange={(event) => setNumber("newMemberMuteMinutes", event.target.value)} />
-      </label>
-    </div>
-  );
-}
-
 export function AntiRaidClient({ canManage }: { canManage: boolean }) {
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [globalSettings, setGlobalSettings] = useState<Settings | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<AntiRaidSettingsValue | null>(null);
   const [selectedChatId, setSelectedChatId] = useState("");
   const [chatProfile, setChatProfile] = useState<ChatProfile | null>(null);
-  const [chatSettings, setChatSettings] = useState<Settings | null>(null);
-  const [useGlobalProfile, setUseGlobalProfile] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   async function loadOverview() {
     const data = await readJson<Overview>("/api/anti-raid/overview");
@@ -167,7 +86,7 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
     let active = true;
     void Promise.all([
       readJson<Overview>("/api/anti-raid/overview"),
-      readJson<{ persisted: boolean; settings: Settings }>("/api/anti-raid/global")
+      readJson<{ persisted: boolean; settings: AntiRaidSettingsValue }>("/api/anti-raid/global")
     ]).then(([nextOverview, global]) => {
       if (!active) return;
       setOverview(nextOverview);
@@ -194,8 +113,6 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
     if (!selectedChatId) return;
     void readJson<ChatProfile>(`/api/chats/${selectedChatId}/anti-raid`).then((profile) => {
       setChatProfile(profile);
-      setChatSettings(profile.settings);
-      setUseGlobalProfile(profile.policy.useGlobalProfile);
       setError(null);
     }).catch((caught: unknown) => {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить настройки чата.");
@@ -206,49 +123,6 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
     () => overview?.chats.find((chat) => chat.id === selectedChatId) ?? null,
     [overview, selectedChatId]
   );
-  const selectedEffectiveSettings = chatProfile && chatSettings
-    ? useGlobalProfile
-      ? chatProfile.globalSettings
-      : chatSettings
-    : null;
-
-  async function saveGlobal() {
-    if (!globalSettings) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      const saved = await patchJson<Settings>("/api/anti-raid/global", globalSettings);
-      setGlobalSettings(saved);
-      setNotice("Глобальная Anti-Raid политика сохранена.");
-      await loadOverview();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось сохранить глобальную политику.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveChat() {
-    if (!chatSettings || !selectedChatId) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      await patchJson(`/api/chats/${selectedChatId}/anti-raid`, {
-        useGlobalProfile,
-        ...chatSettings
-      });
-      const profile = await readJson<ChatProfile>(`/api/chats/${selectedChatId}/anti-raid`);
-      setChatProfile(profile);
-      setChatSettings(profile.settings);
-      setUseGlobalProfile(profile.policy.useGlobalProfile);
-      setNotice(`Anti-Raid настройки «${profile.chat.title}» сохранены.`);
-      await loadOverview();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки чата.");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (loading && !overview) return <div className="panel state-box">Загружаю Anti-Raid…</div>;
   if (!overview || !globalSettings) return <div className="panel state-box state-box--error">{error ?? "Anti-Raid недоступен."}</div>;
@@ -261,7 +135,6 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
       </div>
 
       {error ? <div className="state-box state-box--error" role="alert">{error}</div> : null}
-      {notice ? <div className="state-box state-box--success">{notice}</div> : null}
 
       <section className="metrics-grid anti-raid-metrics">
         <article className="metric-card"><span>Активных рейдов</span><strong>{overview.activeIncidents}</strong><small>Защитный режим сейчас</small></article>
@@ -274,8 +147,7 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
           <div><span className="eyebrow">По умолчанию для наследующих чатов</span><h2>Глобальная Anti-Raid политика</h2><p>Не применяется к существующему чату, пока он явно не переключён на глобальный профиль.</p></div>
           <ShieldAlert size={20} />
         </div>
-        <SettingsFields value={globalSettings} onChange={setGlobalSettings} disabled={!canManage} />
-        {canManage ? <div className="anti-raid-actions"><button className="button" type="button" onClick={saveGlobal} disabled={saving}>{saving ? "Сохраняю…" : "Сохранить глобальную политику"}</button></div> : <div className="state-box state-box--compact">У вашей роли режим просмотра.</div>}
+        <AntiRaidSettings scope="global" initial={globalSettings} canEdit={canManage} onSaved={() => void loadOverview()} />
       </section>
 
       <section className="panel table-panel">
@@ -291,17 +163,20 @@ export function AntiRaidClient({ canManage }: { canManage: boolean }) {
         </tbody></table></div>
       </section>
 
-      {selectedChat && chatProfile && chatSettings ? <section className="panel anti-raid-policy-panel">
+      {selectedChat && chatProfile ? <section className="panel anti-raid-policy-panel">
         <div className="panel-header"><div><span className="eyebrow">Локальная политика</span><h2>{chatProfile.chat.title}</h2><p>Telegram ID: {chatProfile.chat.telegramChatId}</p></div></div>
-        <label className="anti-raid-toggle-row anti-raid-inherit-row">
-          <input type="checkbox" checked={useGlobalProfile} onChange={(event) => setUseGlobalProfile(event.target.checked)} disabled={!canManage} />
-          <span><strong>Использовать глобальную Anti-Raid политику</strong><small>Локальные значения сохраняются и снова вступят в силу после отключения наследования.</small></span>
-        </label>
-        {useGlobalProfile ? <div className="state-box state-box--compact">Сейчас детектор использует глобальные значения. Локальные настройки ниже временно неактивны.</div> : null}
-        <SettingsFields value={chatSettings} onChange={setChatSettings} disabled={!canManage || useGlobalProfile} />
-        {selectedEffectiveSettings?.enabled && selectedEffectiveSettings.mode === "MUTE_NEW_MEMBERS" && !chatProfile.bot.canRestrictMembers ? <div className="state-box state-box--error"><AlertTriangle size={16} /> Для автоматического mute у бота нет права restrict_members.</div> : null}
-        {chatProfile.activeIncident ? <div className="anti-raid-live"><strong>Сейчас действует защитный режим</strong><span>{modeLabels[chatProfile.activeIncident.mode]} · до {formatDate(chatProfile.activeIncident.activeUntil)}</span></div> : null}
-        {canManage ? <div className="anti-raid-actions"><button className="button" type="button" onClick={saveChat} disabled={saving}>{saving ? "Сохраняю…" : "Сохранить настройки чата"}</button></div> : null}
+        <AntiRaidSettings
+          key={selectedChatId}
+          scope="chat"
+          chatId={selectedChatId}
+          initial={chatProfile.settings}
+          initialUseGlobalProfile={chatProfile.policy.useGlobalProfile}
+          globalSettings={chatProfile.globalSettings}
+          canEdit={canManage}
+          botCanRestrictMembers={chatProfile.bot.canRestrictMembers}
+          activeIncident={chatProfile.activeIncident}
+          onSaved={() => void loadOverview()}
+        />
       </section> : null}
 
       <section className="panel table-panel">
