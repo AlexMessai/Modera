@@ -24,7 +24,6 @@ type MemberRiskInput = {
   activeWarningCount: number;
   automodViolationCount: number;
   recentPunishmentCount: number;
-  joinedDuringRaid: boolean;
 };
 
 const AUTOMOD_RISK_ACTIONS = [
@@ -70,10 +69,6 @@ export function calculateMemberRisk(input: MemberRiskInput): MemberRiskResult {
     reasons.push({ code: "NEW_MEMBER_24H", label: "Новый участник", detail: "Впервые замечен менее 24 часов назад.", points: 12 });
   } else if (ageMs <= 7 * dayMs) {
     reasons.push({ code: "NEW_MEMBER_7D", label: "Недавний участник", detail: "Впервые замечен менее 7 дней назад.", points: 6 });
-  }
-
-  if (input.joinedDuringRaid) {
-    reasons.push({ code: "JOINED_DURING_RAID", label: "Вступил во время рейда", detail: "Первое появление совпало с активным Anti-Raid инцидентом.", points: 30 });
   }
 
   if (input.activeWarningCount > 0) {
@@ -122,13 +117,12 @@ export async function getMemberRisk(
       isTrusted: membership.internalRole === "TRUSTED",
       activeWarningCount,
       automodViolationCount: 0,
-      recentPunishmentCount: 0,
-      joinedDuringRaid: false
+      recentPunishmentCount: 0
     });
   }
 
   const activityFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const [automodViolationCount, recentPunishmentCount, raidIncident] = await Promise.all([
+  const [automodViolationCount, recentPunishmentCount] = await Promise.all([
     prisma.auditLog.count({
       where: {
         chatId: membership.chatId,
@@ -145,14 +139,6 @@ export async function getMemberRisk(
         status: "SUCCEEDED",
         createdAt: { gte: activityFrom, lte: now }
       }
-    }),
-    prisma.raidIncident.findFirst({
-      where: {
-        chatId: membership.chatId,
-        startedAt: { lte: observedAt },
-        activeUntil: { gte: observedAt }
-      },
-      select: { id: true }
     })
   ]);
 
@@ -163,7 +149,6 @@ export async function getMemberRisk(
     isTrusted: false,
     activeWarningCount,
     automodViolationCount,
-    recentPunishmentCount,
-    joinedDuringRaid: Boolean(raidIncident)
+    recentPunishmentCount
   });
 }

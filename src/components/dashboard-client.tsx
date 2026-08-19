@@ -10,7 +10,6 @@ import {
   Bot,
   MessageSquareText,
   RefreshCw,
-  ShieldAlert,
   ShieldCheck,
   UserRoundPlus,
   UsersRound
@@ -28,13 +27,11 @@ type DashboardData = {
     joinRequests: Metric;
     moderationActions: Metric;
     automodActions: Metric;
-    raids: Metric;
   };
   attention: {
     pendingJoinRequests: number;
     pendingModerationActions: number;
     problematicBotLinks: number;
-    activeRaids: number;
     errors: number;
   };
   trend: Array<{
@@ -72,9 +69,6 @@ const chartLabels: Record<ChartMetric, string> = {
 };
 
 const actionLabels: Record<string, string> = {
-  RAID_STARTED: "Обнаружен рейд",
-  RAID_ENDED: "Рейд завершён",
-  RAID_MEMBER_MUTED: "Anti-Raid ограничил участника",
   AUTOMOD_AUTO_MUTE: "Автоматический mute",
   AUTOMOD_AUTO_BAN: "Автоматическая блокировка",
   MODERATION_MUTE: "Выдан mute",
@@ -92,8 +86,7 @@ const actionLabels: Record<string, string> = {
   MODERATION_RECONCILIATION_CHECK_FAILED: "Ошибка сверки Telegram",
   AUTOMOD_DELETE_FAILED: "Ошибка автомодерации",
   AUTOMOD_ESCALATION_FAILED: "Ошибка автонаказания",
-  MANUAL_MESSAGE_DELETE_FAILED: "Ошибка удаления сообщения",
-  RAID_MITIGATION_FAILED: "Ошибка Anti-Raid"
+  MANUAL_MESSAGE_DELETE_FAILED: "Ошибка удаления сообщения"
 };
 
 function formatDate(value: string) {
@@ -200,7 +193,7 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
   }
 
   const attentionTotal = useMemo(
-    () => data.attention.pendingJoinRequests + data.attention.pendingModerationActions + data.attention.problematicBotLinks + data.attention.activeRaids + data.attention.errors,
+    () => data.attention.pendingJoinRequests + data.attention.pendingModerationActions + data.attention.problematicBotLinks + data.attention.errors,
     [data]
   );
 
@@ -231,7 +224,6 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
         <MetricCard label="Заявки" detail="Запросы на вступление" metric={data.metrics.joinRequests} />
         <MetricCard label="Automod" detail="Реальные срабатывания и наказания" metric={data.metrics.automodActions} />
         <MetricCard label="Модерация" detail="Warn / mute / ban / unban" metric={data.metrics.moderationActions} />
-        <MetricCard label="Anti-Raid" detail="Новые raid incidents" metric={data.metrics.raids} />
       </section>
 
       <section className="dashboard-main-grid">
@@ -251,8 +243,7 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
             <Link href="/join-requests"><UserRoundPlus size={17} /><span><strong>Заявки ожидают решения</strong><small>Очередь PENDING</small></span><b>{data.attention.pendingJoinRequests}</b></Link>
             <Link href="/incidents?tab=journal"><RefreshCw size={17} /><span><strong>Действия требуют сверки</strong><small>PENDING moderation actions</small></span><b>{data.attention.pendingModerationActions}</b></Link>
             <Link href="/system"><Bot size={17} /><span><strong>Проблемные подключения</strong><small>Бот не в ACTIVE</small></span><b>{data.attention.problematicBotLinks}</b></Link>
-            <Link href="/moderation"><ShieldAlert size={17} /><span><strong>Активные рейды</strong><small>Защитный режим сейчас</small></span><b>{data.attention.activeRaids}</b></Link>
-            <Link href="/incidents?tab=journal"><AlertTriangle size={17} /><span><strong>Ошибки за период</strong><small>Модерация / automod / Anti-Raid</small></span><b>{data.attention.errors}</b></Link>
+            <Link href="/incidents?tab=journal"><AlertTriangle size={17} /><span><strong>Ошибки за период</strong><small>Модерация / automod</small></span><b>{data.attention.errors}</b></Link>
           </div>
         </article>
       </section>
@@ -266,9 +257,9 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
         </article>
 
         <article className="panel dashboard-events">
-          <div className="panel-header"><div><h2>Последние важные события</h2><p>Наказания, рейды, заявки, исключения и ошибки.</p></div><ShieldCheck size={18} /></div>
+          <div className="panel-header"><div><h2>Последние важные события</h2><p>Наказания, заявки, исключения и ошибки.</p></div><ShieldCheck size={18} /></div>
           {data.recentEvents.length === 0 ? <div className="state-box state-box--compact">Важных событий за период нет.</div> : <div className="dashboard-events-list">
-            {data.recentEvents.map((event) => <div className="dashboard-event" key={event.id}><span className={`dashboard-event-icon ${event.action.includes("FAILED") ? "dashboard-event-icon--danger" : ""}`}>{event.action.includes("BAN") ? <Ban size={15} /> : event.action.startsWith("RAID_") ? <ShieldAlert size={15} /> : event.action.includes("JOIN_REQUEST") ? <UserRoundPlus size={15} /> : <UsersRound size={15} />}</span><div><strong>{actionLabels[event.action] ?? event.action}</strong><span>{event.chat?.title ?? "Система"}{event.affectedUser ? ` · ${event.affectedUser.displayName}` : ""}{event.actingAdmin ? ` · ${event.actingAdmin.displayName}` : ""}</span>{event.reason ? <small>{event.reason}</small> : null}</div><time>{formatDate(event.createdAt)}</time></div>)}
+            {data.recentEvents.map((event) => <div className="dashboard-event" key={event.id}><span className={`dashboard-event-icon ${event.action.includes("FAILED") ? "dashboard-event-icon--danger" : ""}`}>{event.action.includes("BAN") ? <Ban size={15} /> : event.action.includes("JOIN_REQUEST") ? <UserRoundPlus size={15} /> : <UsersRound size={15} />}</span><div><strong>{actionLabels[event.action] ?? event.action}</strong><span>{event.chat?.title ?? "Система"}{event.affectedUser ? ` · ${event.affectedUser.displayName}` : ""}{event.actingAdmin ? ` · ${event.actingAdmin.displayName}` : ""}</span>{event.reason ? <small>{event.reason}</small> : null}</div><time>{formatDate(event.createdAt)}</time></div>)}
           </div>}
         </article>
       </section>

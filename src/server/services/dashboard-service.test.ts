@@ -89,21 +89,6 @@ test("dashboard aggregates persisted Telegram and moderation activity", async ()
       }
     });
 
-    await prisma.raidIncident.create({
-      data: {
-        chatId: chat.id,
-        status: "ACTIVE",
-        mode: "ALERT",
-        triggeredBy: "JOIN",
-        signalCount: 10,
-        joinRequestCount: 0,
-        joinCount: 10,
-        windowStartedAt: recent,
-        startedAt: recent,
-        activeUntil: new Date(now.getTime() + 30 * 60 * 1000)
-      }
-    });
-
     const dashboard = await getDashboardData("24H");
 
     assert.equal(dashboard.period, "24H");
@@ -112,9 +97,7 @@ test("dashboard aggregates persisted Telegram and moderation activity", async ()
     assert.ok(dashboard.metrics.joinRequests.current >= 1);
     assert.ok(dashboard.metrics.moderationActions.current >= 1);
     assert.ok(dashboard.metrics.automodActions.current >= 1);
-    assert.ok(dashboard.metrics.raids.current >= 1);
     assert.ok(dashboard.attention.pendingJoinRequests >= 1);
-    assert.ok(dashboard.attention.activeRaids >= 1);
     assert.ok(dashboard.trend.reduce((sum, item) => sum + item.messages, 0) >= 12);
     assert.ok(dashboard.topChats.some((item) => item.id === chat.id && item.messages >= 12));
   } finally {
