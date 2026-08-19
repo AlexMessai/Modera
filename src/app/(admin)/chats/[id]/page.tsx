@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
+import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
+import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +43,10 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile] = await Promise.all([
+  const [profile, captchaProfile, antiRaidProfile] = await Promise.all([
     getChatModerationProfile(id),
-    getChatCaptchaProfile(id)
+    getChatCaptchaProfile(id),
+    getChatAntiRaidProfile(id)
   ]);
   if (!profile) notFound();
 
@@ -63,6 +66,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Новый участник должен подтвердить, что не бот, прежде чем сможет писать в чат.</p></div></div>
           <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} initialUseGlobalProfile={captchaProfile.policy.useGlobalProfile} globalSettings={captchaProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
+        </section>
+      ) : null}
+
+      {antiRaidProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Anti-Raid</h2><p>Защита этого чата от массовых вступлений и заявок.</p></div></div>
+          <AntiRaidSettings chatId={antiRaidProfile.chat.id} initial={antiRaidProfile.settings} initialUseGlobalProfile={antiRaidProfile.policy.useGlobalProfile} globalSettings={antiRaidProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} botCanRestrictMembers={antiRaidProfile.bot.canRestrictMembers} activeIncident={antiRaidProfile.activeIncident} />
         </section>
       ) : null}
 
