@@ -8,7 +8,6 @@ import {
   MessageSquareText,
   MessagesSquare,
   MessageCircleQuestion,
-  ScrollText,
   ServerCog,
   Siren,
   ShieldAlert,
@@ -26,8 +25,7 @@ const baseNavigation = [
   { href: "/appeals", label: "Апелляции", icon: MessageCircleQuestion },
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
   { href: "/moderation", label: "Модерация", icon: ShieldCheck },
-  { href: "/anti-raid", label: "Anti-Raid", icon: ShieldAlert },
-  { href: "/journal", label: "Журнал", icon: ScrollText }
+  { href: "/anti-raid", label: "Anti-Raid", icon: ShieldAlert }
 ];
 
 const roleLabels: Record<string, string> = {
