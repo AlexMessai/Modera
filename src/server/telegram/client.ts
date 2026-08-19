@@ -5,6 +5,7 @@ import type {
   TelegramUserProfilePhotos,
   TelegramUser
 } from "@/server/telegram/types";
+import { resolveTelegramImageContentType } from "@/server/telegram/avatar-utils";
 
 const API_BASE = "https://api.telegram.org";
 const BOT_PROFILE_CACHE_MS = 10 * 60 * 1000;
@@ -162,8 +163,11 @@ export class TelegramClient {
       );
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    if (!contentType.toLowerCase().startsWith("image/")) {
+    const contentType = resolveTelegramImageContentType(
+      response.headers.get("content-type"),
+      filePath
+    );
+    if (!contentType) {
       throw new TelegramApiError("Telegram returned a non-image file");
     }
 

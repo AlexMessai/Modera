@@ -4,8 +4,14 @@ import { canModerate } from "@/server/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
-export default async function MessagesPage() {
-  const admin = await requireAdminPage();
+export default async function MessagesPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [admin, query] = await Promise.all([requireAdminPage(), searchParams]);
+  const sender = typeof query.sender === "string" ? query.sender : "";
+  const chatId = typeof query.chatId === "string" ? query.chatId : "";
 
   return (
     <main className="page">
@@ -16,7 +22,11 @@ export default async function MessagesPage() {
           <p>Поиск и модерация сообщений, которые бот фактически получил из подключённых чатов.</p>
         </div>
       </header>
-      <MessagesClient canModerate={canModerate(admin.role)} />
+      <MessagesClient
+        canModerate={canModerate(admin.role)}
+        initialSender={sender}
+        initialChatId={chatId}
+      />
     </main>
   );
 }

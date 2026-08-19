@@ -60,6 +60,10 @@ const DEFAULT_FILTERS: Filters = {
   dateTo: ""
 };
 
+function initialFilters(sender: string, chatId: string): Filters {
+  return { ...DEFAULT_FILTERS, sender, chatId };
+}
+
 const typeLabels: Record<string, string> = {
   TEXT: "Текст",
   PHOTO: "Фото",
@@ -147,9 +151,17 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export function MessagesClient({ canModerate }: { canModerate: boolean }) {
-  const [draft, setDraft] = useState<Filters>(DEFAULT_FILTERS);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+export function MessagesClient({
+  canModerate,
+  initialSender = "",
+  initialChatId = ""
+}: {
+  canModerate: boolean;
+  initialSender?: string;
+  initialChatId?: string;
+}) {
+  const [draft, setDraft] = useState<Filters>(() => initialFilters(initialSender, initialChatId));
+  const [filters, setFilters] = useState<Filters>(() => initialFilters(initialSender, initialChatId));
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ResponseData | null>(null);
   const [loading, setLoading] = useState(true);

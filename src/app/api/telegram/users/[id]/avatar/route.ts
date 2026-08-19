@@ -49,7 +49,8 @@ export async function GET(
     return new Response(avatar.bytes, {
       headers: {
         "content-type": avatar.contentType,
-        "cache-control": "private, max-age=3600, stale-while-revalidate=86400"
+        "cache-control": "private, max-age=3600, stale-while-revalidate=86400",
+        "x-modera-avatar-source": "telegram"
       }
     });
   }
@@ -57,7 +58,8 @@ export async function GET(
   return new Response(fallbackAvatar(avatar.displayName), {
     headers: {
       "content-type": "image/svg+xml; charset=utf-8",
-      "cache-control": "private, max-age=3600"
+      "cache-control": "private, no-store",
+      "x-modera-avatar-source": "fallback"
     }
   });
 }

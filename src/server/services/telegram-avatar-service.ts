@@ -9,10 +9,14 @@ export type TelegramAvatarResult =
   | { kind: "image"; bytes: ArrayBuffer; contentType: string; displayName: string }
   | { kind: "fallback"; displayName: string };
 
+function telegramErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error";
+}
+
 export async function getTelegramUserAvatar(
   userId: string
 ): Promise<TelegramAvatarResult | null> {
-  const user = await prisma.telegramUser.findUnique({
+  const foundUser = await prisma.telegramUser.findUnique({
     where: { id: userId },
     select: {
       id: true,
@@ -22,23 +26,36 @@ export async function getTelegramUserAvatar(
       avatarSyncedAt: true
     }
   });
-  if (!user) return null;
+  if (!foundUser) return null;
+  const user = foundUser;
 
   const client = getTelegramClient();
   let avatarFileId = user.avatarFileId;
+  let refreshAttempted = false;
 
-  if (avatarNeedsRefresh(user.avatarSyncedAt)) {
+  async function refreshAvatarFileId() {
+    refreshAttempted = true;
+    const profilePhotos = await client.getUserProfilePhotos(
+      Number(user.telegramUserId),
+      1
+    );
+    const nextFileId = selectLargestProfilePhoto(profilePhotos.photos);
+    await prisma.telegramUser.update({
+      where: { id: user.id },
+      data: { avatarFileId: nextFileId, avatarSyncedAt: new Date() }
+    });
+    return nextFileId;
+  }
+
+  if (avatarNeedsRefresh(user.avatarSyncedAt, new Date(), Boolean(avatarFileId))) {
     try {
-      const profilePhotos = await client.getUserProfilePhotos(
-        Number(user.telegramUserId),
-        1
-      );
-      avatarFileId = selectLargestProfilePhoto(profilePhotos.photos);
-      await prisma.telegramUser.update({
-        where: { id: user.id },
-        data: { avatarFileId, avatarSyncedAt: new Date() }
+      avatarFileId = await refreshAvatarFileId();
+    } catch (error) {
+      console.warn("[telegram-avatar] profile photo sync failed", {
+        userId: user.id,
+        telegramUserId: user.telegramUserId.toString(),
+        error: telegramErrorMessage(error)
       });
-    } catch {
       // Keep a previously known photo when Telegram is temporarily unavailable.
     }
   }
@@ -47,15 +64,41 @@ export async function getTelegramUserAvatar(
     return { kind: "fallback", displayName: user.displayName };
   }
 
-  try {
-    const file = await client.downloadFile(avatarFileId);
+  async function download(fileId: string) {
+    const file = await client.downloadFile(fileId);
     return {
-      kind: "image",
+      kind: "image" as const,
       bytes: file.bytes,
       contentType: file.contentType,
       displayName: user.displayName
     };
-  } catch {
+  }
+
+  try {
+    return await download(avatarFileId);
+  } catch (error) {
+    console.warn("[telegram-avatar] cached photo download failed", {
+      userId: user.id,
+      telegramUserId: user.telegramUserId.toString(),
+      error: telegramErrorMessage(error)
+    });
+
+    if (!refreshAttempted) {
+      try {
+        const refreshedFileId = await refreshAvatarFileId();
+        if (!refreshedFileId) {
+          return { kind: "fallback", displayName: user.displayName };
+        }
+        return await download(refreshedFileId);
+      } catch (refreshError) {
+        console.warn("[telegram-avatar] photo retry failed", {
+          userId: user.id,
+          telegramUserId: user.telegramUserId.toString(),
+          error: telegramErrorMessage(refreshError)
+        });
+      }
+    }
+
     return { kind: "fallback", displayName: user.displayName };
   }
 }

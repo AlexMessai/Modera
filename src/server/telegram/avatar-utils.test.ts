@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   avatarNeedsRefresh,
+  resolveTelegramImageContentType,
   selectLargestProfilePhoto,
+  TELEGRAM_AVATAR_NEGATIVE_REFRESH_MS,
   TELEGRAM_AVATAR_REFRESH_MS
 } from "./avatar-utils";
 
-test("avatar refresh uses a 24 hour negative and positive cache", () => {
+test("avatar refresh uses shorter negative caching", () => {
   const now = new Date("2026-08-18T12:00:00.000Z");
   assert.equal(avatarNeedsRefresh(null, now), true);
   assert.equal(
@@ -16,6 +18,37 @@ test("avatar refresh uses a 24 hour negative and positive cache", () => {
   assert.equal(
     avatarNeedsRefresh(new Date(now.getTime() - TELEGRAM_AVATAR_REFRESH_MS), now),
     true
+  );
+  assert.equal(
+    avatarNeedsRefresh(
+      new Date(now.getTime() - TELEGRAM_AVATAR_NEGATIVE_REFRESH_MS + 1),
+      now,
+      false
+    ),
+    false
+  );
+  assert.equal(
+    avatarNeedsRefresh(
+      new Date(now.getTime() - TELEGRAM_AVATAR_NEGATIVE_REFRESH_MS),
+      now,
+      false
+    ),
+    true
+  );
+});
+
+test("Telegram image MIME falls back to the file path extension", () => {
+  assert.equal(
+    resolveTelegramImageContentType("application/octet-stream", "photos/avatar.jpg"),
+    "image/jpeg"
+  );
+  assert.equal(
+    resolveTelegramImageContentType("image/webp; charset=binary", "photos/avatar.bin"),
+    "image/webp"
+  );
+  assert.equal(
+    resolveTelegramImageContentType("application/json", "documents/file.bin"),
+    null
   );
 });
 
