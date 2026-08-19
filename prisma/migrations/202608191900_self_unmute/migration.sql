@@ -1,0 +1,1 @@
+ALTER TABLE "ChatMember" ADD COLUMN "selfUnmuteCount" INTEGER NOT NULL DEFAULT 0;

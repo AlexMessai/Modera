@@ -10,6 +10,7 @@ import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdminist
 import { recordAutomodIncident } from "@/server/services/moderation-incident-service";
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
+import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
@@ -64,6 +65,26 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
 }
 
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
+const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
+const STATUS_COMMAND_PATTERN = /^\/status(?:@\w+)?\s*$/i;
+const UNMUTE_COMMAND_PATTERN = /^\/unmute(?:@\w+)?(?:\s+(\d+))?\s*$/i;
+
+const HELP_TEXT = [
+  "Доступные команды:",
+  "/status — ваш текущий статус и история наказаний",
+  "/unmute — самостоятельно снять mute (до 3 раз в каждом чате)",
+  "/appeal — подать апелляцию на бан или предупреждение (ответом на моё сообщение о наказании)",
+  "/help — этот список команд"
+].join("\n");
+
+const START_TEXT = [
+  "Привет! Я модератор-бот чатов, в которых вы состоите.",
+  "",
+  "Если вас ограничили — здесь можно самостоятельно снять mute (до 3 раз в каждом чате) или подать апелляцию на бан/предупреждение.",
+  "",
+  HELP_TEXT
+].join("\n");
 
 async function processPrivateMessage(message: TelegramMessage, botTelegramId: number) {
   const client = getTelegramClient();
@@ -77,6 +98,53 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   await deliverPendingAppealNotifications(message.from.id).catch(() => undefined);
 
   const text = message.text?.trim() ?? "";
+
+  if (START_COMMAND_PATTERN.test(text)) {
+    await client.sendMessage({ chatId: message.from.id, text: START_TEXT }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  if (HELP_COMMAND_PATTERN.test(text)) {
+    await client.sendMessage({ chatId: message.from.id, text: HELP_TEXT }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  if (STATUS_COMMAND_PATTERN.test(text)) {
+    const statusText = await getSelfServiceStatusMessage(message.from.id);
+    await client.sendMessage({ chatId: message.from.id, text: statusText }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  const unmuteMatch = UNMUTE_COMMAND_PATTERN.exec(text);
+  if (unmuteMatch) {
+    const active = await listActiveMutes(message.from.id);
+    if (active.length === 0) {
+      await client.sendMessage({
+        chatId: message.from.id,
+        text: "Вы не находитесь под ограничением ни в одном чате."
+      }).catch(() => undefined);
+      return { accepted: true, ignored: false };
+    }
+
+    let target = active[0];
+    if (active.length > 1) {
+      const index = unmuteMatch[1] ? Number(unmuteMatch[1]) : NaN;
+      if (!Number.isInteger(index) || index < 1 || index > active.length) {
+        const list = active.map((item, position) => `${position + 1}. ${item.chat.title}`).join("\n");
+        await client.sendMessage({
+          chatId: message.from.id,
+          text: `У вас mute сразу в нескольких чатах. Укажите номер чата:\n${list}\n\nНапример: /unmute 1`
+        }).catch(() => undefined);
+        return { accepted: true, ignored: false };
+      }
+      target = active[index - 1];
+    }
+
+    const result = await selfUnmute({ telegramUserId: message.from.id, chatId: target.chatId });
+    await client.sendMessage({ chatId: message.from.id, text: result.message }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
   const match = APPEAL_COMMAND_PATTERN.exec(text);
   if (!match) {
     return { accepted: true, ignored: true };
