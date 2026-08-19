@@ -8,6 +8,15 @@ import type {
   TelegramUser
 } from "@/server/telegram/types";
 
+const AUTOMOD_VIOLATION_ACTIONS = [
+  "AUTOMOD_LINK_DELETED",
+  "AUTOMOD_TERM_DELETED",
+  "AUTOMOD_MEDIA_DELETED",
+  "AUTOMOD_MENTIONS_DELETED",
+  "AUTOMOD_DUPLICATE_DELETED",
+  "AUTOMOD_SPAM_DELETED"
+];
+
 export const MEMBERSHIP_STATUSES = [
   "CREATOR",
   "ADMINISTRATOR",
@@ -598,10 +607,11 @@ export async function getMemberProfile(membershipId: string) {
         deletedAt: { not: null }
       }
     }),
-    prisma.moderationIncident.count({
+    prisma.auditLog.count({
       where: {
         chatId: membership.chatId,
-        affectedUserId: membership.userId
+        affectedUserId: membership.userId,
+        action: { in: AUTOMOD_VIOLATION_ACTIONS }
       }
     })
   ]);
