@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
+import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,12 @@ const eventLabels: Record<string, string> = {
   AUTOMOD_AUTO_BAN: "Автоматический ban",
   AUTOMOD_ESCALATION_FAILED: "Ошибка автоматического наказания",
   AUTOMOD_DELETE_FAILED: "Telegram не удалил сообщение",
-  AUTOMOD_SETTINGS_UPDATED: "Настройки автомодерации изменены"
+  AUTOMOD_SETTINGS_UPDATED: "Настройки автомодерации изменены",
+  CAPTCHA_CHALLENGE_SENT: "Отправлена капча новому участнику",
+  CAPTCHA_PASSED: "Капча пройдена",
+  CAPTCHA_TIMEOUT_KICK: "Исключён за непройденную капчу",
+  CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
+  CAPTCHA_SETTINGS_UPDATED: "Настройки капчи изменены"
 };
 
 const botStatusLabels: Record<string, string> = {
@@ -34,7 +41,10 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const profile = await getChatModerationProfile(id);
+  const [profile, captchaProfile] = await Promise.all([
+    getChatModerationProfile(id),
+    getChatCaptchaProfile(id)
+  ]);
   if (!profile) notFound();
 
   return (
@@ -48,6 +58,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <div className="panel-header"><div><h2>Правила чата</h2><p>Используйте глобальную политику или храните индивидуальные правила только для этого чата.</p></div></div>
         <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} initialUseGlobalProfile={profile.policy.useGlobalProfile} globalSettings={profile.globalSettings} canEdit={canManageChatSettings(admin.role)} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
       </section>
+
+      {captchaProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Новый участник должен подтвердить, что не бот, прежде чем сможет писать в чат.</p></div></div>
+          <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} initialUseGlobalProfile={captchaProfile.policy.useGlobalProfile} globalSettings={captchaProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
+        </section>
+      ) : null}
 
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Журнал автомодерации</h2><p>Удаления, предупреждения, автоматические наказания, ошибки Telegram и изменения правил.</p></div></div>

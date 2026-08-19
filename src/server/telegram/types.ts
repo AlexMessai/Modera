@@ -107,6 +107,13 @@ export type TelegramChatJoinRequest = {
   };
 };
 
+export type TelegramCallbackQuery = {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  data?: string;
+};
+
 export type TelegramUpdate = {
   update_id: number;
   message?: TelegramMessage;
@@ -114,7 +121,16 @@ export type TelegramUpdate = {
   my_chat_member?: TelegramChatMemberUpdated;
   chat_member?: TelegramChatMemberUpdated;
   chat_join_request?: TelegramChatJoinRequest;
-  callback_query?: { id: string; from: TelegramUser; message?: TelegramMessage };
+  callback_query?: TelegramCallbackQuery;
+};
+
+export type TelegramInlineKeyboardButton = {
+  text: string;
+  callback_data?: string;
+};
+
+export type TelegramInlineKeyboardMarkup = {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
 };
 
 export type TelegramApiEnvelope<T> = {

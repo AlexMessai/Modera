@@ -2,6 +2,8 @@ import type {
   TelegramApiEnvelope,
   TelegramChatMember,
   TelegramFile,
+  TelegramInlineKeyboardMarkup,
+  TelegramMessage,
   TelegramUserProfilePhotos,
   TelegramUser
 } from "@/server/telegram/types";
@@ -238,6 +240,44 @@ export class TelegramClient {
     return this.call<boolean>("declineChatJoinRequest", {
       chat_id: chatId,
       user_id: userId
+    });
+  }
+
+  sendMessage(input: {
+    chatId: number;
+    text: string;
+    replyMarkup?: TelegramInlineKeyboardMarkup;
+  }) {
+    return this.call<TelegramMessage>("sendMessage", {
+      chat_id: input.chatId,
+      text: input.text,
+      ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {})
+    });
+  }
+
+  editMessageText(input: {
+    chatId: number;
+    messageId: number;
+    text: string;
+    replyMarkup?: TelegramInlineKeyboardMarkup;
+  }) {
+    return this.call<TelegramMessage | boolean>("editMessageText", {
+      chat_id: input.chatId,
+      message_id: input.messageId,
+      text: input.text,
+      reply_markup: input.replyMarkup ?? { inline_keyboard: [] }
+    });
+  }
+
+  answerCallbackQuery(input: {
+    callbackQueryId: string;
+    text?: string;
+    showAlert?: boolean;
+  }) {
+    return this.call<boolean>("answerCallbackQuery", {
+      callback_query_id: input.callbackQueryId,
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.showAlert ? { show_alert: input.showAlert } : {})
     });
   }
 

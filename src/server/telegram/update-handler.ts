@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { processAntiRaidSignal } from "@/server/services/anti-raid-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
+import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
@@ -183,6 +184,16 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         occurredAt: new Date(update.chat_member.date * 1000),
         membershipId: syncedMember.membership.id
       }).catch(() => undefined);
+
+      await maybeIssueCaptchaChallenge({
+        chatId: syncedChat.id,
+        chatType: chat.type,
+        membershipId: syncedMember.membership.id,
+        userId: syncedMember.user.id,
+        telegramChatId: BigInt(chat.id),
+        telegramUserId: BigInt(update.chat_member.new_chat_member.user.id),
+        displayName: syncedMember.user.displayName
+      }).catch(() => undefined);
     }
   }
 
@@ -214,6 +225,41 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       date: update.callback_query.message.date,
       updateId: update.update_id
     });
+
+    const targetTelegramUserId = update.callback_query.data
+      ? parseCaptchaCallbackData(update.callback_query.data)
+      : null;
+    if (targetTelegramUserId !== null) {
+      const result = await verifyCaptchaChallenge({
+        chatId: syncedChat.id,
+        telegramChatId: BigInt(chat.id),
+        fromTelegramUserId: update.callback_query.from.id,
+        targetTelegramUserId
+      });
+
+      if (result.outcome === "verified") {
+        await client.answerCallbackQuery({
+          callbackQueryId: update.callback_query.id,
+          text: "Проверка пройдена, добро пожаловать!"
+        }).catch(() => undefined);
+        await client.editMessageText({
+          chatId: Number(chat.id),
+          messageId: update.callback_query.message.message_id,
+          text: "✅ Проверка пройдена."
+        }).catch(() => undefined);
+      } else if (result.outcome === "wrong_user") {
+        await client.answerCallbackQuery({
+          callbackQueryId: update.callback_query.id,
+          text: "Эта кнопка не для вас.",
+          showAlert: true
+        }).catch(() => undefined);
+      } else {
+        await client.answerCallbackQuery({
+          callbackQueryId: update.callback_query.id,
+          text: "Проверка уже недействительна."
+        }).catch(() => undefined);
+      }
+    }
   }
 
   if (update.my_chat_member?.from && update.my_chat_member.from.id !== botProfile.id) {

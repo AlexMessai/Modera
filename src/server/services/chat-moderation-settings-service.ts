@@ -60,7 +60,12 @@ export async function getChatModerationProfile(chatId: string) {
             "AUTOMOD_AUTO_MUTE",
             "AUTOMOD_AUTO_BAN",
             "AUTOMOD_ESCALATION_FAILED",
-            "AUTOMOD_SETTINGS_UPDATED"
+            "AUTOMOD_SETTINGS_UPDATED",
+            "CAPTCHA_CHALLENGE_SENT",
+            "CAPTCHA_PASSED",
+            "CAPTCHA_TIMEOUT_KICK",
+            "CAPTCHA_TIMEOUT_BAN",
+            "CAPTCHA_SETTINGS_UPDATED"
           ]
         }
       },

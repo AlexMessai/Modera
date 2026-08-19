@@ -95,8 +95,13 @@ export async function reconcileTelegramMemberState(input: {
     return { reconciled: false, reason: "STALE_EVENT" as const };
   }
 
-  const punishment = punishmentFromTelegram(input.member);
-  const status = mapTelegramMembershipStatus(input.member.status);
+  const rawPunishment = punishmentFromTelegram(input.member);
+  const preserveCaptchaPending =
+    membership.punishmentState === "CAPTCHA_PENDING" && isMuted(input.member);
+  const punishment = preserveCaptchaPending
+    ? { punishmentState: membership.punishmentState, punishmentExpiresAt: membership.punishmentExpiresAt }
+    : rawPunishment;
+  const status = preserveCaptchaPending ? membership.status : mapTelegramMembershipStatus(input.member.status);
   const stateChanged =
     membership.punishmentState !== punishment.punishmentState ||
     membership.punishmentExpiresAt?.getTime() !== punishment.punishmentExpiresAt?.getTime();
