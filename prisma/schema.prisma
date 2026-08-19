@@ -91,6 +91,12 @@ enum CaptchaFailAction {
   BAN
 }
 
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -128,6 +134,7 @@ model Chat {
   moderationActions  ModerationAction[]
   moderationIncidents ModerationIncident[]
   auditLogs          AuditLog[]
+  appeals            Appeal[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -176,6 +183,7 @@ model TelegramUser {
   moderationActions ModerationAction[] @relation("ModeratedUser")
   moderationIncidents ModerationIncident[]
   auditLogs         AuditLog[]         @relation("AffectedUser")
+  appeals           Appeal[]
 
   @@index([username])
   @@index([lastSeenAt(sort: Desc)])
@@ -416,6 +424,7 @@ model ModerationAction {
   chat           Chat                   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   affectedUser   TelegramUser           @relation("ModeratedUser", fields: [affectedUserId], references: [id], onDelete: Cascade)
   actingAdmin    AdminUser?             @relation("ModerationActor", fields: [actingAdminId], references: [id], onDelete: Restrict)
+  appeal         Appeal?
 
   @@index([chatId, createdAt(sort: Desc)])
   @@index([affectedUserId, createdAt(sort: Desc)])
@@ -424,6 +433,28 @@ model ModerationAction {
   @@index([status, createdAt(sort: Desc)])
   @@index([type, createdAt(sort: Desc)])
   @@index([expiresAt, status])
+}
+
+model Appeal {
+  id                 String       @id @default(uuid()) @db.Uuid
+  chatId             String       @db.Uuid
+  userId             String       @db.Uuid
+  moderationActionId String       @unique @db.Uuid
+  status             AppealStatus @default(PENDING)
+  message            String       @db.VarChar(2000)
+  resolvedByAdminId  String?      @db.Uuid
+  resolutionComment  String?      @db.VarChar(1000)
+  resolvedAt         DateTime?    @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+  chat               Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user               TelegramUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  moderationAction   ModerationAction @relation(fields: [moderationActionId], references: [id], onDelete: Cascade)
+  resolvedByAdmin    AdminUser?       @relation("AppealResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([chatId, status, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model ModerationIncident {
@@ -475,6 +506,7 @@ model AdminUser {
   resolvedIncidents    ModerationIncident[] @relation("IncidentResolver")
   resolvedJoinRequests JoinRequest[]       @relation("JoinRequestResolver")
   auditLogs            AuditLog[]         @relation("ActingAdmin")
+  resolvedAppeals      Appeal[]           @relation("AppealResolver")
 
   @@index([role, isActive])
 }

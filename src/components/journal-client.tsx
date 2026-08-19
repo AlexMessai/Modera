@@ -59,7 +59,17 @@ const actionLabels: Record<string, string> = {
   ANTI_RAID_SETTINGS_UPDATED: "Изменены Anti-Raid настройки чата",
   GLOBAL_ANTI_RAID_SETTINGS_UPDATED: "Изменена глобальная Anti-Raid политика",
   PUNISHMENT_STATE_CONFIRMED: "Состояние наказания подтверждено Telegram",
-  PUNISHMENT_STATE_CLEARED: "Telegram снял наказание"
+  PUNISHMENT_STATE_CLEARED: "Telegram снял наказание",
+  CAPTCHA_CHALLENGE_SENT: "Отправлена капча новому участнику",
+  CAPTCHA_PASSED: "Капча пройдена",
+  CAPTCHA_TIMEOUT_KICK: "Исключён за непройденную капчу",
+  CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
+  CAPTCHA_SETTINGS_UPDATED: "Изменены настройки капчи чата",
+  GLOBAL_CAPTCHA_SETTINGS_UPDATED: "Изменена глобальная политика капчи",
+  APPEAL_SUBMITTED: "Подана апелляция",
+  APPEAL_APPROVED: "Апелляция одобрена",
+  APPEAL_REJECTED: "Апелляция отклонена",
+  APPEAL_NOTIFICATION_FAILED: "Не удалось уведомить пользователя об апелляции"
 };
 
 const pendingLabels: Record<string, string> = {

@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { processAntiRaidSignal } from "@/server/services/anti-raid-service";
+import { submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
@@ -61,8 +62,53 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   ]);
 }
 
+const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+
+async function processPrivateMessage(message: TelegramMessage, botTelegramId: number) {
+  const client = getTelegramClient();
+  if (!message.from || message.from.id === botTelegramId || message.from.is_bot) {
+    return { accepted: true, ignored: true };
+  }
+
+  const text = message.text?.trim() ?? "";
+  const match = APPEAL_COMMAND_PATTERN.exec(text);
+  if (!match) {
+    return { accepted: true, ignored: true };
+  }
+
+  if (!message.reply_to_message) {
+    await client.sendMessage({
+      chatId: message.from.id,
+      text: "Чтобы подать апелляцию, ответьте (Reply) на сообщение бота о наказании командой /appeal и текстом причины."
+    }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  const result = await submitAppealFromReply({
+    fromTelegramUserId: message.from.id,
+    replyToMessageId: message.reply_to_message.message_id,
+    text: (match[1] ?? "").trim()
+  });
+
+  const replyText = {
+    submitted: "Апелляция отправлена администраторам. Дождитесь решения.",
+    already_submitted: "По этому наказанию апелляция уже была подана.",
+    empty_message: "Опишите причину апелляции текстом после команды /appeal.",
+    action_not_found: "Не удалось определить, к какому наказанию относится апелляция. Отвечайте именно на сообщение бота о наказании."
+  }[result.outcome];
+
+  await client.sendMessage({ chatId: message.from.id, text: replyText }).catch(() => undefined);
+  return { accepted: true, ignored: false };
+}
+
 export async function processTelegramUpdate(update: TelegramUpdate) {
   const chat = extractChat(update);
+
+  if (chat?.type === "private" && update.message) {
+    const botProfile = await getTelegramBotProfile();
+    return processPrivateMessage(update.message, botProfile.id);
+  }
+
   if (!chat || (chat.type !== "group" && chat.type !== "supergroup")) {
     return { accepted: true, ignored: true };
   }

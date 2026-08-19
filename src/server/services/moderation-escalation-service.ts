@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
 import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import {
   executeAutomatedModerationAction,
@@ -63,7 +64,10 @@ export async function recordAutomodViolationAndEscalate(input: {
 
   const member = await prisma.chatMember.findFirst({
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
-    include: { user: { select: { isBot: true } } }
+    include: {
+      user: { select: { isBot: true, telegramUserId: true } },
+      chat: { select: { title: true } }
+    }
   });
   if (!member || member.user.isBot || isProtectedMemberStatus(member.status)) {
     if (member && isProtectedMemberStatus(member.status)) {
@@ -178,9 +182,20 @@ export async function recordAutomodViolationAndEscalate(input: {
     return {
       ...updated,
       activeWarningCount,
-      escalationMarker
+      escalationMarker,
+      moderationActionId: action.id
     };
   });
+
+  await notifyPunishmentAppealOption({
+    moderationActionId: warning.moderationActionId,
+    chatId: input.chatId,
+    userId: member.userId,
+    telegramUserId: member.user.telegramUserId,
+    chatTitle: member.chat.title,
+    actionType: "WARNING",
+    reason
+  }).catch(() => undefined);
 
   let action: "MUTE" | "BAN" | null = null;
   let threshold = 0;
