@@ -6,7 +6,6 @@ import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChal
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
-import { recordAutomodIncident } from "@/server/services/moderation-incident-service";
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import { executeTelegramActorModerationAction, ModerationError, type ModerationActionValue } from "@/server/services/moderation-service";
@@ -59,10 +58,7 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
     rule,
     telegramMessageId: String(input.message.message_id)
   };
-  await Promise.all([
-    recordAutomodViolationAndEscalate(violation).catch(() => undefined),
-    recordAutomodIncident(violation).catch(() => undefined)
-  ]);
+  await recordAutomodViolationAndEscalate(violation).catch(() => undefined);
 }
 
 const WARN_COMMAND_PATTERN = /^\/warn(?:@\w+)?(?:\s+([\s\S]*))?$/i;

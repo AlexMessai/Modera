@@ -10,7 +10,6 @@ import "./system.css";
 import "./settings.css";
 import "./join-requests.css";
 import "./dashboard.css";
-import "./incidents.css";
 import "./appeals.css";
 
 const onest = Onest({
