@@ -35,13 +35,22 @@ const roleLabels: Record<string, string> = {
   VIEWER: "Наблюдатель"
 };
 
-export function Sidebar({ admin }: { admin: { displayName: string; email: string; role: string } }) {
+export function Sidebar({
+  admin,
+  showJoinRequests = true
+}: {
+  admin: { displayName: string; email: string; role: string };
+  showJoinRequests?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
+  const filteredNavigation = showJoinRequests
+    ? baseNavigation
+    : baseNavigation.filter((item) => item.href !== "/join-requests");
   const navigation =
     admin.role === "OWNER" || admin.role === "ADMIN"
-      ? [...baseNavigation, { href: "/system", label: "Система", icon: ServerCog }]
-      : baseNavigation;
+      ? [...filteredNavigation, { href: "/system", label: "Система", icon: ServerCog }]
+      : filteredNavigation;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
