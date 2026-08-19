@@ -121,33 +121,33 @@ export function ChatModerationSettings({
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.blockLinks} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockLinks: event.target.checked }))} /><span><strong>Запрещённые ссылки</strong><small>Удаляет ссылки, которых нет в allowlist доменов.</small></span></label>
-        <label className="automod-field"><span>Разрешённые домены</span><textarea rows={4} value={visibleDomains} disabled={fieldsDisabled || !visibleSettings.blockLinks} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} /><small>По одному домену на строку. Поддомены разрешённого домена тоже пропускаются.</small></label>
+        {visibleSettings.blockLinks ? <label className="automod-field"><span>Разрешённые домены</span><textarea rows={3} value={visibleDomains} disabled={fieldsDisabled} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} /><small>По одному домену на строку. Поддомены разрешённого домена тоже пропускаются.</small></label> : null}
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.blockedTermsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockedTermsEnabled: event.target.checked }))} /><span><strong>Запрещённые слова и фразы</strong><small>Проверяет текст сообщения и подпись к медиа без учёта регистра.</small></span></label>
-        <label className="automod-field"><span>Список выражений</span><textarea rows={5} value={visibleTerms} disabled={fieldsDisabled || !visibleSettings.blockedTermsEnabled} onChange={(event) => setTerms(event.target.value)} placeholder={"рекламная фраза\nзапрещенное слово"} /><small>Одно слово или фраза на строку. До 200 выражений.</small></label>
+        {visibleSettings.blockedTermsEnabled ? <label className="automod-field"><span>Список выражений</span><textarea rows={3} value={visibleTerms} disabled={fieldsDisabled} onChange={(event) => setTerms(event.target.value)} placeholder={"рекламная фраза\nзапрещенное слово"} /><small>Одно слово или фраза на строку. До 200 выражений.</small></label> : null}
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.spamEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, spamEnabled: event.target.checked }))} /><span><strong>Антифлуд</strong><small>Удаляет текущее сообщение при превышении лимита сообщений за окно времени.</small></span></label>
-        <div className="automod-number-grid">
-          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={3} max={120} value={visibleSettings.spamWindowSeconds} disabled={fieldsDisabled || !visibleSettings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamWindowSeconds: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Сообщений разрешено</span><input type="number" min={2} max={50} value={visibleSettings.spamMaxMessages} disabled={fieldsDisabled || !visibleSettings.spamEnabled} onChange={(event) => setSettings((current) => ({ ...current, spamMaxMessages: Number(event.target.value) }))} /></label>
-        </div>
+        {visibleSettings.spamEnabled ? <div className="automod-number-grid">
+          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={3} max={120} value={visibleSettings.spamWindowSeconds} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, spamWindowSeconds: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Сообщений разрешено</span><input type="number" min={2} max={50} value={visibleSettings.spamMaxMessages} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, spamMaxMessages: Number(event.target.value) }))} /></label>
+        </div> : null}
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.duplicateEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateEnabled: event.target.checked }))} /><span><strong>Повторяющиеся сообщения</strong><small>Сравнивает нормализованный текст пользователя с его недавними сообщениями в этом чате.</small></span></label>
-        <div className="automod-number-grid">
-          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={5} max={3600} value={visibleSettings.duplicateWindowSeconds} disabled={fieldsDisabled || !visibleSettings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateWindowSeconds: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Одинаковых разрешено</span><input type="number" min={1} max={20} value={visibleSettings.duplicateMaxMessages} disabled={fieldsDisabled || !visibleSettings.duplicateEnabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateMaxMessages: Number(event.target.value) }))} /></label>
-        </div>
+        {visibleSettings.duplicateEnabled ? <div className="automod-number-grid">
+          <label className="automod-field"><span>Окно, секунд</span><input type="number" min={5} max={3600} value={visibleSettings.duplicateWindowSeconds} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateWindowSeconds: Number(event.target.value) }))} /></label>
+          <label className="automod-field"><span>Одинаковых разрешено</span><input type="number" min={1} max={20} value={visibleSettings.duplicateMaxMessages} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, duplicateMaxMessages: Number(event.target.value) }))} /></label>
+        </div> : null}
       </div>
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.massMentionsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, massMentionsEnabled: event.target.checked }))} /><span><strong>Массовые упоминания</strong><small>Считает реальные Telegram mention/text_mention entities.</small></span></label>
-        <label className="automod-field automod-field--short"><span>Максимум упоминаний</span><input type="number" min={1} max={50} value={visibleSettings.maxMentions} disabled={fieldsDisabled || !visibleSettings.massMentionsEnabled} onChange={(event) => setSettings((current) => ({ ...current, maxMentions: Number(event.target.value) }))} /></label>
+        {visibleSettings.massMentionsEnabled ? <label className="automod-field automod-field--short"><span>Максимум упоминаний</span><input type="number" min={1} max={50} value={visibleSettings.maxMentions} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, maxMentions: Number(event.target.value) }))} /></label> : null}
       </div>
 
       <div className="automod-rule">
@@ -157,13 +157,15 @@ export function ChatModerationSettings({
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.autoEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, autoEscalationEnabled: event.target.checked }))} /><span><strong>Автоматические наказания</strong><small>Каждое успешно удалённое automod-сообщение добавляет предупреждение. По достижении порогов Modera применяет временный mute, затем ban.</small></span></label>
-        <div className="automod-number-grid">
-          <label className="automod-field"><span>Mute после предупреждений</span><input type="number" min={2} max={20} value={visibleSettings.muteAfterWarnings} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, muteAfterWarnings: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Срок mute, минут</span><input type="number" min={1} max={10080} value={visibleSettings.muteDurationMinutes} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, muteDurationMinutes: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Ban после предупреждений</span><input type="number" min={3} max={50} value={visibleSettings.banAfterWarnings} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, banAfterWarnings: Number(event.target.value) }))} /></label>
-          <label className="automod-field"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled || !visibleSettings.autoEscalationEnabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /><small>0 — предупреждения не сгорают. При значении больше 0 старые предупреждения остаются в журнале, но перестают влиять на пороги.</small></label>
-        </div>
-        <small className="row-note">Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute. Исторический счётчик предупреждений не удаляется.</small>
+        {visibleSettings.autoEscalationEnabled ? <>
+          <div className="automod-number-grid">
+            <label className="automod-field"><span>Mute после предупреждений</span><input type="number" min={2} max={20} value={visibleSettings.muteAfterWarnings} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, muteAfterWarnings: Number(event.target.value) }))} /></label>
+            <label className="automod-field"><span>Срок mute, минут</span><input type="number" min={1} max={10080} value={visibleSettings.muteDurationMinutes} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, muteDurationMinutes: Number(event.target.value) }))} /></label>
+            <label className="automod-field"><span>Ban после предупреждений</span><input type="number" min={3} max={50} value={visibleSettings.banAfterWarnings} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, banAfterWarnings: Number(event.target.value) }))} /></label>
+            <label className="automod-field"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /></label>
+          </div>
+          <small className="row-note">0 предупреждений не сгорают, иначе старые перестают влиять на пороги по истечении срока. Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute.</small>
+        </> : null}
       </div>
 
       <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={visibleSettings.ignoreAdmins} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, ignoreAdmins: event.target.checked }))} /><span><strong>Не применять к администраторам Telegram</strong><small>Рекомендуется оставить включённым. Автоматический mute/ban владельца или администратора в любом случае заблокирован сервером.</small></span></label>
