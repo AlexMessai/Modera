@@ -426,23 +426,25 @@ model Appeal {
 }
 
 model AdminUser {
-  id                   String             @id @default(uuid()) @db.Uuid
-  email                String             @unique
-  displayName          String
-  passwordHash         String
-  role                 AdminRole          @default(VIEWER)
-  isActive             Boolean            @default(true)
-  telegramUserId       BigInt?            @unique
-  telegramUsername     String?
-  telegramFirstName    String?
-  lastLoginAt          DateTime?          @db.Timestamptz(3)
-  createdAt            DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime           @updatedAt @db.Timestamptz(3)
-  sessions             AdminSession[]
-  moderationActions    ModerationAction[] @relation("ModerationActor")
-  resolvedJoinRequests JoinRequest[]       @relation("JoinRequestResolver")
-  auditLogs            AuditLog[]         @relation("ActingAdmin")
-  resolvedAppeals      Appeal[]           @relation("AppealResolver")
+  id                        String             @id @default(uuid()) @db.Uuid
+  email                     String             @unique
+  displayName               String
+  passwordHash              String
+  role                      AdminRole          @default(VIEWER)
+  isActive                  Boolean            @default(true)
+  telegramUserId            BigInt?            @unique
+  telegramUsername          String?
+  telegramFirstName         String?
+  telegramLinkCode          String?
+  telegramLinkCodeExpiresAt DateTime?          @db.Timestamptz(3)
+  lastLoginAt               DateTime?          @db.Timestamptz(3)
+  createdAt                 DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime           @updatedAt @db.Timestamptz(3)
+  sessions                  AdminSession[]
+  moderationActions         ModerationAction[] @relation("ModerationActor")
+  resolvedJoinRequests      JoinRequest[]       @relation("JoinRequestResolver")
+  auditLogs                 AuditLog[]         @relation("ActingAdmin")
+  resolvedAppeals           Appeal[]           @relation("AppealResolver")
 
   @@index([role, isActive])
 }

@@ -7,6 +7,7 @@ import {
   Link2Off,
   Pencil,
   RefreshCw,
+  Send,
   ShieldCheck,
   UserPlus,
   X
@@ -27,6 +28,7 @@ type AdminUser = {
   createdAt: string;
   updatedAt: string;
   activeSessionCount: number;
+  telegramLinked: boolean;
 };
 
 type EditorState =
@@ -78,6 +80,7 @@ export function AdminSettingsClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
   function refresh() {
     setLoading(true);
@@ -139,6 +142,7 @@ export function AdminSettingsClient({
                   <th>Статус</th>
                   <th>Активные сессии</th>
                   <th>Последний вход</th>
+                  <th>Telegram</th>
                   <th />
                 </tr>
               </thead>
@@ -158,6 +162,17 @@ export function AdminSettingsClient({
                     <td><span className={`badge ${user.isActive ? "badge--active" : "badge--danger"}`}>{user.isActive ? "Активен" : "Отключён"}</span></td>
                     <td>{user.activeSessionCount.toLocaleString("ru-RU")}</td>
                     <td>{formatDate(user.lastLoginAt)}</td>
+                    <td>
+                      {user.telegramLinked ? (
+                        <span className="badge badge--active">Привязан</span>
+                      ) : user.id === currentAdminId ? (
+                        <button className="button button--compact button--secondary" type="button" onClick={() => setLinkDialogOpen(true)}>
+                          <Send size={13} /> Привязать
+                        </button>
+                      ) : (
+                        <span className="badge">Не привязан</span>
+                      )}
+                    </td>
                     <td>
                       <button className="icon-button" type="button" title="Изменить" aria-label="Изменить администратора" onClick={() => setEditor({ mode: "edit", user })}>
                         <Pencil size={16} />
@@ -197,7 +212,71 @@ export function AdminSettingsClient({
           }}
         />
       ) : null}
+
+      {linkDialogOpen ? (
+        <TelegramLinkDialog
+          onClose={() => setLinkDialogOpen(false)}
+          onLinked={() => {
+            setLinkDialogOpen(false);
+            refresh();
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function TelegramLinkDialog({ onClose, onLinked }: { onClose: () => void; onLinked: () => void }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/admin-users/telegram-link", { method: "POST" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось создать код привязки.");
+        if (active) setCode(payload.data.code as string);
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(caught instanceof Error ? caught.message : "Не удалось создать код привязки.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+      <div className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="telegram-link-title">
+        <div className="dialog-header">
+          <div>
+            <span className="eyebrow">Привязка аккаунта</span>
+            <h2 id="telegram-link-title">Привязать Telegram</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Закрыть" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {loading ? <div className="state-box">Генерирую код…</div> : null}
+        {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
+        {code ? (
+          <div className="state-box state-box--compact">
+            <p>Напишите боту в личные сообщения:</p>
+            <p className="mono settings-link-code">/link {code}</p>
+            <p>Код действителен 15 минут. После привязки апелляции можно будет решать прямо в Telegram.</p>
+          </div>
+        ) : null}
+
+        <div className="dialog-actions">
+          <button className="button button--secondary" type="button" onClick={onClose}>Закрыть</button>
+          <button className="button button--primary" type="button" onClick={onLinked}>Я привязал(а)</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
