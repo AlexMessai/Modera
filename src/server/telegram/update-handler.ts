@@ -10,7 +10,9 @@ import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdminist
 import { recordAutomodIncident } from "@/server/services/moderation-incident-service";
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
+import { executeTelegramActorModerationAction, ModerationError, type ModerationActionValue } from "@/server/services/moderation-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
+import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
@@ -62,6 +64,96 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
     recordAutomodViolationAndEscalate(violation).catch(() => undefined),
     recordAutomodIncident(violation).catch(() => undefined)
   ]);
+}
+
+const WARN_COMMAND_PATTERN = /^\/warn(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const MUTE_COMMAND_PATTERN = /^\/mute(?:@\w+)?\s*(?:(\d+)\s+)?([\s\S]*)$/i;
+const BAN_COMMAND_PATTERN = /^\/ban(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const UNBAN_COMMAND_PATTERN = /^\/unban(?:@\w+)?\s*$/i;
+
+const MODERATION_SUCCESS_TEXT: Record<ModerationActionValue, string> = {
+  WARNING: "✅ Пользователь предупреждён.",
+  MUTE: "✅ Пользователь замучен.",
+  UNMUTE: "✅ Mute снят.",
+  BAN: "✅ Пользователь заблокирован.",
+  UNBAN: "✅ Блокировка снята."
+};
+
+async function processGroupModerationCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  let action: ModerationActionValue;
+  let reason: string | null = null;
+  let muteDurationMinutes: number | null = null;
+
+  const warnMatch = WARN_COMMAND_PATTERN.exec(text);
+  const muteMatch = !warnMatch ? MUTE_COMMAND_PATTERN.exec(text) : null;
+  const banMatch = !warnMatch && !muteMatch ? BAN_COMMAND_PATTERN.exec(text) : null;
+  const unbanMatch = !warnMatch && !muteMatch && !banMatch ? UNBAN_COMMAND_PATTERN.exec(text) : null;
+
+  if (warnMatch) {
+    action = "WARNING";
+    reason = (warnMatch[1] ?? "").trim() || null;
+  } else if (muteMatch) {
+    action = "MUTE";
+    muteDurationMinutes = muteMatch[1] ? Number(muteMatch[1]) : null;
+    reason = (muteMatch[2] ?? "").trim() || null;
+  } else if (banMatch) {
+    action = "BAN";
+    reason = (banMatch[1] ?? "").trim() || null;
+  } else if (unbanMatch) {
+    action = "UNBAN";
+  } else {
+    return false;
+  }
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText }).catch(() => undefined);
+
+  const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
+  if (!isAdmin) {
+    await reply("❌ У вас нет прав администратора в этом чате.");
+    return true;
+  }
+
+  const target = input.message.reply_to_message?.from;
+  if (!target) {
+    await reply("Чтобы применить эту команду, ответьте (Reply) на сообщение участника, которого нужно наказать.");
+    return true;
+  }
+
+  if (action === "MUTE" && !muteDurationMinutes) {
+    await reply("Укажите срок mute в минутах: /mute <минут> <причина>");
+    return true;
+  }
+
+  try {
+    await executeTelegramActorModerationAction({
+      chatId: input.chatId,
+      targetTelegramUserId: target.id,
+      action,
+      reason,
+      muteDurationMinutes,
+      telegramActor: {
+        telegramUserId: from.id,
+        username: from.username,
+        displayName: [from.first_name, from.last_name].filter(Boolean).join(" ").trim() || undefined
+      }
+    });
+    await reply(MODERATION_SUCCESS_TEXT[action]);
+  } catch (error) {
+    const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
+    await reply(`❌ ${message}`);
+  }
+
+  return true;
 }
 
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
@@ -269,7 +361,17 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       updateId: update.update_id,
       skipTelegramUserId: botProfile.id
     });
-    await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });
+    const commandHandled = update.message.text?.trim().startsWith("/")
+      ? await processGroupModerationCommand({
+          chatId: syncedChat.id,
+          telegramChatId: chat.id,
+          message: update.message,
+          client
+        })
+      : false;
+    if (!commandHandled) {
+      await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });
+    }
   }
 
   if (update.edited_message) {

@@ -66,7 +66,7 @@ export type TelegramMessage = {
   edit_date?: number;
   chat: TelegramChat;
   from?: TelegramUser;
-  reply_to_message?: { message_id: number };
+  reply_to_message?: { message_id: number; from?: TelegramUser };
   text?: string;
   caption?: string;
   entities?: TelegramMessageEntity[];

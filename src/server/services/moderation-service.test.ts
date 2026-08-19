@@ -3,9 +3,11 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
   executeModerationAction,
+  executeTelegramActorModerationAction,
   isModerationAction,
   isProtectedMemberStatus,
   membershipUpdateFor,
+  ModerationError,
   requiresReason
 } from "./moderation-service";
 
@@ -111,5 +113,84 @@ test("warning is persisted atomically without calling Telegram", async () => {
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.telegramUser.delete({ where: { id: user.id } });
     await prisma.adminUser.delete({ where: { id: admin.id } });
+  }
+});
+
+test("Telegram-actor warning is persisted with source TELEGRAM and no admin", async () => {
+  const telegramChatId = -1009000000301n;
+  const telegramUserId = 900000301n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "In-chat command CI", type: "supergroup" }
+  });
+  const user = await prisma.telegramUser.create({
+    data: { telegramUserId, firstName: "Target", displayName: "Target User" }
+  });
+  const membership = await prisma.chatMember.create({
+    data: { chatId: chat.id, userId: user.id, status: "MEMBER" }
+  });
+
+  try {
+    const result = await executeTelegramActorModerationAction({
+      chatId: chat.id,
+      targetTelegramUserId: Number(telegramUserId),
+      action: "WARNING",
+      reason: "Флуд ссылками",
+      telegramActor: { telegramUserId: 555, username: "chat_admin", displayName: "Chat Admin" }
+    });
+
+    assert.equal(result.type, "WARNING");
+    assert.equal(result.warningCount, 1);
+
+    const action = await prisma.moderationAction.findFirstOrThrow({
+      where: { affectedUserId: user.id, type: "WARNING" }
+    });
+    assert.equal(action.source, "TELEGRAM");
+    assert.equal(action.actingAdminId, null);
+    assert.equal((action.metadata as Record<string, unknown>).telegramActorId, 555);
+    assert.equal((action.metadata as Record<string, unknown>).telegramActorUsername, "chat_admin");
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.chatMember.deleteMany({ where: { id: membership.id } });
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
+test("Telegram-actor action rejects a missing reason and an unknown member", async () => {
+  const telegramChatId = -1009000000302n;
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "In-chat command CI 2", type: "supergroup" }
+  });
+
+  try {
+    await assert.rejects(
+      executeTelegramActorModerationAction({
+        chatId: chat.id,
+        targetTelegramUserId: 900000999,
+        action: "WARNING",
+        reason: "   ",
+        telegramActor: { telegramUserId: 555 }
+      }),
+      (error: unknown) => error instanceof ModerationError && error.code === "REASON_REQUIRED"
+    );
+
+    await assert.rejects(
+      executeTelegramActorModerationAction({
+        chatId: chat.id,
+        targetTelegramUserId: 900000999,
+        action: "BAN",
+        reason: "Спам",
+        telegramActor: { telegramUserId: 555 }
+      }),
+      (error: unknown) => error instanceof ModerationError && error.code === "MEMBER_NOT_FOUND"
+    );
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
   }
 });
