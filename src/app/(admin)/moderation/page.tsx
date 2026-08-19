@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, Globe2, ShieldAlert, ShieldCheck } from "lucide-react";
-import { CaptchaSettings } from "@/components/captcha-settings";
-import { ChatModerationSettings } from "@/components/chat-moderation-settings";
-import { AntiRaidSettings } from "@/components/anti-raid-settings";
+import { AlertTriangle, ArrowUpRight, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ModerationWorkspace } from "@/components/moderation-workspace-client";
 import { AntiRaidOverviewClient } from "@/components/anti-raid-overview-client";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
@@ -39,20 +37,12 @@ export default async function ModerationPage() {
     <main className="page">
       <header className="page-header"><div><span className="eyebrow">Политики и автоматизация</span><h1>Модерация</h1><p>Глобальная политика, капча, Anti-Raid и индивидуальные правила чатов в одном месте.</p></div></header>
 
-      <section className="panel profile-section">
-        <div className="panel-header"><div><h2>Глобальная политика</h2><p>Единый набор правил для чатов, которые явно включили наследование. Автонаказания и destructive-правила по умолчанию выключены.</p></div><Globe2 size={19} /></div>
-        <ChatModerationSettings scope="global" initial={data.globalProfile.settings} canEdit={canEdit} />
-      </section>
-
-      <section className="panel profile-section">
-        <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Значение по умолчанию для чатов, которые включили наследование глобальной политики.</p></div><ShieldCheck size={19} /></div>
-        <CaptchaSettings scope="global" initial={captchaProfile.settings} canEdit={canEdit} />
-      </section>
-
-      <section className="panel profile-section">
-        <div className="panel-header"><div><h2>Anti-Raid: глобальная политика</h2><p>Защита от массовых вступлений и заявок. Не применяется к чату, пока он явно не включит наследование.</p></div><ShieldAlert size={19} /></div>
-        <AntiRaidSettings scope="global" initial={antiRaidProfile.settings} canEdit={canEdit} />
-      </section>
+      <ModerationWorkspace
+        automodInitial={data.globalProfile.settings}
+        captchaInitial={captchaProfile.settings}
+        antiRaidInitial={antiRaidProfile.settings}
+        canEdit={canEdit}
+      />
 
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Anti-Raid: мониторинг</h2><p>Живые данные по всплескам вступлений и заявок за последние 24 часа.</p></div><ShieldAlert size={19} /></div>

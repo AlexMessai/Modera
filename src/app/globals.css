@@ -55,6 +55,22 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .metric-card { min-height: 132px; padding: 17px; display: flex; flex-direction: column; }
 .metric-card > span { color: var(--muted); font-size: 13px; }
 .metric-card strong { margin-top: 11px; font-size: 27px; letter-spacing: -0.035em; }
+.moderation-workspace { display: grid; gap: 16px; margin-bottom: 16px; }
+.module-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.module-card { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.module-card-header { display: flex; align-items: center; gap: 9px; }
+.module-card-icon { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: var(--surface-2); color: var(--accent); }
+.module-card-header strong { font-size: 15px; }
+.module-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; flex: 1; }
+.module-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.module-card-actions { display: flex; gap: 8px; margin-top: auto; }
+.module-card-actions .button { flex: 1; }
+@media (max-width: 1100px) {
+  .module-card-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 760px) {
+  .module-card-grid { grid-template-columns: 1fr; }
+}
 .metric-card small { margin-top: auto; color: var(--muted); }
 .metric-card--muted strong { color: #a0a5ae; }
 .panel { padding: 18px; }

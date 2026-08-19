@@ -40,6 +40,7 @@ type Props = {
   scope?: "chat" | "global";
   initialUseGlobalProfile?: boolean;
   globalSettings?: ModerationSettingsValue;
+  onSaved?: (saved: ModerationSettingsValue) => void;
 };
 
 function splitList(value: string) {
@@ -54,7 +55,8 @@ export function ChatModerationSettings({
   botCanRestrictMembers = true,
   scope = "chat",
   initialUseGlobalProfile = false,
-  globalSettings
+  globalSettings,
+  onSaved
 }: Props) {
   const [settings, setSettings] = useState(initial);
   const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
@@ -88,11 +90,13 @@ export function ChatModerationSettings({
         const saved = payload.data as ModerationSettingsValue;
         setSettings(saved); setDomains(saved.allowedDomains.join("\n")); setTerms(saved.blockedTerms.join("\n"));
         setSuccess("Глобальная политика сохранена. Чаты с наследованием применят её к новым Telegram-событиям.");
+        onSaved?.(saved);
       } else {
         const saved = payload.data as ModerationSettingsValue & { useGlobalProfile: boolean };
         const { useGlobalProfile: savedMode, ...savedSettings } = saved;
         setUseGlobalProfile(savedMode); setSettings(savedSettings); setDomains(savedSettings.allowedDomains.join("\n")); setTerms(savedSettings.blockedTerms.join("\n"));
         setSuccess(savedMode ? "Чат переключён на глобальную политику модерации." : "Индивидуальные правила сохранены и применяются к новым Telegram-событиям.");
+        onSaved?.(savedSettings);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки.");
