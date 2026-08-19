@@ -46,6 +46,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .page-header h1 { margin: 3px 0 5px; font-size: 28px; line-height: 1.16; letter-spacing: -0.035em; }
 .page-header p, .panel-header p, .status-row p, .state-box p { margin: 0; color: var(--muted); }
 .eyebrow { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.page-tabs { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 20px; }
+.page-tab { border: 0; border-radius: 6px; padding: 7px 14px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; }
+.page-tab:hover { background: var(--surface-2); color: var(--text); }
+.page-tab--active { background: var(--surface-2); color: var(--text); }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .metric-card, .panel { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); }
 .metric-card { min-height: 132px; padding: 17px; display: flex; flex-direction: column; }

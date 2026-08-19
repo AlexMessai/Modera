@@ -7,6 +7,7 @@ import "./journal.css";
 import "./messages.css";
 import "./moderation.css";
 import "./system.css";
+import "./settings.css";
 import "./join-requests.css";
 import "./anti-raid.css";
 import "./dashboard.css";
