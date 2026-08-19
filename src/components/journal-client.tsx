@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search, TriangleAlert } from "lucide-react";
 
-type JournalCategory = "ALL" | "MANUAL" | "AUTOMOD" | "ANTI_RAID" | "ERRORS" | "SETTINGS" | "PENDING";
+type JournalCategory = "ALL" | "MANUAL" | "AUTOMOD" | "ERRORS" | "SETTINGS" | "PENDING";
 type Person = { id: string; displayName: string; username: string | null; telegramUserId: string };
 type Chat = { id: string; title: string; telegramChatId: string };
 type Admin = { id: string; displayName: string; email: string };
@@ -51,13 +51,6 @@ const actionLabels: Record<string, string> = {
   AUTOMOD_DELETE_FAILED: "Ошибка автоматического удаления",
   AUTOMOD_SETTINGS_UPDATED: "Изменены правила чата",
   GLOBAL_AUTOMOD_SETTINGS_UPDATED: "Изменена глобальная политика",
-  RAID_STARTED: "Обнаружен рейд",
-  RAID_ENDED: "Рейд завершён",
-  RAID_MEMBER_MUTED: "Anti-Raid mute нового участника",
-  RAID_MITIGATION_FAILED: "Ошибка Anti-Raid ограничения",
-  RAID_MITIGATION_SKIPPED_PROTECTED: "Anti-Raid пропущен для администратора",
-  ANTI_RAID_SETTINGS_UPDATED: "Изменены Anti-Raid настройки чата",
-  GLOBAL_ANTI_RAID_SETTINGS_UPDATED: "Изменена глобальная Anti-Raid политика",
   PUNISHMENT_STATE_CONFIRMED: "Состояние наказания подтверждено Telegram",
   PUNISHMENT_STATE_CLEARED: "Telegram снял наказание",
   CAPTCHA_CHALLENGE_SENT: "Отправлена капча новому участнику",
@@ -85,7 +78,6 @@ const categoryLabels: Record<JournalCategory, string> = {
   ALL: "Все события",
   MANUAL: "Ручная модерация",
   AUTOMOD: "Автомодерация",
-  ANTI_RAID: "Anti-Raid",
   ERRORS: "Только ошибки",
   SETTINGS: "Изменения правил",
   PENDING: "Требуют сверки"
@@ -104,13 +96,11 @@ function formatDate(value: string) {
 
 function systemActorLabel(item: { action: string; source: string }) {
   if (item.source !== "SYSTEM") return "Система";
-  if (item.action.startsWith("RAID_") || item.action.includes("ANTI_RAID")) return "Anti-Raid";
   return "Автомодерация";
 }
 
 function pendingActorLabel(item: PendingItem) {
   if (item.actingAdmin) return item.actingAdmin.displayName;
-  if (item.reason?.startsWith("Anti-Raid")) return "Anti-Raid";
   return item.source === "SYSTEM" ? "Автомодерация" : "Система";
 }
 

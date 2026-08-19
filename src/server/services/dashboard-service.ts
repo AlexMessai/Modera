@@ -21,15 +21,11 @@ const ERROR_ACTIONS = [
   "AUTOMOD_DELETE_FAILED",
   "AUTOMOD_ESCALATION_FAILED",
   "MANUAL_MESSAGE_DELETE_FAILED",
-  "RAID_MITIGATION_FAILED",
   "JOIN_REQUEST_ACTION_FAILED",
   "MEMBER_TAG_UPDATE_FAILED"
 ];
 
 const RECENT_ACTIONS = [
-  "RAID_STARTED",
-  "RAID_ENDED",
-  "RAID_MEMBER_MUTED",
   "AUTOMOD_AUTO_MUTE",
   "AUTOMOD_AUTO_BAN",
   "MODERATION_MUTE",
@@ -198,12 +194,9 @@ export async function getDashboardData(period: DashboardPeriod) {
     previousModerationActions,
     automodActions,
     previousAutomodActions,
-    raids,
-    previousRaids,
     pendingJoinRequests,
     pendingModerationActions,
     problematicBotLinks,
-    activeRaids,
     errors,
     messageTrend,
     joinTrend,
@@ -225,12 +218,9 @@ export async function getDashboardData(period: DashboardPeriod) {
     prisma.moderationAction.count({ where: { createdAt: { gte: previousFrom, lt: from } } }),
     prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: from, lte: now } } }),
     prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: previousFrom, lt: from } } }),
-    prisma.raidIncident.count({ where: { startedAt: { gte: from, lte: now } } }),
-    prisma.raidIncident.count({ where: { startedAt: { gte: previousFrom, lt: from } } }),
     prisma.joinRequest.count({ where: { status: "PENDING" } }),
     prisma.moderationAction.count({ where: { status: "PENDING" } }),
     prisma.botChat.count({ where: { status: { not: "ACTIVE" } } }),
-    prisma.raidIncident.count({ where: { status: "ACTIVE", activeUntil: { gt: now } } }),
     prisma.auditLog.count({ where: { action: { in: ERROR_ACTIONS }, createdAt: { gte: from, lte: now } } }),
     loadMessageTrend(period, from),
     loadJoinTrend(period, from),
@@ -281,14 +271,12 @@ export async function getDashboardData(period: DashboardPeriod) {
       newMembers: { current: newMembers, previous: previousNewMembers, deltaPercent: comparisonPercent(newMembers, previousNewMembers) },
       joinRequests: { current: joinRequests, previous: previousJoinRequests, deltaPercent: comparisonPercent(joinRequests, previousJoinRequests) },
       moderationActions: { current: moderationActions, previous: previousModerationActions, deltaPercent: comparisonPercent(moderationActions, previousModerationActions) },
-      automodActions: { current: automodActions, previous: previousAutomodActions, deltaPercent: comparisonPercent(automodActions, previousAutomodActions) },
-      raids: { current: raids, previous: previousRaids, deltaPercent: comparisonPercent(raids, previousRaids) }
+      automodActions: { current: automodActions, previous: previousAutomodActions, deltaPercent: comparisonPercent(automodActions, previousAutomodActions) }
     },
     attention: {
       pendingJoinRequests,
       pendingModerationActions,
       problematicBotLinks,
-      activeRaids,
       errors
     },
     trend,

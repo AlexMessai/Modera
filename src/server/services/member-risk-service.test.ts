@@ -12,8 +12,7 @@ test("risk score stays low without negative signals", () => {
     isTrusted: false,
     activeWarningCount: 0,
     automodViolationCount: 0,
-    recentPunishmentCount: 0,
-    joinedDuringRaid: false
+    recentPunishmentCount: 0
   });
   assert.equal(result.score, 0);
   assert.equal(result.level, "LOW");
@@ -28,14 +27,12 @@ test("risk score explains and caps combined signals", () => {
     isTrusted: false,
     activeWarningCount: 4,
     automodViolationCount: 8,
-    recentPunishmentCount: 3,
-    joinedDuringRaid: true
+    recentPunishmentCount: 3
   });
-  assert.equal(result.score, 100);
+  assert.equal(result.score, 96);
   assert.equal(result.level, "CRITICAL");
   assert.deepEqual(result.reasons.map((reason) => reason.code), [
     "NEW_MEMBER_24H",
-    "JOINED_DURING_RAID",
     "ACTIVE_WARNINGS",
     "AUTOMOD_VIOLATIONS",
     "RECENT_PUNISHMENTS"
@@ -50,8 +47,7 @@ test("trusted membership safely overrides automatic risk signals", () => {
     isTrusted: true,
     activeWarningCount: 10,
     automodViolationCount: 10,
-    recentPunishmentCount: 10,
-    joinedDuringRaid: true
+    recentPunishmentCount: 10
   });
   assert.equal(result.score, 0);
   assert.equal(result.level, "LOW");
