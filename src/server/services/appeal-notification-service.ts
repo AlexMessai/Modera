@@ -14,12 +14,12 @@ export function buildAppealCallbackData(appealId: string, decision: "APPROVE" | 
   return `${APPEAL_CALLBACK_PREFIX}${appealId}:${decision}`;
 }
 
-export function parseAppealCallbackData(data: string) {
+export function parseAppealCallbackData(data: string): { appealId: string; decision: "APPROVE" | "REJECT" } | null {
   if (!data.startsWith(APPEAL_CALLBACK_PREFIX)) return null;
   const [appealId, decision] = data.slice(APPEAL_CALLBACK_PREFIX.length).split(":");
   if (!appealId || !UUID_PATTERN.test(appealId)) return null;
   if (decision !== "APPROVE" && decision !== "REJECT") return null;
-  return { appealId, decision };
+  return { appealId, decision: decision as "APPROVE" | "REJECT" };
 }
 
 function telegramErrorMessage(error: unknown) {
