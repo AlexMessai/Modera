@@ -20,13 +20,12 @@ export async function notifyPunishmentAppealOption(input: {
   actionType: "WARNING" | "MUTE" | "BAN";
   reason: string | null;
 }) {
-  const client = getTelegramClient();
   const label = ACTION_LABELS[input.actionType] ?? input.actionType;
   const text = `В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЕсли вы не согласны, ответьте на это сообщение (Reply) командой /appeal и опишите причину одним сообщением, например:\n/appeal я не отправлял это сообщение`;
 
   let dmMessageId: number | null = null;
   try {
-    const sent = await client.sendMessage({
+    const sent = await getTelegramClient().sendMessage({
       chatId: Number(input.telegramUserId),
       text
     });
@@ -134,13 +133,12 @@ export async function notifyAppealDecision(input: {
   decision: "APPROVED" | "REJECTED";
   comment: string | null;
 }) {
-  const client = getTelegramClient();
   const text = input.decision === "APPROVED"
     ? `Ваша апелляция по чату «${input.chatTitle}» одобрена, наказание отменено.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`
     : `Ваша апелляция по чату «${input.chatTitle}» отклонена.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`;
 
   try {
-    await client.sendMessage({ chatId: Number(input.telegramUserId), text });
+    await getTelegramClient().sendMessage({ chatId: Number(input.telegramUserId), text });
     return { delivered: true as const };
   } catch {
     return { delivered: false as const };

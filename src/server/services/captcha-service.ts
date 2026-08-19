@@ -29,10 +29,8 @@ export async function issueCaptchaChallenge(input: {
   displayName: string;
   timeoutMinutes: number;
 }) {
-  const client = getTelegramClient();
-
   try {
-    await client.restrictChatMember({
+    await getTelegramClient().restrictChatMember({
       chatId: Number(input.telegramChatId),
       userId: Number(input.telegramUserId),
       permissions: MUTED_CHAT_PERMISSIONS
@@ -67,7 +65,7 @@ export async function issueCaptchaChallenge(input: {
   }
 
   try {
-    await client.sendMessage({
+    await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       text: `${input.displayName}, подтвердите, что вы не бот — нажмите кнопку ниже в течение ${input.timeoutMinutes} мин., иначе вы будете исключены из чата.`,
       replyMarkup: {
@@ -154,9 +152,8 @@ export async function verifyCaptchaChallenge(input: {
     return { outcome: "not_pending" as const };
   }
 
-  const client = getTelegramClient();
   try {
-    await client.restrictChatMember({
+    await getTelegramClient().restrictChatMember({
       chatId: Number(input.telegramChatId),
       userId: input.targetTelegramUserId,
       permissions: UNRESTRICTED_CHAT_PERMISSIONS
@@ -217,8 +214,8 @@ export async function processExpiredCaptchaChallenges(input?: { now?: Date; limi
   let failed = 0;
 
   for (const member of candidates) {
-    const client = getTelegramClient();
     try {
+      const client = getTelegramClient();
       const profile = await resolveEffectiveCaptchaSettings(member.chatId);
       const chatTelegramId = Number(member.chat.telegramChatId);
       const userTelegramId = Number(member.user.telegramUserId);
