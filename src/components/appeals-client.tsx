@@ -76,17 +76,16 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    void requestData({ page, status }).then((next) => {
+    const refresh = () => void requestData({ page, status }).then((next) => {
       if (!active) return;
       setData(next); setError(null); setLoading(false);
     }).catch((caught: unknown) => {
       if (!active) return;
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить апелляции."); setLoading(false);
     });
-    const interval = window.setInterval(() => { if (active) void load(); }, 15000);
+    refresh();
+    const interval = window.setInterval(refresh, 15000);
     return () => { active = false; window.clearInterval(interval); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status]);
 
   function startDecision(id: string, next: Decision) {
@@ -123,7 +122,7 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
 
       <section className="panel table-panel">
         <div className="toolbar toolbar--join-requests">
-          <select className="select-control" value={status} onChange={(event) => { setStatus(event.target.value as Status); setPage(1); }}>
+          <select className="select-control" value={status} onChange={(event) => { setStatus(event.target.value as Status); setPage(1); setLoading(true); }}>
             <option value="PENDING">Ожидают</option>
             <option value="APPROVED">Одобрены</option>
             <option value="REJECTED">Отклонены</option>
@@ -162,7 +161,7 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
                 </tbody>
               </table>
             </div>
-            <div className="table-footer"><span>Апелляций: {data.pagination.total.toLocaleString("ru-RU")}</span><div className="pagination"><button className="button button--compact" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Назад</button><span>{data.pagination.page} / {data.pagination.totalPages}</span><button className="button button--compact" disabled={page >= data.pagination.totalPages || loading} onClick={() => setPage((current) => current + 1)}>Далее</button></div></div>
+            <div className="table-footer"><span>Апелляций: {data.pagination.total.toLocaleString("ru-RU")}</span><div className="pagination"><button className="button button--compact" disabled={page <= 1 || loading} onClick={() => { setPage((current) => Math.max(1, current - 1)); setLoading(true); }}>Назад</button><span>{data.pagination.page} / {data.pagination.totalPages}</span><button className="button button--compact" disabled={page >= data.pagination.totalPages || loading} onClick={() => { setPage((current) => current + 1); setLoading(true); }}>Далее</button></div></div>
           </>
         ) : null}
 

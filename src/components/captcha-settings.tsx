@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 
-const CAPTCHA_FAIL_ACTIONS = ["KICK", "BAN"] as const;
-type FailAction = (typeof CAPTCHA_FAIL_ACTIONS)[number];
+type FailAction = "KICK" | "BAN";
 
 export type CaptchaSettingsValue = {
   enabled: boolean;
