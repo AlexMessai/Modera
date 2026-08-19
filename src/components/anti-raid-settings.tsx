@@ -23,7 +23,7 @@ type Props = {
   initialUseGlobalProfile?: boolean;
   globalSettings?: AntiRaidSettingsValue;
   activeIncident?: { mode: AntiRaidMode; activeUntil: string } | null;
-  onSaved?: () => void;
+  onSaved?: (saved: AntiRaidSettingsValue) => void;
 };
 
 const modeLabels: Record<AntiRaidMode, string> = {
@@ -83,16 +83,18 @@ export function AntiRaidSettings({
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить Anti-Raid настройки.");
 
       if (isGlobalScope) {
-        setSettings(payload.data as AntiRaidSettingsValue);
+        const savedSettings = payload.data as AntiRaidSettingsValue;
+        setSettings(savedSettings);
         setSuccess("Глобальная Anti-Raid политика сохранена.");
+        onSaved?.(savedSettings);
       } else {
         const saved = payload.data as AntiRaidSettingsValue & { useGlobalProfile: boolean };
         const { useGlobalProfile: savedMode, ...savedSettings } = saved;
         setUseGlobalProfile(savedMode);
         setSettings(savedSettings);
         setSuccess(savedMode ? "Чат переключён на глобальную Anti-Raid политику." : "Индивидуальные настройки Anti-Raid сохранены.");
+        onSaved?.(savedSettings);
       }
-      onSaved?.();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить Anti-Raid настройки.");
     } finally {

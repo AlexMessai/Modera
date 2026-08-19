@@ -19,6 +19,7 @@ type Props = {
   scope?: "chat" | "global";
   initialUseGlobalProfile?: boolean;
   globalSettings?: CaptchaSettingsValue;
+  onSaved?: (saved: CaptchaSettingsValue) => void;
 };
 
 const failActionLabels: Record<FailAction, string> = {
@@ -33,7 +34,8 @@ export function CaptchaSettings({
   botCanRestrictMembers = true,
   scope = "chat",
   initialUseGlobalProfile = false,
-  globalSettings
+  globalSettings,
+  onSaved
 }: Props) {
   const [settings, setSettings] = useState(initial);
   const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
@@ -61,14 +63,17 @@ export function CaptchaSettings({
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки капчи.");
 
       if (isGlobalScope) {
-        setSettings(payload.data as CaptchaSettingsValue);
+        const savedSettings = payload.data as CaptchaSettingsValue;
+        setSettings(savedSettings);
         setSuccess("Глобальная политика капчи сохранена.");
+        onSaved?.(savedSettings);
       } else {
         const saved = payload.data as CaptchaSettingsValue & { useGlobalProfile: boolean };
         const { useGlobalProfile: savedMode, ...savedSettings } = saved;
         setUseGlobalProfile(savedMode);
         setSettings(savedSettings);
         setSuccess(savedMode ? "Чат переключён на глобальную политику капчи." : "Настройки капчи чата сохранены.");
+        onSaved?.(savedSettings);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки капчи.");
