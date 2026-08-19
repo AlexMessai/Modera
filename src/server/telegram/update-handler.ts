@@ -9,6 +9,7 @@ import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdminist
 import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import { executeTelegramActorModerationAction, ModerationError, type ModerationActionValue } from "@/server/services/moderation-service";
+import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
@@ -66,13 +67,24 @@ const MUTE_COMMAND_PATTERN = /^\/mute(?:@\w+)?\s*(?:(\d+)\s+)?([\s\S]*)$/i;
 const BAN_COMMAND_PATTERN = /^\/ban(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const UNBAN_COMMAND_PATTERN = /^\/unban(?:@\w+)?\s*$/i;
 
-const MODERATION_SUCCESS_TEXT: Record<ModerationActionValue, string> = {
-  WARNING: "✅ Пользователь предупреждён.",
-  MUTE: "✅ Пользователь замучен.",
-  UNMUTE: "✅ Mute снят.",
-  BAN: "✅ Пользователь заблокирован.",
-  UNBAN: "✅ Блокировка снята."
+const TEMPLATE_FIELDS_BY_ACTION: Record<ModerationActionValue, {
+  template: keyof ManualModerationSettingsValue;
+  deleteCommand: keyof ManualModerationSettingsValue;
+  deleteTarget: keyof ManualModerationSettingsValue;
+}> = {
+  WARNING: { template: "warnMessageTemplate", deleteCommand: "warnDeleteCommandMessage", deleteTarget: "warnDeleteTargetMessage" },
+  MUTE: { template: "muteMessageTemplate", deleteCommand: "muteDeleteCommandMessage", deleteTarget: "muteDeleteTargetMessage" },
+  UNMUTE: { template: "muteMessageTemplate", deleteCommand: "muteDeleteCommandMessage", deleteTarget: "muteDeleteTargetMessage" },
+  BAN: { template: "banMessageTemplate", deleteCommand: "banDeleteCommandMessage", deleteTarget: "banDeleteTargetMessage" },
+  UNBAN: { template: "unbanMessageTemplate", deleteCommand: "unbanDeleteCommandMessage", deleteTarget: "unbanDeleteTargetMessage" }
 };
+
+function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  if (name) return name;
+  if (user.username) return `@${user.username}`;
+  return `Telegram ${user.id}`;
+}
 
 async function processGroupModerationCommand(input: {
   chatId: string;
@@ -142,7 +154,24 @@ async function processGroupModerationCommand(input: {
         displayName: [from.first_name, from.last_name].filter(Boolean).join(" ").trim() || undefined
       }
     });
-    await reply(MODERATION_SUCCESS_TEXT[action]);
+
+    const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
+    const fields = TEMPLATE_FIELDS_BY_ACTION[action];
+
+    if (settings[fields.deleteCommand]) {
+      await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+    }
+    if (settings[fields.deleteTarget] && input.message.reply_to_message) {
+      await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
+    }
+
+    const renderedText = renderManualModerationTemplate(settings[fields.template] as string, {
+      admin: telegramDisplayName(from),
+      target: telegramDisplayName(target),
+      reason: reason ?? "",
+      duration: action === "MUTE" && muteDurationMinutes ? `${muteDurationMinutes} мин.` : ""
+    });
+    await reply(renderedText);
   } catch (error) {
     const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
     await reply(`❌ ${message}`);

@@ -5,14 +5,16 @@ import { ShieldCheck, X } from "lucide-react";
 import { ModuleCard } from "@/components/module-card";
 import { ChatModerationSettings, type ModerationSettingsValue } from "@/components/chat-moderation-settings";
 import { CaptchaSettings, type CaptchaSettingsValue } from "@/components/captcha-settings";
+import { ManualModerationSettings, type ManualModerationSettingsValue } from "@/components/manual-moderation-settings";
 
 type Props = {
   automodInitial: ModerationSettingsValue;
   captchaInitial: CaptchaSettingsValue;
+  manualModerationInitial: ManualModerationSettingsValue;
   canEdit: boolean;
 };
 
-type ModuleKey = "automod" | "captcha";
+type ModuleKey = "automod" | "captcha" | "manual";
 
 const AUTOMOD_RULE_COUNT = 7;
 
@@ -28,9 +30,10 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
   ].filter(Boolean).length;
 }
 
-export function ModerationWorkspace({ automodInitial, captchaInitial, canEdit }: Props) {
+export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, canEdit }: Props) {
   const [automod, setAutomod] = useState(automodInitial);
   const [captcha, setCaptcha] = useState(captchaInitial);
+  const [manualModeration, setManualModeration] = useState(manualModerationInitial);
   const [openModal, setOpenModal] = useState<ModuleKey | null>(null);
   const [togglingCaptcha, setTogglingCaptcha] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -80,6 +83,14 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, canEdit }:
           onConfigure={() => setOpenModal("captcha")}
           toggle={canEdit ? { enabled: captcha.enabled, busy: togglingCaptcha, onToggle: () => void toggleCaptcha() } : undefined}
         />
+        <ModuleCard
+          icon={<ShieldCheck size={18} />}
+          title="Ручная модерация"
+          description="Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в чатах."
+          tag="Команды_модерации"
+          status="Настраивается"
+          onConfigure={() => setOpenModal("manual")}
+        />
       </div>
 
       {toggleError ? <div className="moderation-feedback moderation-feedback--error">{toggleError}</div> : null}
@@ -91,7 +102,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, canEdit }:
               <div>
                 <span className="eyebrow">Глобальная политика</span>
                 <h2 id="module-settings-title">
-                  {openModal === "automod" ? "Automod" : "Капча при вступлении"}
+                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : "Ручная модерация"}
                 </h2>
               </div>
               <button className="icon-button" type="button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button>
@@ -99,6 +110,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, canEdit }:
             <div className="module-settings-dialog-body">
               {openModal === "automod" ? <ChatModerationSettings scope="global" initial={automod} canEdit={canEdit} onSaved={setAutomod} /> : null}
               {openModal === "captcha" ? <CaptchaSettings scope="global" initial={captcha} canEdit={canEdit} onSaved={setCaptcha} /> : null}
+              {openModal === "manual" ? <ManualModerationSettings scope="global" initial={manualModeration} canEdit={canEdit} onSaved={setManualModeration} /> : null}
             </div>
           </div>
         </div>

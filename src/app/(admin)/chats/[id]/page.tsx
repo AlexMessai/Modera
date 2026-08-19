@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
+import { ManualModerationSettings } from "@/components/manual-moderation-settings";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
+import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +43,10 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile] = await Promise.all([
     getChatModerationProfile(id),
-    getChatCaptchaProfile(id)
+    getChatCaptchaProfile(id),
+    getChatManualModerationProfile(id)
   ]);
   if (!profile) notFound();
 
@@ -63,6 +66,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Новый участник должен подтвердить, что не бот, прежде чем сможет писать в чат.</p></div></div>
           <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} initialUseGlobalProfile={captchaProfile.policy.useGlobalProfile} globalSettings={captchaProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
+        </section>
+      ) : null}
+
+      {manualModerationProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Ручная модерация</h2><p>Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в этом чате.</p></div></div>
+          <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} initialUseGlobalProfile={manualModerationProfile.policy.useGlobalProfile} globalSettings={manualModerationProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 
