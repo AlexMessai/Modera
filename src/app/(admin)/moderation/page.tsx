@@ -4,6 +4,7 @@ import { ModerationWorkspace } from "@/components/moderation-workspace-client";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { getGlobalCaptchaProfile } from "@/server/services/captcha-settings-service";
+import { getGlobalManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +22,11 @@ function formatDate(value: string) {
 }
 
 export default async function ModerationPage() {
-  const [admin, data, captchaProfile] = await Promise.all([
+  const [admin, data, captchaProfile, manualModerationProfile] = await Promise.all([
     requireAdminPage(),
     getModerationDashboard(),
-    getGlobalCaptchaProfile()
+    getGlobalCaptchaProfile(),
+    getGlobalManualModerationProfile()
   ]);
   const canEdit = canManageChatSettings(admin.role);
 
@@ -35,6 +37,7 @@ export default async function ModerationPage() {
       <ModerationWorkspace
         automodInitial={data.globalProfile.settings}
         captchaInitial={captchaProfile.settings}
+        manualModerationInitial={manualModerationProfile.settings}
         canEdit={canEdit}
       />
 

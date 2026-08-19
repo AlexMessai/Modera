@@ -59,6 +59,8 @@ const actionLabels: Record<string, string> = {
   CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
   CAPTCHA_SETTINGS_UPDATED: "Изменены настройки капчи чата",
   GLOBAL_CAPTCHA_SETTINGS_UPDATED: "Изменена глобальная политика капчи",
+  MANUAL_MODERATION_SETTINGS_UPDATED: "Изменены шаблоны ручной модерации чата",
+  GLOBAL_MANUAL_MODERATION_SETTINGS_UPDATED: "Изменены глобальные шаблоны ручной модерации",
   APPEAL_SUBMITTED: "Подана апелляция",
   APPEAL_APPROVED: "Апелляция одобрена",
   APPEAL_REJECTED: "Апелляция отклонена",
