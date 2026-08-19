@@ -24,7 +24,8 @@ Production-oriented Telegram management and moderation platform with a Russian-l
 - `/api/health` for backend, database and Telegram integration;
 - audit events for discovered chats and membership changes;
 - captcha for new supergroup members ("I'm not a bot" button) with a configurable timeout and kick/ban on failure, global default + per-chat override;
-- appeals for warn/mute/ban submitted via bot DM (`/appeal` as a reply) and reviewed from the admin panel, with real unmute/unban on approval.
+- appeals for warn/mute/ban submitted via bot DM (`/appeal` as a reply) and reviewed from the admin panel, with real unmute/unban on approval;
+- self-service `/unmute` in the bot DM (up to 3 times per chat, mute only) plus `/status`/`/start`/`/help` for a one-message status summary.
 
 No fake users, chats, statistics or moderation actions are used.
 

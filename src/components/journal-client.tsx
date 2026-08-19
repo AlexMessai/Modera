@@ -69,7 +69,8 @@ const actionLabels: Record<string, string> = {
   APPEAL_SUBMITTED: "Подана апелляция",
   APPEAL_APPROVED: "Апелляция одобрена",
   APPEAL_REJECTED: "Апелляция отклонена",
-  APPEAL_NOTIFICATION_FAILED: "Не удалось уведомить пользователя об апелляции"
+  APPEAL_NOTIFICATION_FAILED: "Не удалось уведомить пользователя об апелляции",
+  SELF_UNMUTE: "Пользователь самостоятельно снял mute"
 };
 
 const pendingLabels: Record<string, string> = {

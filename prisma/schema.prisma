@@ -205,6 +205,7 @@ model ChatMember {
   messageCount                   Int               @default(0)
   warningCount                   Int               @default(0)
   lastAutoEscalationWarningCount Int               @default(0)
+  selfUnmuteCount                Int               @default(0)
   punishmentState                String?
   punishmentExpiresAt            DateTime?         @db.Timestamptz(3)
   createdAt                      DateTime           @default(now()) @db.Timestamptz(3)

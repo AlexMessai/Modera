@@ -494,3 +494,20 @@ export async function executeExpiredMuteRelease(input: {
   });
   return { outcome: "released" as const, result };
 }
+
+export async function executeSelfServiceUnmute(input: { membershipId: string }) {
+  const member = await loadMember(input.membershipId);
+  if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+  if (member.punishmentState !== "MUTED") {
+    throw new ModerationError("NOT_MUTED", "У участника нет активного mute.", 409);
+  }
+
+  return executeTelegramBackedAction({
+    member,
+    actingAdminId: null,
+    source: "SYSTEM",
+    action: "UNMUTE",
+    reason: "Самостоятельная разблокировка пользователем.",
+    auditAction: "SELF_UNMUTE"
+  });
+}
