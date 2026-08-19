@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
 import { prisma } from "@/server/db/prisma";
 import {
   getTelegramBotProfile,
@@ -143,7 +144,14 @@ async function failAction(input: {
 
 async function recordWarning(input: {
   membershipId: string;
-  member: { chatId: string; userId: string; status: string; punishmentState: string | null };
+  member: {
+    chatId: string;
+    userId: string;
+    status: string;
+    punishmentState: string | null;
+    chat: { title: string };
+    user: { telegramUserId: bigint };
+  };
   actingAdminId: string;
   reason: string | null;
 }) {
@@ -176,6 +184,17 @@ async function recordWarning(input: {
     });
     return { action, membership };
   });
+
+  await notifyPunishmentAppealOption({
+    moderationActionId: result.action.id,
+    chatId: input.member.chatId,
+    userId: input.member.userId,
+    telegramUserId: input.member.user.telegramUserId,
+    chatTitle: input.member.chat.title,
+    actionType: "WARNING",
+    reason: input.reason
+  }).catch(() => undefined);
+
   return {
     id: result.action.id,
     type: result.action.type,
@@ -346,6 +365,19 @@ async function executeTelegramBackedAction(input: {
       });
       return { membership, completedAction };
     });
+
+    if (input.action === "MUTE" || input.action === "BAN") {
+      await notifyPunishmentAppealOption({
+        moderationActionId: updated.completedAction.id,
+        chatId: member.chatId,
+        userId: member.userId,
+        telegramUserId: member.user.telegramUserId,
+        chatTitle: member.chat.title,
+        actionType: input.action,
+        reason: input.reason
+      }).catch(() => undefined);
+    }
+
     return {
       id: updated.completedAction.id,
       type: updated.completedAction.type,
