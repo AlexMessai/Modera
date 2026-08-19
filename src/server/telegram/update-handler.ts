@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { processAntiRaidSignal } from "@/server/services/anti-raid-service";
+import { deliverPendingAppealNotifications } from "@/server/services/appeal-notification-service";
 import { submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
@@ -69,6 +70,11 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   if (!message.from || message.from.id === botTelegramId || message.from.is_bot) {
     return { accepted: true, ignored: true };
   }
+
+  // The user just opened a conversation with the bot (possibly for the first time) —
+  // flush any punishment notifications that couldn't be sent earlier because Telegram
+  // blocks bots from messaging users first.
+  await deliverPendingAppealNotifications(message.from.id).catch(() => undefined);
 
   const text = message.text?.trim() ?? "";
   const match = APPEAL_COMMAND_PATTERN.exec(text);
