@@ -1,5 +1,4 @@
 import { prisma } from "@/server/db/prisma";
-import { processAntiRaidSignal } from "@/server/services/anti-raid-service";
 import { deliverPendingAppealNotifications } from "@/server/services/appeal-notification-service";
 import { submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
@@ -400,13 +399,6 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       isNewMemberJoin(update.chat_member) &&
       syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE
     ) {
-      await processAntiRaidSignal({
-        chatId: syncedChat.id,
-        kind: "JOIN",
-        occurredAt: new Date(update.chat_member.date * 1000),
-        membershipId: syncedMember.membership.id
-      }).catch(() => undefined);
-
       await maybeIssueCaptchaChallenge({
         chatId: syncedChat.id,
         chatType: chat.type,
@@ -420,7 +412,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   }
 
   if (update.chat_join_request && update.chat_join_request.from.id !== botProfile.id) {
-    const syncedMember = await syncJoinRequest({
+    await syncJoinRequest({
       chatId: syncedChat.id,
       user: update.chat_join_request.from,
       date: update.chat_join_request.date,
@@ -431,13 +423,6 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       request: update.chat_join_request,
       updateId: update.update_id
     });
-    if (syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE) {
-      await processAntiRaidSignal({
-        chatId: syncedChat.id,
-        kind: "JOIN_REQUEST",
-        occurredAt: new Date(update.chat_join_request.date * 1000)
-      }).catch(() => undefined);
-    }
   }
 
   if (update.callback_query?.message && update.callback_query.from.id !== botProfile.id) {

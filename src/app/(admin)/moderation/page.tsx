@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { ModerationWorkspace } from "@/components/moderation-workspace-client";
-import { AntiRaidOverviewClient } from "@/components/anti-raid-overview-client";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { getGlobalCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
-import { getGlobalAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
-import { getAntiRaidOverview } from "@/server/services/anti-raid-service";
 
 export const dynamic = "force-dynamic";
 
@@ -24,30 +21,22 @@ function formatDate(value: string) {
 }
 
 export default async function ModerationPage() {
-  const [admin, data, captchaProfile, antiRaidProfile, antiRaidOverview] = await Promise.all([
+  const [admin, data, captchaProfile] = await Promise.all([
     requireAdminPage(),
     getModerationDashboard(),
-    getGlobalCaptchaProfile(),
-    getGlobalAntiRaidProfile(),
-    getAntiRaidOverview()
+    getGlobalCaptchaProfile()
   ]);
   const canEdit = canManageChatSettings(admin.role);
 
   return (
     <main className="page">
-      <header className="page-header"><div><span className="eyebrow">Политики и автоматизация</span><h1>Модерация</h1><p>Глобальная политика, капча, Anti-Raid и индивидуальные правила чатов в одном месте.</p></div></header>
+      <header className="page-header"><div><span className="eyebrow">Политики и автоматизация</span><h1>Модерация</h1><p>Глобальная политика, капча и индивидуальные правила чатов в одном месте.</p></div></header>
 
       <ModerationWorkspace
         automodInitial={data.globalProfile.settings}
         captchaInitial={captchaProfile.settings}
-        antiRaidInitial={antiRaidProfile.settings}
         canEdit={canEdit}
       />
-
-      <section className="panel profile-section">
-        <div className="panel-header"><div><h2>Anti-Raid: мониторинг</h2><p>Живые данные по всплескам вступлений и заявок за последние 24 часа.</p></div><ShieldAlert size={19} /></div>
-        <AntiRaidOverviewClient initial={antiRaidOverview} />
-      </section>
 
       <section className="metrics-grid moderation-metrics">
         <article className="metric-card"><span>Чатов</span><strong>{data.metrics.totalChats.toLocaleString("ru-RU")}</strong><small>Получены через Telegram</small></article>
