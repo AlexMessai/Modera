@@ -7,18 +7,21 @@ export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteTargetMessage: boolean;
   warnAnnounceInChat: boolean;
+  warnEphemeralMessageTemplate: string;
   unwarnMessageTemplate: string;
   unwarnDeleteTargetMessage: boolean;
   unwarnAnnounceInChat: boolean;
   muteMessageTemplate: string;
   muteDeleteTargetMessage: boolean;
   muteAnnounceInChat: boolean;
+  muteEphemeralMessageTemplate: string;
   unmuteMessageTemplate: string;
   unmuteDeleteTargetMessage: boolean;
   unmuteAnnounceInChat: boolean;
   banMessageTemplate: string;
   banDeleteTargetMessage: boolean;
   banAnnounceInChat: boolean;
+  banEphemeralMessageTemplate: string;
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
   unbanAnnounceInChat: boolean;
@@ -35,6 +38,7 @@ type Props = {
 };
 
 type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban";
+type EphemeralCommandKey = "warn" | "mute" | "ban";
 
 type CommandInfo = {
   key: CommandKey;
@@ -44,6 +48,10 @@ type CommandInfo = {
   hasDuration: boolean;
   hasWarnCount: boolean;
 };
+
+function isEphemeralCommand(key: CommandKey): key is EphemeralCommandKey {
+  return key === "warn" || key === "mute" || key === "ban";
+}
 
 const COMMAND_SECTIONS: Array<{ title: string; commands: CommandInfo[] }> = [
   {
@@ -85,6 +93,9 @@ function deleteTargetKey(key: CommandKey) {
 }
 function announceInChatKey(key: CommandKey) {
   return `${key}AnnounceInChat` as const;
+}
+function ephemeralTemplateKey(key: EphemeralCommandKey) {
+  return `${key}EphemeralMessageTemplate` as const;
 }
 
 export function ManualModerationSettings({
@@ -205,6 +216,19 @@ export function ManualModerationSettings({
                     />
                     <small>{placeholderHint(commandInfo)}</small>
                   </label>
+
+                  {isEphemeralCommand(key) ? (
+                    <label className="automod-field">
+                      <span>Личное уведомление участнику (ephemeral)</span>
+                      <textarea
+                        rows={2}
+                        value={visibleSettings[ephemeralTemplateKey(key)]}
+                        disabled={fieldsDisabled}
+                        onChange={(event) => setField(ephemeralTemplateKey(key), event.target.value)}
+                      />
+                      <small>Видит только сам наказанный участник, прямо в чате. Доступны %chat%, %reason%, %contact% (ссылка на ЛС бота).</small>
+                    </label>
+                  ) : null}
 
                   <div className="manual-mod-toggle-grid">
                     <label className="automod-toggle-row automod-toggle-row--compact">

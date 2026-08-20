@@ -4,26 +4,37 @@ export const GLOBAL_CAPTCHA_PROFILE_ID = "global";
 
 // Fixed rule, not configurable: mute on join, kick (never ban) whoever is
 // still unverified at the next daily sweep -- no per-chat/global timeout or
-// kick-vs-ban choice anymore.
+// kick-vs-ban choice anymore. challengeMessageTemplate is the ephemeral
+// "Я не бот" prompt text -- no placeholders, it's shown only to the joining
+// member so there's nothing to interpolate.
 export type CaptchaSettingsValue = {
   enabled: boolean;
+  challengeMessageTemplate: string;
 };
 
 export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsValue = {
-  enabled: false
+  enabled: false,
+  challengeMessageTemplate: "Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова)."
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function normalizeTemplate(value: string, fallback: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 1000) : fallback;
+}
+
 export function normalizeCaptchaSettings(input: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
-    enabled: Boolean(input.enabled)
+    enabled: Boolean(input.enabled),
+    challengeMessageTemplate: normalizeTemplate(input.challengeMessageTemplate, DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate)
   };
 }
 
 export function serializeCaptchaSettings(settings: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
-    enabled: settings.enabled
+    enabled: settings.enabled,
+    challengeMessageTemplate: settings.challengeMessageTemplate
   };
 }
 
