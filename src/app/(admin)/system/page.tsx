@@ -4,8 +4,18 @@ import { SystemClient } from "@/components/system-client";
 import { AdminSettingsClient } from "@/components/admin-settings-client";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageAdmins, canViewSystem } from "@/server/auth/permissions";
+import { getTelegramBotProfile } from "@/server/telegram/client";
 
 export const dynamic = "force-dynamic";
+
+async function getTelegramBotUsername() {
+  try {
+    const profile = await getTelegramBotProfile();
+    return profile.username ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function SystemPage({
   searchParams
@@ -17,6 +27,7 @@ export default async function SystemPage({
 
   const canSeeAccounts = canManageAdmins(admin.role);
   const tab = query.tab === "accounts" && canSeeAccounts ? "accounts" : "diagnostics";
+  const telegramBotUsername = tab === "accounts" ? await getTelegramBotUsername() : null;
 
   return (
     <main className="page">
@@ -34,7 +45,7 @@ export default async function SystemPage({
         </nav>
       ) : null}
       {tab === "accounts" ? (
-        <AdminSettingsClient currentAdminId={admin.id} />
+        <AdminSettingsClient currentAdminId={admin.id} telegramBotUsername={telegramBotUsername} />
       ) : (
         <SystemClient />
       )}
