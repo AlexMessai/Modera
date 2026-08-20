@@ -303,11 +303,15 @@ export class TelegramClient {
     chatId: number;
     text: string;
     replyMarkup?: TelegramInlineKeyboardMarkup;
+    // Bot API 10.2: sent by a chat administrator, makes the message visible
+    // only to this one non-bot member instead of the whole chat.
+    receiverUserId?: number;
   }) {
     return this.call<TelegramMessage>("sendMessage", {
       chat_id: input.chatId,
       text: input.text,
-      ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {})
+      ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
+      ...(input.receiverUserId ? { receiver_user_id: input.receiverUserId } : {})
     });
   }
 
