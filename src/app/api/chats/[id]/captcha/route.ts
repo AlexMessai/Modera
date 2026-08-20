@@ -3,7 +3,6 @@ import { requireAdminApi } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
-  CAPTCHA_FAIL_ACTIONS,
   getChatCaptchaProfile,
   updateChatCaptchaProfile
 } from "@/server/services/captcha-settings-service";
@@ -12,9 +11,7 @@ export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
   useGlobalProfile: z.boolean(),
-  enabled: z.boolean(),
-  timeoutMinutes: z.number().int().min(1).max(1440),
-  failAction: z.enum(CAPTCHA_FAIL_ACTIONS)
+  enabled: z.boolean()
 });
 
 export async function GET(

@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 
-type FailAction = "KICK" | "BAN";
-
 export type CaptchaSettingsValue = {
   enabled: boolean;
-  timeoutMinutes: number;
-  failAction: FailAction;
 };
 
 type Props = {
@@ -20,11 +16,6 @@ type Props = {
   initialUseGlobalProfile?: boolean;
   globalSettings?: CaptchaSettingsValue;
   onSaved?: (saved: CaptchaSettingsValue) => void;
-};
-
-const failActionLabels: Record<FailAction, string> = {
-  KICK: "Исключить (сможет вернуться по новой ссылке)",
-  BAN: "Заблокировать без возможности вернуться"
 };
 
 export function CaptchaSettings({
@@ -122,34 +113,9 @@ export function CaptchaSettings({
             disabled={fieldsDisabled}
             onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
           />
-          <span><strong>Капча при вступлении</strong><small>Новый участник супергруппы ограничивается в правах, пока не нажмёт кнопку «Я не бот» под сообщением бота.</small></span>
+          <span><strong>Капча при вступлении</strong><small>Новый участник супергруппы ограничивается в правах сразу и не может писать в чат, пока не нажмёт кнопку «Я не бот» под сообщением бота.</small></span>
         </label>
-        <div className="automod-number-grid">
-          <label className="automod-field">
-            <span>Таймаут, минут</span>
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={visibleSettings.timeoutMinutes}
-              disabled={fieldsDisabled || !visibleSettings.enabled}
-              onChange={(event) => setSettings((current) => ({ ...current, timeoutMinutes: Number(event.target.value) }))}
-            />
-          </label>
-          <label className="automod-field">
-            <span>Если не прошёл проверку</span>
-            <select
-              className="select-control"
-              value={visibleSettings.failAction}
-              disabled={fieldsDisabled || !visibleSettings.enabled}
-              onChange={(event) => setSettings((current) => ({ ...current, failAction: event.target.value as FailAction }))}
-            >
-              <option value="KICK">{failActionLabels.KICK}</option>
-              <option value="BAN">{failActionLabels.BAN}</option>
-            </select>
-          </label>
-        </div>
-        <small className="row-note">Таймаут проверяется той же ежедневной задачей, что снимает истёкшие mute — исключение непрошедших может занять до суток.</small>
+        <small className="row-note">Кто не пройдёт проверку — будет исключён (не заблокирован, сможет зайти снова) при следующей ежедневной проверке; это может занять до суток.</small>
       </div>
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}

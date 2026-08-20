@@ -17,15 +17,9 @@ async function cleanup() {
   await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
 }
 
-test("captcha settings are normalized and bounded", () => {
-  const normalized = normalizeCaptchaSettings({
-    enabled: true,
-    timeoutMinutes: 5000,
-    failAction: "INVALID" as never
-  });
-  assert.equal(normalized.enabled, true);
-  assert.equal(normalized.timeoutMinutes, 1440);
-  assert.equal(normalized.failAction, "KICK");
+test("captcha settings are normalized to a plain boolean", () => {
+  assert.equal(normalizeCaptchaSettings({ enabled: true }).enabled, true);
+  assert.equal(normalizeCaptchaSettings({ enabled: false }).enabled, false);
 });
 
 test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
@@ -43,20 +37,18 @@ test("a chat that never chose follows the global profile; opting out uses its ow
     // silently apply to no chat at all.
     await updateGlobalCaptchaProfile({
       actingAdminId: admin.id,
-      settings: { enabled: true, timeoutMinutes: 15, failAction: "BAN" }
+      settings: { enabled: true }
     });
 
     const beforeAnyChatEdit = await resolveEffectiveCaptchaSettings(chat.id);
     assert.equal(beforeAnyChatEdit.source, "GLOBAL");
     assert.equal(beforeAnyChatEdit.settings.enabled, true);
-    assert.equal(beforeAnyChatEdit.settings.timeoutMinutes, 15);
-    assert.equal(beforeAnyChatEdit.settings.failAction, "BAN");
 
     const saved = await updateChatCaptchaProfile({
       chatId: chat.id,
       actingAdminId: admin.id,
       useGlobalProfile: false,
-      settings: { enabled: false, timeoutMinutes: 5, failAction: "KICK" }
+      settings: { enabled: false }
     });
     assert.equal(saved?.useGlobalProfile, false);
 

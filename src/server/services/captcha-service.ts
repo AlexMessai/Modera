@@ -26,7 +26,6 @@ export async function issueCaptchaChallenge(input: {
   userId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
-  timeoutMinutes: number;
 }) {
   try {
     await getTelegramClient().restrictChatMember({
@@ -43,14 +42,16 @@ export async function issueCaptchaChallenge(input: {
     return { outcome: "restrict_failed" as const };
   }
 
-  const expiresAt = new Date(Date.now() + input.timeoutMinutes * 60_000);
+  // No configurable/expiry window: the member stays muted until they pass
+  // the captcha, however long that takes -- processExpiredCaptchaChallenges
+  // below sweeps anyone still pending once a day, that's the only deadline.
   try {
     await prisma.chatMember.update({
       where: { id: input.membershipId },
       data: {
         status: "RESTRICTED",
         punishmentState: CAPTCHA_PUNISHMENT_STATE,
-        punishmentExpiresAt: expiresAt,
+        punishmentExpiresAt: null,
         lastModerationAt: new Date()
       }
     });
@@ -69,7 +70,7 @@ export async function issueCaptchaChallenge(input: {
     const sent = await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
-      text: `Подтвердите, что вы не бот — нажмите кнопку ниже в течение ${input.timeoutMinutes} мин., иначе вы будете исключены из чата.`,
+      text: "Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).",
       replyMarkup: {
         inline_keyboard: [[{ text: "✅ Я не бот", callback_data: captchaCallbackData(input.telegramUserId) }]]
       }
@@ -98,11 +99,11 @@ export async function issueCaptchaChallenge(input: {
       affectedUserId: input.userId,
       source: "SYSTEM",
       action: "CAPTCHA_CHALLENGE_SENT",
-      metadata: { timeoutMinutes: input.timeoutMinutes, expiresAt: expiresAt.toISOString() }
+      metadata: {}
     }
   });
 
-  return { outcome: "issued" as const, expiresAt };
+  return { outcome: "issued" as const };
 }
 
 export async function maybeIssueCaptchaChallenge(input: {
@@ -134,8 +135,7 @@ export async function maybeIssueCaptchaChallenge(input: {
     membershipId: input.membershipId,
     userId: input.userId,
     telegramChatId: input.telegramChatId,
-    telegramUserId: input.telegramUserId,
-    timeoutMinutes: profile.settings.timeoutMinutes
+    telegramUserId: input.telegramUserId
   });
 }
 
@@ -206,43 +206,37 @@ export async function verifyCaptchaChallenge(input: {
   return { outcome: "verified" as const };
 }
 
+// Runs once a day (the cron's own schedule, not a per-member duration -- see
+// vercel.json) and kicks (never bans) anyone still unverified at that point,
+// so they can rejoin and go through the same captcha flow again.
 export async function processExpiredCaptchaChallenges(input?: { now?: Date; limit?: number }) {
   const now = input?.now ?? new Date();
   const limit = Math.min(100, Math.max(1, input?.limit ?? 25));
   const candidates = await prisma.chatMember.findMany({
-    where: {
-      punishmentState: CAPTCHA_PUNISHMENT_STATE,
-      punishmentExpiresAt: { lte: now }
-    },
-    orderBy: { punishmentExpiresAt: "asc" },
+    where: { punishmentState: CAPTCHA_PUNISHMENT_STATE },
+    orderBy: { lastModerationAt: "asc" },
     take: limit,
     include: { chat: true, user: true }
   });
 
   let kicked = 0;
-  let banned = 0;
   let failed = 0;
 
   for (const member of candidates) {
     try {
       const client = getTelegramClient();
-      const profile = await resolveEffectiveCaptchaSettings(member.chatId);
       const chatTelegramId = Number(member.chat.telegramChatId);
       const userTelegramId = Number(member.user.telegramUserId);
-      const nextStatus = profile.settings.failAction === "BAN" ? "BANNED" : "LEFT";
-      const auditAction = profile.settings.failAction === "BAN" ? "CAPTCHA_TIMEOUT_BAN" : "CAPTCHA_TIMEOUT_KICK";
 
       await client.banChatMember({ chatId: chatTelegramId, userId: userTelegramId, revokeMessages: false });
-      if (profile.settings.failAction === "KICK") {
-        await client.unbanChatMember({ chatId: chatTelegramId, userId: userTelegramId, onlyIfBanned: true });
-      }
+      await client.unbanChatMember({ chatId: chatTelegramId, userId: userTelegramId, onlyIfBanned: true });
 
       await prisma.$transaction([
         prisma.chatMember.update({
           where: { id: member.id },
           data: {
-            status: nextStatus,
-            punishmentState: profile.settings.failAction === "BAN" ? "BANNED" : null,
+            status: "LEFT",
+            punishmentState: null,
             punishmentExpiresAt: null,
             leftAt: now,
             lastModerationAt: now
@@ -253,18 +247,17 @@ export async function processExpiredCaptchaChallenges(input?: { now?: Date; limi
             chatId: member.chatId,
             affectedUserId: member.userId,
             source: "SYSTEM",
-            action: auditAction,
+            action: "CAPTCHA_TIMEOUT_KICK",
             metadata: {}
           }
         })
       ]);
 
-      if (profile.settings.failAction === "BAN") banned += 1;
-      else kicked += 1;
+      kicked += 1;
     } catch {
       failed += 1;
     }
   }
 
-  return { checked: candidates.length, kicked, banned, failed, hasMore: candidates.length === limit };
+  return { checked: candidates.length, kicked, failed, hasMore: candidates.length === limit };
 }
