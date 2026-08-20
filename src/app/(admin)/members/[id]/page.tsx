@@ -89,22 +89,29 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       </header>
 
       <section className="profile-grid">
-        <article className="panel profile-panel">
-          <div className="panel-header"><div><h2>Профиль Telegram</h2><p>Данные, реально полученные через Telegram Bot API.</p></div></div>
-          <dl className="detail-list">
-            <Detail label="Telegram ID" value={member.user.telegramUserId} mono />
-            <Detail label="Имя" value={member.user.firstName} />
-            <Detail label="Фамилия" value={member.user.lastName ?? "—"} />
-            <Detail label="Username" value={member.user.username ? `@${member.user.username}` : "—"} />
-            <Detail label="Язык" value={member.user.languageCode ?? "—"} />
-            <Detail label="Telegram Premium" value={member.user.isPremium ? "Да" : "Нет"} />
-            <Detail label="Attachment menu" value={member.user.addedToAttachmentMenu ? "Бот добавлен" : "Нет"} />
-            <Detail label="Тип" value={member.user.isBot ? "Бот" : "Пользователь"} />
-            <Detail label="Впервые замечен" value={formatDate(member.user.firstSeenAt)} />
-            <Detail label="Последняя активность" value={formatDate(member.user.lastSeenAt)} />
-            <Detail label="Профиль синхронизирован" value={formatDate(member.user.updatedAt)} />
-          </dl>
-        </article>
+        <div className="profile-grid-col">
+          <article className="panel profile-panel">
+            <div className="panel-header"><div><h2>Профиль Telegram</h2><p>Данные, реально полученные через Telegram Bot API.</p></div></div>
+            <dl className="detail-list">
+              <Detail label="Telegram ID" value={member.user.telegramUserId} mono />
+              <Detail label="Имя" value={member.user.firstName} />
+              <Detail label="Фамилия" value={member.user.lastName ?? "—"} />
+              <Detail label="Username" value={member.user.username ? `@${member.user.username}` : "—"} />
+              <Detail label="Язык" value={member.user.languageCode ?? "—"} />
+              <Detail label="Telegram Premium" value={member.user.isPremium ? "Да" : "Нет"} />
+              <Detail label="Attachment menu" value={member.user.addedToAttachmentMenu ? "Бот добавлен" : "Нет"} />
+              <Detail label="Тип" value={member.user.isBot ? "Бот" : "Пользователь"} />
+              <Detail label="Впервые замечен" value={formatDate(member.user.firstSeenAt)} />
+              <Detail label="Последняя активность" value={formatDate(member.user.lastSeenAt)} />
+              <Detail label="Профиль синхронизирован" value={formatDate(member.user.updatedAt)} />
+            </dl>
+          </article>
+
+          <MemberMessageHistory
+            telegramUserId={member.user.telegramUserId}
+            chatId={member.chat.id}
+          />
+        </div>
 
         <article className="panel profile-panel">
           <div className="panel-header"><div><h2>В этом чате</h2><p>{member.chat.title}</p></div></div>
@@ -135,11 +142,6 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           </dl>
         </article>
       </section>
-
-      <MemberMessageHistory
-        telegramUserId={member.user.telegramUserId}
-        chatId={member.chat.id}
-      />
 
       <section className="panel profile-section risk-panel">
         <div className="panel-header">
