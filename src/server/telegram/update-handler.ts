@@ -110,13 +110,14 @@ type GroupModerationCommand = ModerationActionValue | "UNWARN";
 const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   template: keyof ManualModerationSettingsValue;
   deleteTarget: keyof ManualModerationSettingsValue;
+  announceInChat: keyof ManualModerationSettingsValue;
 }> = {
-  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage" },
-  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage" },
-  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage" },
-  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage" },
-  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage" },
-  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage" }
+  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage", announceInChat: "warnAnnounceInChat" },
+  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage", announceInChat: "unwarnAnnounceInChat" },
+  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage", announceInChat: "muteAnnounceInChat" },
+  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage", announceInChat: "unmuteAnnounceInChat" },
+  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage", announceInChat: "banAnnounceInChat" },
+  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage", announceInChat: "unbanAnnounceInChat" }
 };
 
 function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {
@@ -259,22 +260,30 @@ async function processGroupModerationCommand(input: {
       warns,
       warnsLimit
     };
-    let renderedText = renderManualModerationTemplate(settings[fields.template] as string, placeholders);
+    const replyParts: string[] = [];
+    if (settings[fields.announceInChat]) {
+      replyParts.push(renderManualModerationTemplate(settings[fields.template] as string, placeholders));
+    }
 
     // The warning that crossed the threshold also triggered a punishment — say so
     // in the same reply rather than leaving the chat to guess why the mute landed.
+    // Visibility follows the escalated action's own toggle (mute/ban), not warn's --
+    // they're different actions and can be configured to show independently.
     if (escalation?.escalated && escalation.action) {
-      renderedText += `\n${renderManualModerationTemplate(
-        settings[escalation.action === "MUTE" ? "muteMessageTemplate" : "banMessageTemplate"],
-        {
-          ...placeholders,
-          admin: "Modera",
-          reason: `Достигнут порог ${escalation.warnsLimit} предупреждений.`,
-          duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
-        }
-      )}`;
+      const escalationFields = TEMPLATE_FIELDS_BY_ACTION[escalation.action];
+      if (settings[escalationFields.announceInChat]) {
+        replyParts.push(renderManualModerationTemplate(
+          settings[escalationFields.template] as string,
+          {
+            ...placeholders,
+            admin: "Modera",
+            reason: `Достигнут порог ${escalation.warnsLimit} предупреждений.`,
+            duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
+          }
+        ));
+      }
     }
-    await reply(renderedText);
+    if (replyParts.length > 0) await reply(replyParts.join("\n"));
   } catch (error) {
     const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
     await reply(`❌ ${message}`);

@@ -5,31 +5,43 @@ export const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteTargetMessage: boolean;
+  warnAnnounceInChat: boolean;
   unwarnMessageTemplate: string;
   unwarnDeleteTargetMessage: boolean;
+  unwarnAnnounceInChat: boolean;
   muteMessageTemplate: string;
   muteDeleteTargetMessage: boolean;
+  muteAnnounceInChat: boolean;
   unmuteMessageTemplate: string;
   unmuteDeleteTargetMessage: boolean;
+  unmuteAnnounceInChat: boolean;
   banMessageTemplate: string;
   banDeleteTargetMessage: boolean;
+  banAnnounceInChat: boolean;
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
+  unbanAnnounceInChat: boolean;
 };
 
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
   warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
   warnDeleteTargetMessage: false,
+  warnAnnounceInChat: true,
   unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
   unwarnDeleteTargetMessage: false,
+  unwarnAnnounceInChat: true,
   muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
   muteDeleteTargetMessage: false,
+  muteAnnounceInChat: true,
   unmuteMessageTemplate: "🔊 С %target% снят mute.",
   unmuteDeleteTargetMessage: false,
+  unmuteAnnounceInChat: true,
   banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
   banDeleteTargetMessage: false,
+  banAnnounceInChat: true,
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
-  unbanDeleteTargetMessage: false
+  unbanDeleteTargetMessage: false,
+  unbanAnnounceInChat: true
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -43,16 +55,22 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
   return {
     warnMessageTemplate: normalizeTemplate(input.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate),
     warnDeleteTargetMessage: Boolean(input.warnDeleteTargetMessage),
+    warnAnnounceInChat: Boolean(input.warnAnnounceInChat),
     unwarnMessageTemplate: normalizeTemplate(input.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate),
     unwarnDeleteTargetMessage: Boolean(input.unwarnDeleteTargetMessage),
+    unwarnAnnounceInChat: Boolean(input.unwarnAnnounceInChat),
     muteMessageTemplate: normalizeTemplate(input.muteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteMessageTemplate),
     muteDeleteTargetMessage: Boolean(input.muteDeleteTargetMessage),
+    muteAnnounceInChat: Boolean(input.muteAnnounceInChat),
     unmuteMessageTemplate: normalizeTemplate(input.unmuteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unmuteMessageTemplate),
     unmuteDeleteTargetMessage: Boolean(input.unmuteDeleteTargetMessage),
+    unmuteAnnounceInChat: Boolean(input.unmuteAnnounceInChat),
     banMessageTemplate: normalizeTemplate(input.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate),
     banDeleteTargetMessage: Boolean(input.banDeleteTargetMessage),
+    banAnnounceInChat: Boolean(input.banAnnounceInChat),
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
-    unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage)
+    unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage),
+    unbanAnnounceInChat: Boolean(input.unbanAnnounceInChat)
   };
 }
 
@@ -60,16 +78,22 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
   return {
     warnMessageTemplate: settings.warnMessageTemplate,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
+    warnAnnounceInChat: settings.warnAnnounceInChat,
     unwarnMessageTemplate: settings.unwarnMessageTemplate,
     unwarnDeleteTargetMessage: settings.unwarnDeleteTargetMessage,
+    unwarnAnnounceInChat: settings.unwarnAnnounceInChat,
     muteMessageTemplate: settings.muteMessageTemplate,
     muteDeleteTargetMessage: settings.muteDeleteTargetMessage,
+    muteAnnounceInChat: settings.muteAnnounceInChat,
     unmuteMessageTemplate: settings.unmuteMessageTemplate,
     unmuteDeleteTargetMessage: settings.unmuteDeleteTargetMessage,
+    unmuteAnnounceInChat: settings.unmuteAnnounceInChat,
     banMessageTemplate: settings.banMessageTemplate,
     banDeleteTargetMessage: settings.banDeleteTargetMessage,
+    banAnnounceInChat: settings.banAnnounceInChat,
     unbanMessageTemplate: settings.unbanMessageTemplate,
-    unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage
+    unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage,
+    unbanAnnounceInChat: settings.unbanAnnounceInChat
   };
 }
 
