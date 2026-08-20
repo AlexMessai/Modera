@@ -6,16 +6,22 @@ import { Check, Globe2, ShieldCheck } from "lucide-react";
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteTargetMessage: boolean;
+  warnAnnounceInChat: boolean;
   unwarnMessageTemplate: string;
   unwarnDeleteTargetMessage: boolean;
+  unwarnAnnounceInChat: boolean;
   muteMessageTemplate: string;
   muteDeleteTargetMessage: boolean;
+  muteAnnounceInChat: boolean;
   unmuteMessageTemplate: string;
   unmuteDeleteTargetMessage: boolean;
+  unmuteAnnounceInChat: boolean;
   banMessageTemplate: string;
   banDeleteTargetMessage: boolean;
+  banAnnounceInChat: boolean;
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
+  unbanAnnounceInChat: boolean;
 };
 
 type Props = {
@@ -76,6 +82,9 @@ function templateKey(key: CommandKey) {
 }
 function deleteTargetKey(key: CommandKey) {
   return `${key}DeleteTargetMessage` as const;
+}
+function announceInChatKey(key: CommandKey) {
+  return `${key}AnnounceInChat` as const;
 }
 
 export function ManualModerationSettings({
@@ -206,6 +215,15 @@ export function ManualModerationSettings({
                         onChange={(event) => setField(deleteTargetKey(key), event.target.checked)}
                       />
                       <span>Удалить сообщение участника</span>
+                    </label>
+                    <label className="automod-toggle-row automod-toggle-row--compact">
+                      <input
+                        type="checkbox"
+                        checked={visibleSettings[announceInChatKey(key)]}
+                        disabled={fieldsDisabled}
+                        onChange={(event) => setField(announceInChatKey(key), event.target.checked)}
+                      />
+                      <span>Показывать в чате</span>
                     </label>
                   </div>
                 </article>
