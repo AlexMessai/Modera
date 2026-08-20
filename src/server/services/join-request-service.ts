@@ -1,5 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { findBlockedTermsInText } from "@/server/services/automod-service";
+import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import {
   getTelegramBotProfile,
   getTelegramClient,
@@ -174,6 +176,93 @@ export async function recordTelegramJoinRequest(input: {
         requestedAt
       },
       update: {}
+    });
+  });
+}
+
+/**
+ * Bot API 10.1 "Join Request Queries": a chat_join_request carrying a
+ * query_id means this bot is the chat's designated guard_bot (set by chat
+ * admins in Telegram itself) and Telegram expects a decision within 10
+ * seconds — there's no time for the normal manual-review "Заявки" queue.
+ * Screens the applicant's bio/name against the chat's blocked-terms list
+ * (the same list automod already uses for messages) since that's the only
+ * signal available without building a Mini App screening flow.
+ */
+export async function resolveGuardBotJoinRequest(input: {
+  chatId: string;
+  joinRequestId: string;
+  request: TelegramChatJoinRequest;
+}) {
+  const queryId = input.request.query_id;
+  if (!queryId) return;
+
+  const { settings } = await resolveEffectiveModerationSettings(input.chatId);
+  const candidateText = [
+    input.request.bio,
+    input.request.from.first_name,
+    input.request.from.last_name,
+    input.request.from.username
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  const matchedTerms = settings.blockedTermsEnabled
+    ? findBlockedTermsInText(candidateText, settings.blockedTerms)
+    : [];
+  const approved = matchedTerms.length === 0;
+
+  try {
+    await getTelegramClient().answerChatJoinRequestQuery(queryId, approved);
+  } catch (error) {
+    // Don't touch JoinRequest/ChatMember state if Telegram never actually
+    // resolved the query — leaving it PENDING keeps the manual "Заявки"
+    // queue as an honest fallback instead of showing a decision that didn't
+    // really happen.
+    await prisma.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        source: "SYSTEM",
+        action: "JOIN_REQUEST_AUTO_RESOLUTION_FAILED",
+        reason: error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error",
+        metadata: { joinRequestId: input.joinRequestId, attemptedApproval: approved }
+      }
+    }).catch(() => undefined);
+    return;
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const resolved = await tx.joinRequest.updateMany({
+      where: { id: input.joinRequestId, status: "PENDING" },
+      data: { status: approved ? "APPROVED" : "DECLINED", resolvedAt: now }
+    });
+    if (resolved.count === 0) return;
+
+    const user = await tx.telegramUser.findUnique({
+      where: { telegramUserId: BigInt(input.request.from.id) },
+      select: { id: true }
+    });
+    if (!user) return;
+
+    await tx.chatMember.updateMany({
+      where: { chatId: input.chatId, userId: user.id, status: "PENDING" },
+      data: approved
+        ? { status: "MEMBER", joinedAt: now, leftAt: null, lastSeenAt: now }
+        : { status: "LEFT", leftAt: now, lastSeenAt: now }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        affectedUserId: user.id,
+        source: "SYSTEM",
+        action: approved ? "JOIN_REQUEST_AUTO_APPROVED" : "JOIN_REQUEST_AUTO_DECLINED",
+        reason: matchedTerms.length ? `Совпадение с запрещённым списком: ${matchedTerms.join(", ")}` : null,
+        metadata: {
+          joinRequestId: input.joinRequestId,
+          ...(matchedTerms.length ? { matchedTerms } : {})
+        }
+      }
     });
   });
 }

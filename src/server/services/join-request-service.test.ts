@@ -3,7 +3,8 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
   listJoinRequests,
-  recordTelegramJoinRequest
+  recordTelegramJoinRequest,
+  resolveGuardBotJoinRequest
 } from "./join-request-service";
 
 test("Telegram join request ingestion is idempotent by update id", async () => {
@@ -61,6 +62,51 @@ test("Telegram join request ingestion is idempotent by update id", async () => {
     assert.equal(inbox.items[0]?.bio, "CI bio");
     assert.equal(inbox.items[0]?.hasInviteLink, true);
     assert.equal("inviteLink" in (inbox.items[0] ?? {}), false);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
+test("guard-bot resolution leaves the request pending when Telegram can't be reached", async () => {
+  // No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md), so getTelegramClient()
+  // throws deterministically — resolveGuardBotJoinRequest must leave the
+  // JoinRequest/ChatMember state untouched rather than claim a decision
+  // that never actually reached Telegram.
+  const telegramChatId = -1009000001002n;
+  const telegramUserId = 9000001002n;
+  const updateId = 910001002;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "Guard Bot CI", type: "supergroup" }
+  });
+  const user = await prisma.telegramUser.create({
+    data: { telegramUserId, firstName: "Guard", displayName: "Guard Bot User" }
+  });
+
+  const request = {
+    chat: { id: Number(telegramChatId), type: "supergroup", title: "Guard Bot CI" },
+    from: { id: Number(telegramUserId), is_bot: false, first_name: "Guard" },
+    user_chat_id: 9000001102,
+    date: Math.floor(Date.now() / 1000),
+    query_id: "ci-query-id"
+  };
+
+  try {
+    const joinRequest = await recordTelegramJoinRequest({ chatId: chat.id, request, updateId });
+    await resolveGuardBotJoinRequest({ chatId: chat.id, joinRequestId: joinRequest.id, request });
+
+    const stored = await prisma.joinRequest.findUniqueOrThrow({ where: { id: joinRequest.id } });
+    assert.equal(stored.status, "PENDING");
+    assert.equal(stored.resolvedAt, null);
+
+    const failure = await prisma.auditLog.findFirst({
+      where: { chatId: chat.id, action: "JOIN_REQUEST_AUTO_RESOLUTION_FAILED" }
+    });
+    assert.ok(failure);
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.telegramUser.delete({ where: { id: user.id } });
