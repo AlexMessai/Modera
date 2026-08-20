@@ -62,6 +62,10 @@ export type TelegramMessageEntity = {
 
 export type TelegramMessage = {
   message_id: number;
+  // Set instead of (0-valued) message_id when this is an ephemeral message
+  // (Bot API 10.2) -- required by deleteEphemeralMessage/
+  // editEphemeralMessageReplyMarkup instead of the regular message_id.
+  ephemeral_message_id?: number;
   date: number;
   edit_date?: number;
   chat: TelegramChat;

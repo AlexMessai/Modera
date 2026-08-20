@@ -638,8 +638,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         membershipId: syncedMember.membership.id,
         userId: syncedMember.user.id,
         telegramChatId: BigInt(chat.id),
-        telegramUserId: BigInt(update.chat_member.new_chat_member.user.id),
-        displayName: syncedMember.user.displayName
+        telegramUserId: BigInt(update.chat_member.new_chat_member.user.id)
       }).catch(() => undefined);
     }
   }
@@ -683,10 +682,12 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
           text: "✅ Проверка пройдена, добро пожаловать!",
           showAlert: true
         }).catch(() => undefined);
-        await client.deleteMessage(
-          Number(chat.id),
-          update.callback_query.message.message_id
-        ).catch(() => undefined);
+        // The captcha challenge is ephemeral (message_id is always 0 for
+        // those) -- deleteMessage won't find it, deleteEphemeralMessage will.
+        const ephemeralMessageId = update.callback_query.message.ephemeral_message_id;
+        if (ephemeralMessageId !== undefined) {
+          await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch(() => undefined);
+        }
       } else if (result.outcome === "wrong_user") {
         await client.answerCallbackQuery({
           callbackQueryId: update.callback_query.id,

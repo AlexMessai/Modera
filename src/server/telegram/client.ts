@@ -242,6 +242,15 @@ export class TelegramClient {
     });
   }
 
+  // Ephemeral messages (Bot API 10.2) use their own delete method keyed by
+  // ephemeral_message_id -- deleteMessage's message_id is always 0 for them.
+  deleteEphemeralMessage(chatId: number, ephemeralMessageId: number) {
+    return this.call<boolean>("deleteEphemeralMessage", {
+      chat_id: chatId,
+      ephemeral_message_id: ephemeralMessageId
+    });
+  }
+
   restrictChatMember(input: {
     chatId: number;
     userId: number;
