@@ -4,6 +4,7 @@ import { prisma } from "@/server/db/prisma";
 import {
   executeModerationAction,
   executeTelegramActorModerationAction,
+  executeTelegramActorWarningRevoke,
   isModerationAction,
   isProtectedMemberStatus,
   membershipUpdateFor,
@@ -152,6 +153,69 @@ test("Telegram-actor warning is persisted with source TELEGRAM and no admin", as
     assert.equal(action.actingAdminId, null);
     assert.equal((action.metadata as Record<string, unknown>).telegramActorId, 555);
     assert.equal((action.metadata as Record<string, unknown>).telegramActorUsername, "chat_admin");
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.chatMember.deleteMany({ where: { id: membership.id } });
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
+test("Telegram-actor warning revoke decrements warningCount and rejects once it's zero", async () => {
+  const telegramChatId = -1009000000303n;
+  const telegramUserId = 900000303n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "Unwarn CI", type: "supergroup" }
+  });
+  const user = await prisma.telegramUser.create({
+    data: { telegramUserId, firstName: "Target", displayName: "Target User" }
+  });
+  const membership = await prisma.chatMember.create({
+    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 2, lastAutoEscalationWarningCount: 2 }
+  });
+
+  try {
+    const revoked = await executeTelegramActorWarningRevoke({
+      chatId: chat.id,
+      targetTelegramUserId: Number(telegramUserId),
+      telegramActor: { telegramUserId: 555, username: "chat_admin" }
+    });
+    assert.equal(revoked.warningCount, 1);
+    assert.equal(revoked.chatId, chat.id);
+    assert.equal(revoked.affectedUserId, user.id);
+
+    const afterFirst = await prisma.chatMember.findUniqueOrThrow({ where: { id: membership.id } });
+    assert.equal(afterFirst.warningCount, 1);
+    // Lowered so climbing back to the threshold escalates again.
+    assert.equal(afterFirst.lastAutoEscalationWarningCount, 1);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { affectedUserId: user.id, action: "MODERATION_UNWARN" }
+    });
+    assert.equal(audit.source, "TELEGRAM");
+    assert.equal(audit.actingAdminId, null);
+
+    await executeTelegramActorWarningRevoke({
+      chatId: chat.id,
+      targetTelegramUserId: Number(telegramUserId),
+      telegramActor: { telegramUserId: 555 }
+    });
+    const afterSecond = await prisma.chatMember.findUniqueOrThrow({ where: { id: membership.id } });
+    assert.equal(afterSecond.warningCount, 0);
+
+    await assert.rejects(
+      executeTelegramActorWarningRevoke({
+        chatId: chat.id,
+        targetTelegramUserId: Number(telegramUserId),
+        telegramActor: { telegramUserId: 555 }
+      }),
+      (error: unknown) => error instanceof ModerationError && error.code === "NO_WARNINGS"
+    );
   } finally {
     await prisma.moderationAction.deleteMany({ where: { affectedUserId: user.id } });
     await prisma.auditLog.deleteMany({ where: { affectedUserId: user.id } });

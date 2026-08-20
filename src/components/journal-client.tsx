@@ -22,6 +22,7 @@ type ReconciliationResult = {
 
 const actionLabels: Record<string, string> = {
   MODERATION_WARNING: "Предупреждение",
+  MODERATION_UNWARN: "Снятие предупреждения",
   MODERATION_MUTE: "Mute",
   MODERATION_UNMUTE: "Снятие mute",
   MODERATION_BAN: "Блокировка",

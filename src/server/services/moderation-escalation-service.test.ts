@@ -3,9 +3,12 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
   countActiveWarnings,
+  describeWarningStanding,
+  escalateAfterManualWarning,
   recordAutomodViolationAndEscalate,
   warningCutoff
 } from "./moderation-escalation-service";
+import { executeTelegramActorModerationAction } from "./moderation-service";
 
 async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEMBER") {
   const chat = await prisma.chat.create({
@@ -190,6 +193,53 @@ test("warning expiry keeps history but excludes old warnings from escalation", a
     assert.equal(metadata?.activeWarningCount, 3);
     assert.equal(metadata?.warningExpiryDays, 30);
   } finally {
+    await prisma.chat.delete({ where: { id: data.chat.id } });
+    await prisma.telegramUser.delete({ where: { id: data.user.id } });
+  }
+});
+
+test("manual /warn shares automod's threshold: the 3rd warning mutes the member", async () => {
+  const data = await fixture(4);
+  try {
+    await prisma.chatModerationSettings.update({
+      where: { chatId: data.chat.id },
+      data: { muteAfterWarnings: 3, muteDurationMinutes: 4320, banAfterWarnings: 8 }
+    });
+
+    let last: Awaited<ReturnType<typeof escalateAfterManualWarning>> | null = null;
+    for (let i = 1; i <= 3; i += 1) {
+      const warning = await executeTelegramActorModerationAction({
+        chatId: data.chat.id,
+        targetTelegramUserId: Number(data.user.telegramUserId),
+        action: "WARNING",
+        reason: `Нарушение ${i}`,
+        telegramActor: { telegramUserId: 555, username: "chat_admin" }
+      });
+      assert.equal(warning.warningCount, i);
+      last = await escalateAfterManualWarning({
+        membershipId: data.member.id,
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        reason: `Нарушение ${i}`,
+        warningCount: warning.warningCount
+      });
+    }
+
+    assert.equal(last?.activeWarningCount, 3);
+    assert.equal(last?.warnsLimit, 3);
+    assert.equal(last?.escalated, true);
+    assert.equal(last?.action, "MUTE");
+    assert.equal(last?.muteDurationMinutes, 4320);
+
+    const member = await prisma.chatMember.findUniqueOrThrow({ where: { id: data.member.id } });
+    assert.equal(member.punishmentState, "MUTED");
+
+    const standing = await describeWarningStanding({ chatId: data.chat.id, affectedUserId: data.user.id });
+    assert.equal(standing.activeWarningCount, 3);
+    assert.equal(standing.warnsLimit, 3);
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { chatId: data.chat.id } });
+    await prisma.auditLog.deleteMany({ where: { chatId: data.chat.id } });
     await prisma.chat.delete({ where: { id: data.chat.id } });
     await prisma.telegramUser.delete({ where: { id: data.user.id } });
   }
