@@ -92,6 +92,11 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
 }
 
+// Telegram posts this into the group automatically right after someone adds
+// the bot via a t.me/<bot>?startgroup=... deep link — it's plumbing noise,
+// not a real command, so it's deleted rather than run through automod.
+const GROUP_START_NOISE_PATTERN = /^\/start(?:@\w+)?(?:\s+\S+)?\s*$/i;
+
 const WARN_COMMAND_PATTERN = /^\/warn(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const UNWARN_COMMAND_PATTERN = /^\/unwarn(?:@\w+)?\s*$/i;
 const MUTE_COMMAND_PATTERN = /^\/mute(?:@\w+)?\s*(?:(\d+)\s+)?([\s\S]*)$/i;
@@ -570,16 +575,21 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       updateId: update.update_id,
       skipTelegramUserId: botProfile.id
     });
-    const commandHandled = update.message.text?.trim().startsWith("/")
-      ? await processGroupModerationCommand({
-          chatId: syncedChat.id,
-          telegramChatId: chat.id,
-          message: update.message,
-          client
-        })
-      : false;
-    if (!commandHandled) {
-      await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });
+    const groupMessageText = update.message.text?.trim() ?? "";
+    if (GROUP_START_NOISE_PATTERN.test(groupMessageText)) {
+      await client.deleteMessage(chat.id, update.message.message_id).catch(() => undefined);
+    } else {
+      const commandHandled = groupMessageText.startsWith("/")
+        ? await processGroupModerationCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })
+        : false;
+      if (!commandHandled) {
+        await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });
+      }
     }
   }
 
