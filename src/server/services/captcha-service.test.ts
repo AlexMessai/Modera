@@ -74,7 +74,6 @@ test("expiration sweep reports a consistent shape when nothing is pending", asyn
   });
   assert.equal(typeof result.checked, "number");
   assert.ok(result.kicked >= 0);
-  assert.ok(result.banned >= 0);
   assert.ok(result.failed >= 0);
-  assert.equal(result.checked, result.kicked + result.banned + result.failed);
+  assert.equal(result.checked, result.kicked + result.failed);
 });

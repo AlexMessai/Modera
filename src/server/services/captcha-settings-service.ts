@@ -1,40 +1,29 @@
 import { prisma } from "@/server/db/prisma";
 
 export const GLOBAL_CAPTCHA_PROFILE_ID = "global";
-export const CAPTCHA_FAIL_ACTIONS = ["KICK", "BAN"] as const;
-export type CaptchaFailActionValue = (typeof CAPTCHA_FAIL_ACTIONS)[number];
 
+// Fixed rule, not configurable: mute on join, kick (never ban) whoever is
+// still unverified at the next daily sweep -- no per-chat/global timeout or
+// kick-vs-ban choice anymore.
 export type CaptchaSettingsValue = {
   enabled: boolean;
-  timeoutMinutes: number;
-  failAction: CaptchaFailActionValue;
 };
 
 export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsValue = {
-  enabled: false,
-  timeoutMinutes: 5,
-  failAction: "KICK"
+  enabled: false
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function bounded(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.trunc(value)));
-}
-
 export function normalizeCaptchaSettings(input: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
-    enabled: Boolean(input.enabled),
-    timeoutMinutes: bounded(input.timeoutMinutes, 1, 1440),
-    failAction: CAPTCHA_FAIL_ACTIONS.includes(input.failAction) ? input.failAction : "KICK"
+    enabled: Boolean(input.enabled)
   };
 }
 
 export function serializeCaptchaSettings(settings: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
-    enabled: settings.enabled,
-    timeoutMinutes: settings.timeoutMinutes,
-    failAction: settings.failAction
+    enabled: settings.enabled
   };
 }
 
