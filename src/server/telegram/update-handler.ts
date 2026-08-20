@@ -6,7 +6,7 @@ import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/serv
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
-import { recordTelegramJoinRequest, resolveGuardBotJoinRequest } from "@/server/services/join-request-service";
+import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
 import {
   describeWarningStanding,
@@ -628,19 +628,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       date: update.chat_join_request.date,
       updateId: update.update_id
     });
-    const joinRequest = await recordTelegramJoinRequest({
+    await recordTelegramJoinRequest({
       chatId: syncedChat.id,
       request: update.chat_join_request,
       updateId: update.update_id
     });
-
-    if (update.chat_join_request.query_id) {
-      await resolveGuardBotJoinRequest({
-        chatId: syncedChat.id,
-        joinRequestId: joinRequest.id,
-        request: update.chat_join_request
-      }).catch(() => undefined);
-    }
   }
 
   if (update.callback_query?.message && update.callback_query.from.id !== botProfile.id) {

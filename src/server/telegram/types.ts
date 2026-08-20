@@ -106,11 +106,6 @@ export type TelegramChatJoinRequest = {
     name?: string;
     creates_join_request?: boolean;
   };
-  // Bot API 10.1 "Join Request Queries": present only when this bot is the
-  // chat's designated guard_bot (set by chat admins in Telegram itself, not
-  // by us) — its presence means we must call answerChatJoinRequestQuery
-  // (or sendChatJoinRequestWebApp) within 10 seconds.
-  query_id?: string;
 };
 
 export type TelegramCallbackQuery = {
