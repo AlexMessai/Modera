@@ -128,6 +128,7 @@ export type TelegramUpdate = {
 export type TelegramInlineKeyboardButton = {
   text: string;
   callback_data?: string;
+  url?: string;
 };
 
 export type TelegramInlineKeyboardMarkup = {
