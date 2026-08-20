@@ -123,6 +123,11 @@
 .moderation-history-reason > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .moderation-history-reason small { color: var(--danger); overflow-wrap: anywhere; }
 
+.collapsible-list-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.collapsible-list-toggle:hover { text-decoration: underline; }
+.collapsible-list-toggle svg { transition: transform .15s ease; }
+.collapsible-list-toggle-icon--open { transform: rotate(180deg); }
+
 @media (max-width: 1100px) {
   .toolbar--members { align-items: stretch; flex-direction: column; }
   .toolbar-filters { flex-wrap: wrap; }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ShieldAlert, UserRound } from "lucide-react";
 import { ModerationActions } from "@/components/moderation-actions";
+import { CollapsibleList } from "@/components/collapsible-list";
 import { MemberTagControl } from "@/components/member-tag-control";
 import { MemberMessageHistory } from "@/components/member-message-history";
 import { TelegramAvatar } from "@/components/telegram-avatar";
@@ -184,19 +185,21 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           <div className="state-box state-box--compact"><strong>Действий пока не было</strong><p>Здесь появятся только реальные действия Modera и автомодерации.</p></div>
         ) : (
           <div className="moderation-history">
-            {moderation.actions.map((action) => (
-              <div className="moderation-history-row" key={action.id}>
-                <div>
-                  <strong>{actionLabels[action.type] ?? action.type}</strong>
-                  <span>{action.actingAdmin?.displayName ?? (action.source === "SYSTEM" ? "Автомодерация" : "Система")} · {formatDate(action.createdAt)}</span>
+            <CollapsibleList>
+              {moderation.actions.map((action) => (
+                <div className="moderation-history-row" key={action.id}>
+                  <div>
+                    <strong>{actionLabels[action.type] ?? action.type}</strong>
+                    <span>{action.actingAdmin?.displayName ?? (action.source === "SYSTEM" ? "Автомодерация" : "Система")} · {formatDate(action.createdAt)}</span>
+                  </div>
+                  <span className={`badge ${actionStatusClass(action.status)}`}>{actionStatusLabels[action.status] ?? action.status}</span>
+                  <div className="moderation-history-reason">
+                    <span>{action.reason ?? "Без причины"}{action.expiresAt ? ` · до ${formatDate(action.expiresAt)}` : ""}</span>
+                    {action.telegramError ? <small>{action.telegramError}</small> : null}
+                  </div>
                 </div>
-                <span className={`badge ${actionStatusClass(action.status)}`}>{actionStatusLabels[action.status] ?? action.status}</span>
-                <div className="moderation-history-reason">
-                  <span>{action.reason ?? "Без причины"}{action.expiresAt ? ` · до ${formatDate(action.expiresAt)}` : ""}</span>
-                  {action.telegramError ? <small>{action.telegramError}</small> : null}
-                </div>
-              </div>
-            ))}
+              ))}
+            </CollapsibleList>
           </div>
         )}
       </section>
@@ -204,15 +207,17 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Чаты пользователя</h2><p>Все чаты, в которых Modera уже видела этого Telegram-пользователя.</p></div></div>
         <div className="membership-list">
-          {member.user.memberships.map((membership) => (
-            <Link href={`/members/${membership.id}`} className="membership-row" key={membership.id}>
-              <span className="membership-icon"><UserRound size={17} /></span>
-              <div><strong>{membership.chat.title}</strong><span className="mono">{membership.chat.telegramChatId}{membership.tag ? ` · ${membership.tag}` : ""}</span></div>
-              <span className={`badge ${memberStatusBadgeClass(membership.status)}`}>{memberStatusLabel(membership.status)}</span>
-              <span>{membership.messageCount.toLocaleString("ru-RU")} сообщений</span>
-              <span>{formatDate(membership.lastSeenAt)}</span>
-            </Link>
-          ))}
+          <CollapsibleList>
+            {member.user.memberships.map((membership) => (
+              <Link href={`/members/${membership.id}`} className="membership-row" key={membership.id}>
+                <span className="membership-icon"><UserRound size={17} /></span>
+                <div><strong>{membership.chat.title}</strong><span className="mono">{membership.chat.telegramChatId}{membership.tag ? ` · ${membership.tag}` : ""}</span></div>
+                <span className={`badge ${memberStatusBadgeClass(membership.status)}`}>{memberStatusLabel(membership.status)}</span>
+                <span>{membership.messageCount.toLocaleString("ru-RU")} сообщений</span>
+                <span>{formatDate(membership.lastSeenAt)}</span>
+              </Link>
+            ))}
+          </CollapsibleList>
         </div>
       </section>
 
@@ -222,13 +227,15 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           <div className="state-box state-box--compact"><strong>Событий пока нет</strong><p>Здесь появятся реальные изменения статуса и действия модерации.</p></div>
         ) : (
           <div className="audit-list">
-            {member.auditLogs.map((log) => (
-              <div className="audit-row" key={log.id}>
-                <span className="audit-dot" />
-                <div><strong>{auditLabels[log.action] ?? log.action}</strong><span>{log.chat?.title ?? "Telegram"}{log.actingAdmin ? ` · ${log.actingAdmin.displayName}` : log.source === "SYSTEM" ? " · Автомодерация" : ""}{log.reason ? ` · ${log.reason}` : ""}</span></div>
-                <time>{formatDate(log.createdAt)}</time>
-              </div>
-            ))}
+            <CollapsibleList>
+              {member.auditLogs.map((log) => (
+                <div className="audit-row" key={log.id}>
+                  <span className="audit-dot" />
+                  <div><strong>{auditLabels[log.action] ?? log.action}</strong><span>{log.chat?.title ?? "Telegram"}{log.actingAdmin ? ` · ${log.actingAdmin.displayName}` : log.source === "SYSTEM" ? " · Автомодерация" : ""}{log.reason ? ` · ${log.reason}` : ""}</span></div>
+                  <time>{formatDate(log.createdAt)}</time>
+                </div>
+              ))}
+            </CollapsibleList>
           </div>
         )}
       </section>
