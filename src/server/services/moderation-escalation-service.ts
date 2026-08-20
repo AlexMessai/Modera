@@ -120,7 +120,7 @@ export async function recordAutomodViolationAndEscalate(input: {
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
     include: {
       user: { select: { isBot: true, telegramUserId: true } },
-      chat: { select: { title: true } }
+      chat: { select: { title: true, telegramChatId: true } }
     }
   });
   if (!member || member.user.isBot || isProtectedMemberStatus(member.status)) {
@@ -244,6 +244,7 @@ export async function recordAutomodViolationAndEscalate(input: {
   await notifyPunishmentAppealOption({
     moderationActionId: warning.moderationActionId,
     chatId: input.chatId,
+    telegramChatId: member.chat.telegramChatId,
     userId: member.userId,
     telegramUserId: member.user.telegramUserId,
     chatTitle: member.chat.title,

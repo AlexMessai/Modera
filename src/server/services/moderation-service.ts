@@ -163,7 +163,7 @@ async function recordWarning(input: {
     userId: string;
     status: string;
     punishmentState: string | null;
-    chat: { title: string };
+    chat: { title: string; telegramChatId: bigint };
     user: { telegramUserId: bigint };
   };
   actingAdminId: string | null;
@@ -208,6 +208,7 @@ async function recordWarning(input: {
   await notifyPunishmentAppealOption({
     moderationActionId: result.action.id,
     chatId: input.member.chatId,
+    telegramChatId: input.member.chat.telegramChatId,
     userId: input.member.userId,
     telegramUserId: input.member.user.telegramUserId,
     chatTitle: input.member.chat.title,
@@ -390,6 +391,7 @@ async function executeTelegramBackedAction(input: {
       await notifyPunishmentAppealOption({
         moderationActionId: updated.completedAction.id,
         chatId: member.chatId,
+        telegramChatId: member.chat.telegramChatId,
         userId: member.userId,
         telegramUserId: member.user.telegramUserId,
         chatTitle: member.chat.title,

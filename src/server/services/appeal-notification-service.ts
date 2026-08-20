@@ -1,5 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { getTelegramClient } from "@/server/telegram/client";
+import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
 
 const ACTION_LABELS: Record<string, string> = {
   WARNING: "предупреждение",
@@ -26,9 +26,40 @@ function telegramErrorMessage(error: unknown) {
   return error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error";
 }
 
+// Best-effort, in-chat companion to the DM below: an ephemeral message (Bot
+// API 10.2) is visible only to the punished member, posted right in the
+// group they're already in, so it doesn't depend on them ever having opened
+// a DM with the bot -- unlike the DM, which Telegram flatly refuses to
+// deliver first-contact (see docs/STAGE_3.md's "Отложенная доставка
+// уведомления"). Points at the DM rather than inviting a Reply here, since
+// the actual /appeal flow still matches replies by DM message id.
+async function notifyPunishmentEphemeral(input: {
+  telegramChatId: bigint;
+  telegramUserId: bigint;
+  chatTitle: string;
+  actionType: "WARNING" | "MUTE" | "BAN";
+  reason: string | null;
+}) {
+  const label = ACTION_LABELS[input.actionType] ?? input.actionType;
+  try {
+    const botProfile = await getTelegramBotProfile();
+    const dmPointer = botProfile.username ? `@${botProfile.username}` : "мне в личные сообщения";
+    await getTelegramClient().sendMessage({
+      chatId: Number(input.telegramChatId),
+      receiverUserId: Number(input.telegramUserId),
+      text: `⚠️ В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЧтобы оспорить или узнать детали, напишите ${dmPointer}`
+    });
+  } catch {
+    // Silently ignored -- e.g. the member was just removed from the chat
+    // (BAN), or isn't a member yet. The DM/queued-notification path is the
+    // reliable fallback either way, so this is pure upside when it works.
+  }
+}
+
 export async function notifyPunishmentAppealOption(input: {
   moderationActionId: string;
   chatId: string;
+  telegramChatId: bigint;
   userId: string;
   telegramUserId: bigint;
   chatTitle: string;
@@ -37,6 +68,14 @@ export async function notifyPunishmentAppealOption(input: {
 }) {
   const label = ACTION_LABELS[input.actionType] ?? input.actionType;
   const text = `В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЕсли вы не согласны, ответьте на это сообщение (Reply) командой /appeal и опишите причину одним сообщением, например:\n/appeal я не отправлял это сообщение`;
+
+  await notifyPunishmentEphemeral({
+    telegramChatId: input.telegramChatId,
+    telegramUserId: input.telegramUserId,
+    chatTitle: input.chatTitle,
+    actionType: input.actionType,
+    reason: input.reason
+  });
 
   let dmMessageId: number | null = null;
   try {
@@ -124,7 +163,7 @@ export async function deliverPendingAppealNotifications(telegramUserId: number) 
     },
     orderBy: { createdAt: "desc" },
     take: 20,
-    include: { chat: { select: { id: true, title: true } } }
+    include: { chat: { select: { id: true, title: true, telegramChatId: true } } }
   });
 
   const undelivered = candidates.filter((action) => !hasDeliveredDm(action.metadata)).slice(0, PENDING_NOTIFICATION_LIMIT);
@@ -133,6 +172,7 @@ export async function deliverPendingAppealNotifications(telegramUserId: number) 
     await notifyPunishmentAppealOption({
       moderationActionId: action.id,
       chatId: action.chatId,
+      telegramChatId: action.chat.telegramChatId,
       userId: user.id,
       telegramUserId: BigInt(telegramUserId),
       chatTitle: action.chat.title,
