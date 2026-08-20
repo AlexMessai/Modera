@@ -26,7 +26,6 @@ export async function issueCaptchaChallenge(input: {
   userId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
-  displayName: string;
   timeoutMinutes: number;
 }) {
   try {
@@ -65,9 +64,12 @@ export async function issueCaptchaChallenge(input: {
   }
 
   try {
+    // Ephemeral (Bot API 10.2): visible only to this member, not the whole
+    // chat -- nobody else sees the challenge or can tap the button.
     await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
-      text: `${input.displayName}, подтвердите, что вы не бот — нажмите кнопку ниже в течение ${input.timeoutMinutes} мин., иначе вы будете исключены из чата.`,
+      receiverUserId: Number(input.telegramUserId),
+      text: `Подтвердите, что вы не бот — нажмите кнопку ниже в течение ${input.timeoutMinutes} мин., иначе вы будете исключены из чата.`,
       replyMarkup: {
         inline_keyboard: [[{ text: "✅ Я не бот", callback_data: captchaCallbackData(input.telegramUserId) }]]
       }
@@ -100,7 +102,6 @@ export async function maybeIssueCaptchaChallenge(input: {
   userId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
-  displayName: string;
 }) {
   if (input.chatType !== "supergroup") return { outcome: "skipped_chat_type" as const };
   const profile = await resolveEffectiveCaptchaSettings(input.chatId);
@@ -124,7 +125,6 @@ export async function maybeIssueCaptchaChallenge(input: {
     userId: input.userId,
     telegramChatId: input.telegramChatId,
     telegramUserId: input.telegramUserId,
-    displayName: input.displayName,
     timeoutMinutes: profile.settings.timeoutMinutes
   });
 }
