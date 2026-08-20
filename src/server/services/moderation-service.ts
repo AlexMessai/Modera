@@ -220,9 +220,6 @@ async function recordWarning(input: {
     type: result.action.type,
     status: result.action.status,
     warningCount: result.membership.warningCount,
-    membershipId: result.membership.id,
-    chatId: input.member.chatId,
-    affectedUserId: input.member.userId,
     membershipStatus: result.membership.status,
     punishmentState: result.membership.punishmentState,
     punishmentExpiresAt: result.membership.punishmentExpiresAt?.toISOString() ?? null

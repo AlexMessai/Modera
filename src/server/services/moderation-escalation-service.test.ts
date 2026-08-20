@@ -217,11 +217,9 @@ test("manual /warn shares automod's threshold: the 3rd warning mutes the member"
       });
       assert.equal(warning.warningCount, i);
       last = await escalateAfterManualWarning({
-        membershipId: data.member.id,
         chatId: data.chat.id,
-        affectedUserId: data.user.id,
-        reason: `Нарушение ${i}`,
-        warningCount: warning.warningCount
+        targetTelegramUserId: Number(data.user.telegramUserId),
+        reason: `Нарушение ${i}`
       });
     }
 

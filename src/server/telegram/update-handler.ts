@@ -195,7 +195,7 @@ async function processGroupModerationCommand(input: {
       warns = String(remaining.activeWarningCount);
       warnsLimit = String(remaining.warnsLimit);
     } else {
-      const result = await executeTelegramActorModerationAction({
+      await executeTelegramActorModerationAction({
         chatId: input.chatId,
         targetTelegramUserId: target.id,
         action,
@@ -204,13 +204,11 @@ async function processGroupModerationCommand(input: {
         telegramActor
       });
 
-      if (action === "WARNING" && "membershipId" in result) {
+      if (action === "WARNING") {
         escalation = await escalateAfterManualWarning({
-          membershipId: result.membershipId,
-          chatId: result.chatId,
-          affectedUserId: result.affectedUserId,
-          reason: reason ?? "Предупреждение от администратора чата",
-          warningCount: result.warningCount
+          chatId: input.chatId,
+          targetTelegramUserId: target.id,
+          reason: reason ?? "Предупреждение от администратора чата"
         });
         warns = String(escalation.activeWarningCount);
         warnsLimit = String(escalation.warnsLimit);
