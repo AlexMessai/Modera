@@ -500,6 +500,59 @@ export async function executeTelegramActorModerationAction(input: {
   });
 }
 
+/**
+ * /unwarn — takes one warning back. Purely local: unlike mute/ban there is no
+ * Telegram call to make, so this writes an audit trail rather than a
+ * ModerationAction (same shape the appeal-approval path uses).
+ */
+export async function executeTelegramActorWarningRevoke(input: {
+  chatId: string;
+  targetTelegramUserId: number;
+  telegramActor: TelegramActor;
+}) {
+  const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
+  if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+  if (member.warningCount <= 0) {
+    throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
+  }
+
+  const nextWarningCount = member.warningCount - 1;
+  const membership = await prisma.$transaction(async (tx) => {
+    const updated = await tx.chatMember.update({
+      where: { id: member.id },
+      data: {
+        warningCount: nextWarningCount,
+        // Lower the escalation marker too, so climbing back to the threshold
+        // escalates again instead of being treated as already handled.
+        lastAutoEscalationWarningCount: Math.min(
+          member.lastAutoEscalationWarningCount,
+          nextWarningCount
+        )
+      }
+    });
+    await tx.auditLog.create({
+      data: {
+        chatId: member.chatId,
+        affectedUserId: member.userId,
+        actingAdminId: null,
+        source: "TELEGRAM",
+        action: "MODERATION_UNWARN",
+        metadata: {
+          ...telegramActorMetadata(input.telegramActor),
+          warningCount: updated.warningCount
+        }
+      }
+    });
+    return updated;
+  });
+
+  return {
+    warningCount: membership.warningCount,
+    chatId: member.chatId,
+    affectedUserId: member.userId
+  };
+}
+
 export async function executeAutomatedModerationAction(input: {
   membershipId: string;
   action: "MUTE" | "BAN";

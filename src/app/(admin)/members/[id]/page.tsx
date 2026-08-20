@@ -18,6 +18,7 @@ const auditLabels: Record<string, string> = {
   MEMBER_STATUS_CHANGED: "Изменён статус участника",
   MEMBER_JOIN_REQUESTED: "Запрос на вступление",
   MODERATION_WARNING: "Выдано предупреждение",
+  MODERATION_UNWARN: "Предупреждение снято",
   MODERATION_MUTE: "Выдан mute",
   MODERATION_UNMUTE: "Mute снят",
   MODERATION_BAN: "Участник заблокирован",

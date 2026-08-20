@@ -6,9 +6,15 @@ export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteCommandMessage: boolean;
   warnDeleteTargetMessage: boolean;
+  unwarnMessageTemplate: string;
+  unwarnDeleteCommandMessage: boolean;
+  unwarnDeleteTargetMessage: boolean;
   muteMessageTemplate: string;
   muteDeleteCommandMessage: boolean;
   muteDeleteTargetMessage: boolean;
+  unmuteMessageTemplate: string;
+  unmuteDeleteCommandMessage: boolean;
+  unmuteDeleteTargetMessage: boolean;
   banMessageTemplate: string;
   banDeleteCommandMessage: boolean;
   banDeleteTargetMessage: boolean;
@@ -18,12 +24,18 @@ export type ManualModerationSettingsValue = {
 };
 
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
-  warnMessageTemplate: "⚠️ %target% получил(а) предупреждение. %reason%",
+  warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
   warnDeleteCommandMessage: false,
   warnDeleteTargetMessage: false,
+  unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
+  unwarnDeleteCommandMessage: false,
+  unwarnDeleteTargetMessage: false,
   muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
   muteDeleteCommandMessage: false,
   muteDeleteTargetMessage: false,
+  unmuteMessageTemplate: "🔊 С %target% снят mute.",
+  unmuteDeleteCommandMessage: false,
+  unmuteDeleteTargetMessage: false,
   banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
   banDeleteCommandMessage: false,
   banDeleteTargetMessage: false,
@@ -44,9 +56,15 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
     warnMessageTemplate: normalizeTemplate(input.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate),
     warnDeleteCommandMessage: Boolean(input.warnDeleteCommandMessage),
     warnDeleteTargetMessage: Boolean(input.warnDeleteTargetMessage),
+    unwarnMessageTemplate: normalizeTemplate(input.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate),
+    unwarnDeleteCommandMessage: Boolean(input.unwarnDeleteCommandMessage),
+    unwarnDeleteTargetMessage: Boolean(input.unwarnDeleteTargetMessage),
     muteMessageTemplate: normalizeTemplate(input.muteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteMessageTemplate),
     muteDeleteCommandMessage: Boolean(input.muteDeleteCommandMessage),
     muteDeleteTargetMessage: Boolean(input.muteDeleteTargetMessage),
+    unmuteMessageTemplate: normalizeTemplate(input.unmuteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unmuteMessageTemplate),
+    unmuteDeleteCommandMessage: Boolean(input.unmuteDeleteCommandMessage),
+    unmuteDeleteTargetMessage: Boolean(input.unmuteDeleteTargetMessage),
     banMessageTemplate: normalizeTemplate(input.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate),
     banDeleteCommandMessage: Boolean(input.banDeleteCommandMessage),
     banDeleteTargetMessage: Boolean(input.banDeleteTargetMessage),
@@ -61,9 +79,15 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
     warnMessageTemplate: settings.warnMessageTemplate,
     warnDeleteCommandMessage: settings.warnDeleteCommandMessage,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
+    unwarnMessageTemplate: settings.unwarnMessageTemplate,
+    unwarnDeleteCommandMessage: settings.unwarnDeleteCommandMessage,
+    unwarnDeleteTargetMessage: settings.unwarnDeleteTargetMessage,
     muteMessageTemplate: settings.muteMessageTemplate,
     muteDeleteCommandMessage: settings.muteDeleteCommandMessage,
     muteDeleteTargetMessage: settings.muteDeleteTargetMessage,
+    unmuteMessageTemplate: settings.unmuteMessageTemplate,
+    unmuteDeleteCommandMessage: settings.unmuteDeleteCommandMessage,
+    unmuteDeleteTargetMessage: settings.unmuteDeleteTargetMessage,
     banMessageTemplate: settings.banMessageTemplate,
     banDeleteCommandMessage: settings.banDeleteCommandMessage,
     banDeleteTargetMessage: settings.banDeleteTargetMessage,
@@ -117,7 +141,9 @@ export async function getChatManualModerationProfile(chatId: string) {
 
   const globalProfile = await getGlobalManualModerationProfile();
   const local = chat.manualModerationSettings;
-  const useGlobalProfile = local?.useGlobalProfile ?? false;
+  // A chat that never made a choice follows the global profile — otherwise
+  // globally configured templates would silently apply to no chat at all.
+  const useGlobalProfile = local?.useGlobalProfile ?? true;
   const effective = useGlobalProfile
     ? globalProfile.settings
     : serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS);
@@ -179,11 +205,11 @@ export async function updateChatManualModerationProfile(input: {
 
 export async function resolveEffectiveManualModerationSettings(chatId: string) {
   const local = await prisma.chatManualModerationSettings.findUnique({ where: { chatId } });
-  if (!local?.useGlobalProfile) {
+  if (local && !local.useGlobalProfile) {
     return {
       source: "CHAT" as const,
       useGlobalProfile: false,
-      settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
+      settings: serializeManualModerationSettings(local)
     };
   }
   const global = await prisma.globalManualModerationSettings.findUnique({
@@ -198,11 +224,20 @@ export async function resolveEffectiveManualModerationSettings(chatId: string) {
 
 export function renderManualModerationTemplate(
   template: string,
-  placeholders: { admin: string; target: string; reason: string; duration: string }
+  placeholders: {
+    admin: string;
+    target: string;
+    reason: string;
+    duration: string;
+    warns: string;
+    warnsLimit: string;
+  }
 ) {
   return template
     .replaceAll("%admin%", placeholders.admin)
     .replaceAll("%target%", placeholders.target)
     .replaceAll("%reason%", placeholders.reason)
-    .replaceAll("%duration%", placeholders.duration);
+    .replaceAll("%duration%", placeholders.duration)
+    .replaceAll("%warns_limit%", placeholders.warnsLimit)
+    .replaceAll("%warns%", placeholders.warns);
 }

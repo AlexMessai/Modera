@@ -7,9 +7,15 @@ export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteCommandMessage: boolean;
   warnDeleteTargetMessage: boolean;
+  unwarnMessageTemplate: string;
+  unwarnDeleteCommandMessage: boolean;
+  unwarnDeleteTargetMessage: boolean;
   muteMessageTemplate: string;
   muteDeleteCommandMessage: boolean;
   muteDeleteTargetMessage: boolean;
+  unmuteMessageTemplate: string;
+  unmuteDeleteCommandMessage: boolean;
+  unmuteDeleteTargetMessage: boolean;
   banMessageTemplate: string;
   banDeleteCommandMessage: boolean;
   banDeleteTargetMessage: boolean;
@@ -28,14 +34,31 @@ type Props = {
   onSaved?: (saved: ManualModerationSettingsValue) => void;
 };
 
-type CommandKey = "warn" | "mute" | "ban" | "unban";
+type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban";
 
-const COMMANDS: Array<{ key: CommandKey; command: string; title: string; hasDuration: boolean }> = [
-  { key: "warn", command: "/warn", title: "Предупреждение", hasDuration: false },
-  { key: "mute", command: "/mute", title: "Mute", hasDuration: true },
-  { key: "ban", command: "/ban", title: "Блокировка", hasDuration: false },
-  { key: "unban", command: "/unban", title: "Снятие блокировки", hasDuration: false }
+const COMMANDS: Array<{
+  key: CommandKey;
+  command: string;
+  title: string;
+  hasReason: boolean;
+  hasDuration: boolean;
+  hasWarnCount: boolean;
+}> = [
+  { key: "warn", command: "/warn", title: "Предупреждение", hasReason: true, hasDuration: false, hasWarnCount: true },
+  { key: "unwarn", command: "/unwarn", title: "Снятие предупреждения", hasReason: false, hasDuration: false, hasWarnCount: true },
+  { key: "mute", command: "/mute", title: "Mute", hasReason: true, hasDuration: true, hasWarnCount: false },
+  { key: "unmute", command: "/unmute", title: "Снятие mute", hasReason: false, hasDuration: false, hasWarnCount: false },
+  { key: "ban", command: "/ban", title: "Блокировка", hasReason: true, hasDuration: false, hasWarnCount: false },
+  { key: "unban", command: "/unban", title: "Снятие блокировки", hasReason: false, hasDuration: false, hasWarnCount: false }
 ];
+
+function placeholderHint(command: { hasReason: boolean; hasDuration: boolean; hasWarnCount: boolean }) {
+  const list = ["%admin%", "%target%"];
+  if (command.hasReason) list.push("%reason%");
+  if (command.hasDuration) list.push("%duration%");
+  if (command.hasWarnCount) list.push("%warns%", "%warns_limit%");
+  return `Доступны ${list.join(", ")}.`;
+}
 
 function templateKey(key: CommandKey) {
   return `${key}MessageTemplate` as const;
@@ -134,9 +157,11 @@ export function ManualModerationSettings({
         </div>
       ) : null}
 
-      <small className="row-note">Плейсхолдеры: %admin% — администратор, %target% — участник, %reason% — причина (или пусто), %duration% — срок mute (или пусто). Команды выполняются ответом (Reply) на сообщение участника.</small>
+      <small className="row-note">%admin% — администратор, %target% — участник, %reason% — причина (или пусто), %duration% — срок mute (или пусто), %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute. Команды выполняются ответом (Reply) на сообщение участника.</small>
 
-      {COMMANDS.map(({ key, command, title, hasDuration }) => (
+      {COMMANDS.map((commandInfo) => {
+        const { key, command, title } = commandInfo;
+        return (
         <div className="automod-rule" key={key}>
           <div className="automod-rule-heading"><strong>{title} ({command})</strong></div>
           <label className="automod-field">
@@ -147,7 +172,7 @@ export function ManualModerationSettings({
               disabled={fieldsDisabled}
               onChange={(event) => setField(templateKey(key), event.target.value)}
             />
-            <small>{hasDuration ? "Доступны %admin%, %target%, %reason%, %duration%." : "Доступны %admin%, %target%, %reason%."}</small>
+            <small>{placeholderHint(commandInfo)}</small>
           </label>
           <label className="automod-toggle-row">
             <input
@@ -168,7 +193,8 @@ export function ManualModerationSettings({
             <span>Удалить сообщение, на которое была отправлена команда {command}</span>
           </label>
         </div>
-      ))}
+        );
+      })}
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
       {success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}

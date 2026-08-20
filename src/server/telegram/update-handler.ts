@@ -6,9 +6,19 @@ import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChal
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { observeMember, syncChatMemberUpdate, syncJoinRequest, syncKnownAdministrators, syncObservedMessage, syncServiceMemberships } from "@/server/services/member-service";
-import { recordAutomodViolationAndEscalate } from "@/server/services/moderation-escalation-service";
+import {
+  describeWarningStanding,
+  escalateAfterManualWarning,
+  recordAutomodViolationAndEscalate,
+  type ManualWarningEscalation
+} from "@/server/services/moderation-escalation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
-import { executeTelegramActorModerationAction, ModerationError, type ModerationActionValue } from "@/server/services/moderation-service";
+import {
+  executeTelegramActorModerationAction,
+  executeTelegramActorWarningRevoke,
+  ModerationError,
+  type ModerationActionValue
+} from "@/server/services/moderation-service";
 import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
@@ -63,18 +73,24 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
 }
 
 const WARN_COMMAND_PATTERN = /^\/warn(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const UNWARN_COMMAND_PATTERN = /^\/unwarn(?:@\w+)?\s*$/i;
 const MUTE_COMMAND_PATTERN = /^\/mute(?:@\w+)?\s*(?:(\d+)\s+)?([\s\S]*)$/i;
+const GROUP_UNMUTE_COMMAND_PATTERN = /^\/unmute(?:@\w+)?\s*$/i;
 const BAN_COMMAND_PATTERN = /^\/ban(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const UNBAN_COMMAND_PATTERN = /^\/unban(?:@\w+)?\s*$/i;
 
-const TEMPLATE_FIELDS_BY_ACTION: Record<ModerationActionValue, {
+/** /unwarn is not a ModerationActionValue — it only takes a warning back locally. */
+type GroupModerationCommand = ModerationActionValue | "UNWARN";
+
+const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   template: keyof ManualModerationSettingsValue;
   deleteCommand: keyof ManualModerationSettingsValue;
   deleteTarget: keyof ManualModerationSettingsValue;
 }> = {
   WARNING: { template: "warnMessageTemplate", deleteCommand: "warnDeleteCommandMessage", deleteTarget: "warnDeleteTargetMessage" },
+  UNWARN: { template: "unwarnMessageTemplate", deleteCommand: "unwarnDeleteCommandMessage", deleteTarget: "unwarnDeleteTargetMessage" },
   MUTE: { template: "muteMessageTemplate", deleteCommand: "muteDeleteCommandMessage", deleteTarget: "muteDeleteTargetMessage" },
-  UNMUTE: { template: "muteMessageTemplate", deleteCommand: "muteDeleteCommandMessage", deleteTarget: "muteDeleteTargetMessage" },
+  UNMUTE: { template: "unmuteMessageTemplate", deleteCommand: "unmuteDeleteCommandMessage", deleteTarget: "unmuteDeleteTargetMessage" },
   BAN: { template: "banMessageTemplate", deleteCommand: "banDeleteCommandMessage", deleteTarget: "banDeleteTargetMessage" },
   UNBAN: { template: "unbanMessageTemplate", deleteCommand: "unbanDeleteCommandMessage", deleteTarget: "unbanDeleteTargetMessage" }
 };
@@ -84,6 +100,12 @@ function telegramDisplayName(user: { first_name?: string; last_name?: string; us
   if (name) return name;
   if (user.username) return `@${user.username}`;
   return `Telegram ${user.id}`;
+}
+
+function formatMinutes(minutes: number) {
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)} дн.`;
+  if (minutes % 60 === 0) return `${minutes / 60} ч.`;
+  return `${minutes} мин.`;
 }
 
 async function processGroupModerationCommand(input: {
@@ -96,27 +118,35 @@ async function processGroupModerationCommand(input: {
   const from = input.message.from;
   if (!from || from.is_bot) return false;
 
-  let action: ModerationActionValue;
+  let action: GroupModerationCommand;
   let reason: string | null = null;
   let muteDurationMinutes: number | null = null;
 
-  const warnMatch = WARN_COMMAND_PATTERN.exec(text);
-  const muteMatch = !warnMatch ? MUTE_COMMAND_PATTERN.exec(text) : null;
-  const banMatch = !warnMatch && !muteMatch ? BAN_COMMAND_PATTERN.exec(text) : null;
-  const unbanMatch = !warnMatch && !muteMatch && !banMatch ? UNBAN_COMMAND_PATTERN.exec(text) : null;
+  // Every pattern is anchored with ^, so /unwarn can't be read as /warn and the
+  // order below is just for readability, not correctness.
+  const unwarnMatch = UNWARN_COMMAND_PATTERN.exec(text);
+  const warnMatch = !unwarnMatch ? WARN_COMMAND_PATTERN.exec(text) : null;
+  const unmuteMatch = !unwarnMatch && !warnMatch ? GROUP_UNMUTE_COMMAND_PATTERN.exec(text) : null;
+  const muteMatch = !unwarnMatch && !warnMatch && !unmuteMatch ? MUTE_COMMAND_PATTERN.exec(text) : null;
+  const unbanMatch = !unwarnMatch && !warnMatch && !unmuteMatch && !muteMatch ? UNBAN_COMMAND_PATTERN.exec(text) : null;
+  const banMatch = !unwarnMatch && !warnMatch && !unmuteMatch && !muteMatch && !unbanMatch ? BAN_COMMAND_PATTERN.exec(text) : null;
 
-  if (warnMatch) {
+  if (unwarnMatch) {
+    action = "UNWARN";
+  } else if (warnMatch) {
     action = "WARNING";
     reason = (warnMatch[1] ?? "").trim() || null;
+  } else if (unmuteMatch) {
+    action = "UNMUTE";
   } else if (muteMatch) {
     action = "MUTE";
     muteDurationMinutes = muteMatch[1] ? Number(muteMatch[1]) : null;
     reason = (muteMatch[2] ?? "").trim() || null;
+  } else if (unbanMatch) {
+    action = "UNBAN";
   } else if (banMatch) {
     action = "BAN";
     reason = (banMatch[1] ?? "").trim() || null;
-  } else if (unbanMatch) {
-    action = "UNBAN";
   } else {
     return false;
   }
@@ -141,19 +171,49 @@ async function processGroupModerationCommand(input: {
     return true;
   }
 
+  const telegramActor = {
+    telegramUserId: from.id,
+    username: from.username,
+    displayName: [from.first_name, from.last_name].filter(Boolean).join(" ").trim() || undefined
+  };
+
   try {
-    await executeTelegramActorModerationAction({
-      chatId: input.chatId,
-      targetTelegramUserId: target.id,
-      action,
-      reason,
-      muteDurationMinutes,
-      telegramActor: {
-        telegramUserId: from.id,
-        username: from.username,
-        displayName: [from.first_name, from.last_name].filter(Boolean).join(" ").trim() || undefined
+    let warns = "";
+    let warnsLimit = "";
+    let escalation: ManualWarningEscalation | null = null;
+
+    if (action === "UNWARN") {
+      const revoked = await executeTelegramActorWarningRevoke({
+        chatId: input.chatId,
+        targetTelegramUserId: target.id,
+        telegramActor
+      });
+      const remaining = await describeWarningStanding({
+        chatId: revoked.chatId,
+        affectedUserId: revoked.affectedUserId
+      });
+      warns = String(remaining.activeWarningCount);
+      warnsLimit = String(remaining.warnsLimit);
+    } else {
+      await executeTelegramActorModerationAction({
+        chatId: input.chatId,
+        targetTelegramUserId: target.id,
+        action,
+        reason,
+        muteDurationMinutes,
+        telegramActor
+      });
+
+      if (action === "WARNING") {
+        escalation = await escalateAfterManualWarning({
+          chatId: input.chatId,
+          targetTelegramUserId: target.id,
+          reason: reason ?? "Предупреждение от администратора чата"
+        });
+        warns = String(escalation.activeWarningCount);
+        warnsLimit = String(escalation.warnsLimit);
       }
-    });
+    }
 
     const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
     const fields = TEMPLATE_FIELDS_BY_ACTION[action];
@@ -165,12 +225,29 @@ async function processGroupModerationCommand(input: {
       await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
     }
 
-    const renderedText = renderManualModerationTemplate(settings[fields.template] as string, {
+    const placeholders = {
       admin: telegramDisplayName(from),
       target: telegramDisplayName(target),
       reason: reason ?? "",
-      duration: action === "MUTE" && muteDurationMinutes ? `${muteDurationMinutes} мин.` : ""
-    });
+      duration: action === "MUTE" && muteDurationMinutes ? formatMinutes(muteDurationMinutes) : "",
+      warns,
+      warnsLimit
+    };
+    let renderedText = renderManualModerationTemplate(settings[fields.template] as string, placeholders);
+
+    // The warning that crossed the threshold also triggered a punishment — say so
+    // in the same reply rather than leaving the chat to guess why the mute landed.
+    if (escalation?.escalated && escalation.action) {
+      renderedText += `\n${renderManualModerationTemplate(
+        settings[escalation.action === "MUTE" ? "muteMessageTemplate" : "banMessageTemplate"],
+        {
+          ...placeholders,
+          admin: "Modera",
+          reason: `Достигнут порог ${escalation.warnsLimit} предупреждений.`,
+          duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
+        }
+      )}`;
+    }
     await reply(renderedText);
   } catch (error) {
     const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";

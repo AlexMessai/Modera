@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  applyWarningEscalation,
   countActiveWarnings,
+  describeWarningStanding,
+  escalateAfterManualWarning,
   recordAutomodViolationAndEscalate,
   warningCutoff
 } from "./moderation-escalation-service";
+import { executeTelegramActorModerationAction } from "./moderation-service";
 
 async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEMBER") {
   const chat = await prisma.chat.create({
@@ -190,6 +194,78 @@ test("warning expiry keeps history but excludes old warnings from escalation", a
     assert.equal(metadata?.activeWarningCount, 3);
     assert.equal(metadata?.warningExpiryDays, 30);
   } finally {
+    await prisma.chat.delete({ where: { id: data.chat.id } });
+    await prisma.telegramUser.delete({ where: { id: data.user.id } });
+  }
+});
+
+test("manual /warn shares automod's threshold: below it nothing is attempted, the 3rd warning tries to mute", async () => {
+  const data = await fixture(4);
+  try {
+    await prisma.chatModerationSettings.update({
+      where: { chatId: data.chat.id },
+      data: { muteAfterWarnings: 3, muteDurationMinutes: 4320, banAfterWarnings: 8 }
+    });
+
+    for (let i = 1; i <= 2; i += 1) {
+      const warning = await executeTelegramActorModerationAction({
+        chatId: data.chat.id,
+        targetTelegramUserId: Number(data.user.telegramUserId),
+        action: "WARNING",
+        reason: `Нарушение ${i}`,
+        telegramActor: { telegramUserId: 555, username: "chat_admin" }
+      });
+      assert.equal(warning.warningCount, i);
+      const below = await escalateAfterManualWarning({
+        chatId: data.chat.id,
+        targetTelegramUserId: Number(data.user.telegramUserId),
+        reason: `Нарушение ${i}`
+      });
+      assert.equal(below.activeWarningCount, i);
+      assert.equal(below.escalated, false);
+      assert.equal(below.action, undefined);
+    }
+
+    const thirdWarning = await executeTelegramActorModerationAction({
+      chatId: data.chat.id,
+      targetTelegramUserId: Number(data.user.telegramUserId),
+      action: "WARNING",
+      reason: "Нарушение 3",
+      telegramActor: { telegramUserId: 555, username: "chat_admin" }
+    });
+    assert.equal(thirdWarning.warningCount, 3);
+
+    // No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md), so the mute this threshold
+    // triggers can't actually reach Telegram. Assert at the applyWarningEscalation
+    // level instead, where attemptedAction/error distinguish "threshold reached but
+    // Telegram failed" from "threshold not reached" — escalateAfterManualWarning's
+    // own return shape can't tell those two apart from the outside.
+    const escalation = await applyWarningEscalation({
+      membershipId: data.member.id,
+      policy: { muteAfterWarnings: 3, muteDurationMinutes: 4320, banAfterWarnings: 8 },
+      reason: "Нарушение 3",
+      triggerRule: "MANUAL_WARN",
+      warningCount: thirdWarning.warningCount,
+      activeWarningCount: thirdWarning.warningCount,
+      escalationMarker: 0
+    });
+    assert.equal(escalation.enabled, true);
+    assert.equal(escalation.escalated, false);
+    assert.equal(escalation.attemptedAction, "MUTE");
+    assert.ok(escalation.error);
+
+    // The failed attempt must not leave the escalation marker claimed, so a
+    // retry (e.g. once a real bot token is configured) can escalate again.
+    const member = await prisma.chatMember.findUniqueOrThrow({ where: { id: data.member.id } });
+    assert.equal(member.lastAutoEscalationWarningCount, 0);
+    assert.equal(member.punishmentState, null);
+
+    const standing = await describeWarningStanding({ chatId: data.chat.id, affectedUserId: data.user.id });
+    assert.equal(standing.activeWarningCount, 3);
+    assert.equal(standing.warnsLimit, 3);
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { chatId: data.chat.id } });
+    await prisma.auditLog.deleteMany({ where: { chatId: data.chat.id } });
     await prisma.chat.delete({ where: { id: data.chat.id } });
     await prisma.telegramUser.delete({ where: { id: data.user.id } });
   }
