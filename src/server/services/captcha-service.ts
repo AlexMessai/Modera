@@ -66,7 +66,7 @@ export async function issueCaptchaChallenge(input: {
   try {
     // Ephemeral (Bot API 10.2): visible only to this member, not the whole
     // chat -- nobody else sees the challenge or can tap the button.
-    await getTelegramClient().sendMessage({
+    const sent = await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
       text: `Подтвердите, что вы не бот — нажмите кнопку ниже в течение ${input.timeoutMinutes} мин., иначе вы будете исключены из чата.`,
@@ -74,6 +74,16 @@ export async function issueCaptchaChallenge(input: {
         inline_keyboard: [[{ text: "✅ Я не бот", callback_data: captchaCallbackData(input.telegramUserId) }]]
       }
     });
+    if (sent.ephemeral_message_id === undefined) {
+      // Telegram is supposed to always set this for a receiver_user_id send
+      // -- if it doesn't, the callback_query handler has nothing to delete
+      // later, so this is worth knowing about rather than failing silently.
+      console.warn("[captcha] challenge sent without ephemeral_message_id", {
+        chatId: input.chatId,
+        telegramUserId: input.telegramUserId.toString(),
+        messageId: sent.message_id
+      });
+    }
   } catch (error) {
     console.warn("[captcha] failed to send challenge message", {
       chatId: input.chatId,
