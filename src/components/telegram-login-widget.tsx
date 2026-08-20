@@ -28,9 +28,12 @@ export function TelegramLoginWidget({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const onAuthRef = useRef(onAuth);
-  onAuthRef.current = onAuth;
   const rawId = useId();
   const callbackName = `telegramLoginCallback_${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  useEffect(() => {
+    onAuthRef.current = onAuth;
+  }, [onAuth]);
 
   useEffect(() => {
     const container = containerRef.current;
