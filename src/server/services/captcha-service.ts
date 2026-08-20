@@ -106,22 +106,6 @@ export async function maybeIssueCaptchaChallenge(input: {
   const profile = await resolveEffectiveCaptchaSettings(input.chatId);
   if (!profile.settings.enabled) return { outcome: "disabled" as const };
 
-  // A member who just joined via a guard_bot-screened join request (Mini App
-  // confirmation or the blocked-terms fallback, see join-request-service.ts)
-  // already proved they're not a bot — issuing the usual post-join captcha
-  // on top would mute them a second time for the same thing.
-  const recentAutoApproval = await prisma.joinRequest.findFirst({
-    where: {
-      chatId: input.chatId,
-      userId: input.userId,
-      status: "APPROVED",
-      resolvedByAdminId: null,
-      resolvedAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }
-    },
-    select: { id: true }
-  });
-  if (recentAutoApproval) return { outcome: "skipped_join_request_screened" as const };
-
   const current = await prisma.chatMember.findUnique({
     where: { id: input.membershipId },
     select: { punishmentState: true }
