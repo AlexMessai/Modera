@@ -36,20 +36,37 @@ type Props = {
 
 type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban";
 
-const COMMANDS: Array<{
+type CommandInfo = {
   key: CommandKey;
   command: string;
-  title: string;
+  description: string;
   hasReason: boolean;
   hasDuration: boolean;
   hasWarnCount: boolean;
-}> = [
-  { key: "warn", command: "/warn", title: "Предупреждение", hasReason: true, hasDuration: false, hasWarnCount: true },
-  { key: "unwarn", command: "/unwarn", title: "Снятие предупреждения", hasReason: false, hasDuration: false, hasWarnCount: true },
-  { key: "mute", command: "/mute", title: "Mute", hasReason: true, hasDuration: true, hasWarnCount: false },
-  { key: "unmute", command: "/unmute", title: "Снятие mute", hasReason: false, hasDuration: false, hasWarnCount: false },
-  { key: "ban", command: "/ban", title: "Блокировка", hasReason: true, hasDuration: false, hasWarnCount: false },
-  { key: "unban", command: "/unban", title: "Снятие блокировки", hasReason: false, hasDuration: false, hasWarnCount: false }
+};
+
+const COMMAND_SECTIONS: Array<{ title: string; commands: CommandInfo[] }> = [
+  {
+    title: "Предупреждения",
+    commands: [
+      { key: "warn", command: "/warn", description: "Выдаёт предупреждение участнику. Учитывается в общем счётчике вместе с автомодерацией.", hasReason: true, hasDuration: false, hasWarnCount: true },
+      { key: "unwarn", command: "/unwarn", description: "Снимает одно предупреждение с участника.", hasReason: false, hasDuration: false, hasWarnCount: true }
+    ]
+  },
+  {
+    title: "Mute",
+    commands: [
+      { key: "mute", command: "/mute", description: "Запрещает участнику писать сообщения на указанный срок.", hasReason: true, hasDuration: true, hasWarnCount: false },
+      { key: "unmute", command: "/unmute", description: "Досрочно снимает mute с участника.", hasReason: false, hasDuration: false, hasWarnCount: false }
+    ]
+  },
+  {
+    title: "Блокировка",
+    commands: [
+      { key: "ban", command: "/ban", description: "Блокирует участника в чате.", hasReason: true, hasDuration: false, hasWarnCount: false },
+      { key: "unban", command: "/unban", description: "Снимает блокировку — участник сможет вернуться в чат.", hasReason: false, hasDuration: false, hasWarnCount: false }
+    ]
+  }
 ];
 
 function placeholderHint(command: { hasReason: boolean; hasDuration: boolean; hasWarnCount: boolean }) {
@@ -157,44 +174,64 @@ export function ManualModerationSettings({
         </div>
       ) : null}
 
-      <small className="row-note">%admin% — администратор, %target% — участник, %reason% — причина (или пусто), %duration% — срок mute (или пусто), %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute. Команды выполняются ответом (Reply) на сообщение участника.</small>
+      <small className="row-note">Команды выполняются ответом (Reply) на сообщение участника. %admin% — администратор, %target% — участник, %reason% — причина, %duration% — срок mute, %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute (пустые плейсхолдеры заменяются на пустую строку).</small>
 
-      {COMMANDS.map((commandInfo) => {
-        const { key, command, title } = commandInfo;
-        return (
-        <div className="automod-rule" key={key}>
-          <div className="automod-rule-heading"><strong>{title} ({command})</strong></div>
-          <label className="automod-field">
-            <span>Текст сообщения после применения команды</span>
-            <textarea
-              rows={2}
-              value={visibleSettings[templateKey(key)]}
-              disabled={fieldsDisabled}
-              onChange={(event) => setField(templateKey(key), event.target.value)}
-            />
-            <small>{placeholderHint(commandInfo)}</small>
-          </label>
-          <label className="automod-toggle-row">
-            <input
-              type="checkbox"
-              checked={visibleSettings[deleteCommandKey(key)]}
-              disabled={fieldsDisabled}
-              onChange={(event) => setField(deleteCommandKey(key), event.target.checked)}
-            />
-            <span>Удалить сообщение с командой {command}</span>
-          </label>
-          <label className="automod-toggle-row">
-            <input
-              type="checkbox"
-              checked={visibleSettings[deleteTargetKey(key)]}
-              disabled={fieldsDisabled}
-              onChange={(event) => setField(deleteTargetKey(key), event.target.checked)}
-            />
-            <span>Удалить сообщение, на которое была отправлена команда {command}</span>
-          </label>
+      {COMMAND_SECTIONS.map((section) => (
+        <div className="manual-mod-section" key={section.title}>
+          <h3 className="manual-mod-section-title">{section.title}</h3>
+          <div className="manual-mod-command-list">
+            {section.commands.map((commandInfo) => {
+              const { key, command, description } = commandInfo;
+              return (
+                <article className="manual-mod-card" key={key}>
+                  <div className="manual-mod-card-header">
+                    <code className="manual-mod-command-chip">{command}</code>
+                    <div className="manual-mod-tags">
+                      <span className="badge">Ответ на сообщение</span>
+                      {commandInfo.hasReason ? <span className="badge">Причина</span> : null}
+                      {commandInfo.hasDuration ? <span className="badge">Срок mute</span> : null}
+                      {commandInfo.hasWarnCount ? <span className="badge">Счётчик варнов</span> : null}
+                    </div>
+                  </div>
+                  <p className="manual-mod-card-description">{description}</p>
+
+                  <label className="automod-field">
+                    <span>Текст ответа бота</span>
+                    <textarea
+                      rows={2}
+                      value={visibleSettings[templateKey(key)]}
+                      disabled={fieldsDisabled}
+                      onChange={(event) => setField(templateKey(key), event.target.value)}
+                    />
+                    <small>{placeholderHint(commandInfo)}</small>
+                  </label>
+
+                  <div className="manual-mod-toggle-grid">
+                    <label className="automod-toggle-row automod-toggle-row--compact">
+                      <input
+                        type="checkbox"
+                        checked={visibleSettings[deleteCommandKey(key)]}
+                        disabled={fieldsDisabled}
+                        onChange={(event) => setField(deleteCommandKey(key), event.target.checked)}
+                      />
+                      <span>Удалить сообщение с командой</span>
+                    </label>
+                    <label className="automod-toggle-row automod-toggle-row--compact">
+                      <input
+                        type="checkbox"
+                        checked={visibleSettings[deleteTargetKey(key)]}
+                        disabled={fieldsDisabled}
+                        onChange={(event) => setField(deleteTargetKey(key), event.target.checked)}
+                      />
+                      <span>Удалить сообщение участника</span>
+                    </label>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
-        );
-      })}
+      ))}
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
       {success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}

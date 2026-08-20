@@ -28,6 +28,16 @@
 .automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
 .automod-audit-list { margin-top: 14px; }
+
+.manual-mod-section { display: grid; gap: 10px; }
+.manual-mod-section-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.manual-mod-command-list { display: grid; gap: 10px; }
+.manual-mod-card { display: grid; gap: 9px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
+.manual-mod-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.manual-mod-command-chip { padding: 3px 9px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.manual-mod-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.manual-mod-card-description { margin: 0; color: var(--muted); font-size: 12px; }
+.manual-mod-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
 .chat-cell-link { border-radius: 7px; }
 .chat-cell-link:hover strong { color: var(--accent); }
 
@@ -39,7 +49,7 @@
 @media (max-width: 760px) {
   .chat-detail-header { align-items: stretch; flex-direction: column; }
   .chat-detail-status { justify-items: start; }
-  .automod-number-grid, .automod-media-grid { grid-template-columns: 1fr; }
+  .automod-number-grid, .automod-media-grid, .manual-mod-toggle-grid { grid-template-columns: 1fr; }
   .automod-field--short { max-width: none; }
   .automod-actions .button { width: 100%; }
 }
