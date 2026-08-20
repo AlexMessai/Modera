@@ -248,6 +248,15 @@ async function applyGuardBotDecision(input: {
   return true;
 }
 
+// sendChatJoinRequestWebApp returns ok:true from the Bot API (confirmed live
+// against production — correct params, Guard Mode + Main App both configured
+// in BotFather, zero errors logged) but the Telegram client never actually
+// shows the applicant anything — this is a brand-new (11 June 2026) part of
+// the API that the client app doesn't appear to render yet. Gated off by
+// default so guard_bot resolution actually works today; flip
+// JOIN_REQUEST_MINI_APP_ENABLED=true once Telegram's client catches up.
+const MINI_APP_SCREENING_ENABLED = process.env.JOIN_REQUEST_MINI_APP_ENABLED === "true";
+
 /**
  * Bot API 10.1 "Join Request Queries": a chat_join_request carrying a
  * query_id means this bot is the chat's designated guard_bot (set by chat
@@ -257,10 +266,11 @@ async function applyGuardBotDecision(input: {
  *
  * Prefers opening a Mini App confirmation screen (sendChatJoinRequestWebApp)
  * — the applicant taps confirm there, which calls
- * resolveJoinRequestFromMiniApp below, with no further time limit. Falls
- * back to an immediate decision, screening bio/name against the chat's
- * blocked-terms list (the same list automod already uses for messages),
- * when no public app URL is configured or sending the Mini App fails.
+ * resolveJoinRequestFromMiniApp below, with no further time limit — but only
+ * when MINI_APP_SCREENING_ENABLED (see above). Otherwise, and as a fallback
+ * if sending the Mini App fails, decides immediately by screening bio/name
+ * against the chat's blocked-terms list (the same list automod already uses
+ * for messages).
  */
 export async function resolveGuardBotJoinRequest(input: {
   chatId: string;
@@ -270,7 +280,7 @@ export async function resolveGuardBotJoinRequest(input: {
   const queryId = input.request.query_id;
   if (!queryId) return;
 
-  const baseUrl = resolveAppBaseUrl();
+  const baseUrl = MINI_APP_SCREENING_ENABLED ? resolveAppBaseUrl() : null;
   if (baseUrl) {
     try {
       await getTelegramClient().sendChatJoinRequestWebApp(queryId, `${baseUrl}/join-verify`);
