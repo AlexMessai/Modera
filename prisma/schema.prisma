@@ -237,6 +237,7 @@ model JoinRequest {
   userChatId        BigInt?
   bio               String?           @db.VarChar(500)
   inviteLink        String?           @db.Text
+  queryId           String?           @unique
   status            JoinRequestStatus @default(PENDING)
   requestedAt       DateTime          @db.Timestamptz(3)
   processingAt      DateTime?         @db.Timestamptz(3)

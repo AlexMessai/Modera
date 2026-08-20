@@ -253,6 +253,16 @@ export class TelegramClient {
     });
   }
 
+  // Opens a Mini App screening step for a join request query instead of
+  // deciding immediately — the applicant confirms inside the Mini App, which
+  // then calls answerChatJoinRequestQuery itself with that same query_id.
+  sendChatJoinRequestWebApp(queryId: string, webAppUrl: string) {
+    return this.call<boolean>("sendChatJoinRequestWebApp", {
+      query_id: queryId,
+      web_app_url: webAppUrl
+    });
+  }
+
   sendMessage(input: {
     chatId: number;
     text: string;

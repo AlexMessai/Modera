@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  JoinRequestMiniAppError,
   listJoinRequests,
   recordTelegramJoinRequest,
-  resolveGuardBotJoinRequest
+  resolveGuardBotJoinRequest,
+  resolveJoinRequestFromMiniApp
 } from "./join-request-service";
 
 test("Telegram join request ingestion is idempotent by update id", async () => {
@@ -111,4 +113,13 @@ test("guard-bot resolution leaves the request pending when Telegram can't be rea
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.telegramUser.delete({ where: { id: user.id } });
   }
+});
+
+test("Mini App confirmation is rejected outright without a configured bot token", async () => {
+  // No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md) — resolveJoinRequestFromMiniApp
+  // must fail closed before it ever tries to verify a signature.
+  await assert.rejects(
+    () => resolveJoinRequestFromMiniApp("query_id=x&user=%7B%7D&auth_date=0&hash=x"),
+    (error: unknown) => error instanceof JoinRequestMiniAppError && error.code === "MINI_APP_UNAVAILABLE"
+  );
 });
