@@ -29,6 +29,9 @@ export type ModerationSettingsValue = {
   muteDurationMinutes: number;
   banAfterWarnings: number;
   warningExpiryDays: number;
+  announceEscalationEnabled: boolean;
+  escalationMuteMessageTemplate: string;
+  escalationBanMessageTemplate: string;
 };
 
 type Props = {
@@ -169,6 +172,13 @@ export function ChatModerationSettings({
             <label className="automod-field"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /></label>
           </div>
           <small className="row-note">0 предупреждений не сгорают, иначе старые перестают влиять на пороги по истечении срока. Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute.</small>
+
+          <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={visibleSettings.announceEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, announceEscalationEnabled: event.target.checked }))} /><span><strong>Объявлять в чате</strong><small>Когда automod доводит участника до mute/ban по порогу предупреждений, бот пишет об этом в чат (по умолчанию выключено — automod иначе наказывает молча).</small></span></label>
+          {visibleSettings.announceEscalationEnabled ? <>
+            <label className="automod-field"><span>Текст при mute</span><textarea rows={2} value={visibleSettings.escalationMuteMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, escalationMuteMessageTemplate: event.target.value }))} /></label>
+            <label className="automod-field"><span>Текст при ban</span><textarea rows={2} value={visibleSettings.escalationBanMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, escalationBanMessageTemplate: event.target.value }))} /></label>
+            <small className="row-note">Доступны %target%, %duration%, %warns%, %warns_limit%.</small>
+          </> : null}
         </> : null}
       </div>
 

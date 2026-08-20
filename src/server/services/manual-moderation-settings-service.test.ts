@@ -25,13 +25,13 @@ test("blank templates fall back to defaults, toggles are coerced to booleans", (
     unwarnMessageTemplate: "   ",
     muteMessageTemplate: "🔇 %target%",
     unmuteMessageTemplate: "🔊 %target%",
-    muteDeleteCommandMessage: 1 as never
+    muteDeleteTargetMessage: 1 as never
   });
   assert.equal(normalized.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate);
   assert.equal(normalized.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate);
   assert.equal(normalized.muteMessageTemplate, "🔇 %target%");
   assert.equal(normalized.unmuteMessageTemplate, "🔊 %target%");
-  assert.equal(normalized.muteDeleteCommandMessage, true);
+  assert.equal(normalized.muteDeleteTargetMessage, true);
 });
 
 test("template rendering replaces every placeholder and tolerates repeats", () => {

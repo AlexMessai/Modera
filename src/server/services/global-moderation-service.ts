@@ -21,7 +21,10 @@ export const DEFAULT_MODERATION_SETTINGS = {
   muteAfterWarnings: 3,
   muteDurationMinutes: 10,
   banAfterWarnings: 6,
-  warningExpiryDays: 0
+  warningExpiryDays: 0,
+  announceEscalationEnabled: false,
+  escalationMuteMessageTemplate: "🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
+  escalationBanMessageTemplate: "⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%."
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
@@ -79,6 +82,11 @@ function boundedInteger(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
+function normalizeEscalationTemplate(value: string, fallback: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 1000) : fallback;
+}
+
 export function normalizeModerationSettings(input: ModerationSettingsValue): ModerationSettingsValue {
   return {
     blockLinks: input.blockLinks,
@@ -99,7 +107,10 @@ export function normalizeModerationSettings(input: ModerationSettingsValue): Mod
     muteAfterWarnings: input.muteAfterWarnings,
     muteDurationMinutes: input.muteDurationMinutes,
     banAfterWarnings: input.banAfterWarnings,
-    warningExpiryDays: boundedInteger(input.warningExpiryDays, 0, 3650)
+    warningExpiryDays: boundedInteger(input.warningExpiryDays, 0, 3650),
+    announceEscalationEnabled: input.announceEscalationEnabled,
+    escalationMuteMessageTemplate: normalizeEscalationTemplate(input.escalationMuteMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate),
+    escalationBanMessageTemplate: normalizeEscalationTemplate(input.escalationBanMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate)
   };
 }
 
@@ -123,7 +134,10 @@ export function serializeModerationSettings(settings: ModerationSettingsValue): 
     muteAfterWarnings: settings.muteAfterWarnings,
     muteDurationMinutes: settings.muteDurationMinutes,
     banAfterWarnings: settings.banAfterWarnings,
-    warningExpiryDays: settings.warningExpiryDays
+    warningExpiryDays: settings.warningExpiryDays,
+    announceEscalationEnabled: settings.announceEscalationEnabled,
+    escalationMuteMessageTemplate: settings.escalationMuteMessageTemplate,
+    escalationBanMessageTemplate: settings.escalationBanMessageTemplate
   };
 }
 

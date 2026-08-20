@@ -12,6 +12,7 @@ import {
   recordAutomodViolationAndEscalate,
   type ManualWarningEscalation
 } from "@/server/services/moderation-escalation-service";
+import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import {
   executeTelegramActorModerationAction,
@@ -69,7 +70,24 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
     rule,
     telegramMessageId: String(input.message.message_id)
   };
-  await recordAutomodViolationAndEscalate(violation).catch(() => undefined);
+  const escalation = await recordAutomodViolationAndEscalate(violation).catch(() => undefined);
+  if (!escalation?.escalated || !escalation.action) return;
+
+  const { settings } = await resolveEffectiveModerationSettings(input.chatId);
+  if (!settings.announceEscalationEnabled) return;
+
+  const template = escalation.action === "MUTE"
+    ? settings.escalationMuteMessageTemplate
+    : settings.escalationBanMessageTemplate;
+  const text = renderManualModerationTemplate(template, {
+    admin: "Modera",
+    target: telegramDisplayName(input.message.from),
+    reason: "",
+    duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
+    warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
+    warnsLimit: String(escalation.action === "MUTE" ? settings.muteAfterWarnings : settings.banAfterWarnings)
+  });
+  await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
 }
 
 const WARN_COMMAND_PATTERN = /^\/warn(?:@\w+)?(?:\s+([\s\S]*))?$/i;
@@ -84,15 +102,14 @@ type GroupModerationCommand = ModerationActionValue | "UNWARN";
 
 const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   template: keyof ManualModerationSettingsValue;
-  deleteCommand: keyof ManualModerationSettingsValue;
   deleteTarget: keyof ManualModerationSettingsValue;
 }> = {
-  WARNING: { template: "warnMessageTemplate", deleteCommand: "warnDeleteCommandMessage", deleteTarget: "warnDeleteTargetMessage" },
-  UNWARN: { template: "unwarnMessageTemplate", deleteCommand: "unwarnDeleteCommandMessage", deleteTarget: "unwarnDeleteTargetMessage" },
-  MUTE: { template: "muteMessageTemplate", deleteCommand: "muteDeleteCommandMessage", deleteTarget: "muteDeleteTargetMessage" },
-  UNMUTE: { template: "unmuteMessageTemplate", deleteCommand: "unmuteDeleteCommandMessage", deleteTarget: "unmuteDeleteTargetMessage" },
-  BAN: { template: "banMessageTemplate", deleteCommand: "banDeleteCommandMessage", deleteTarget: "banDeleteTargetMessage" },
-  UNBAN: { template: "unbanMessageTemplate", deleteCommand: "unbanDeleteCommandMessage", deleteTarget: "unbanDeleteTargetMessage" }
+  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage" },
+  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage" },
+  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage" },
+  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage" },
+  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage" },
+  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage" }
 };
 
 function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {
@@ -153,6 +170,11 @@ async function processGroupModerationCommand(input: {
 
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText }).catch(() => undefined);
+
+  // The command text itself (e.g. "/warn спам") never belongs in the chat —
+  // delete it immediately, before any validation, so it disappears whether
+  // the command succeeds, fails permission/format checks, or errors out.
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
 
   const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!isAdmin) {
@@ -218,9 +240,6 @@ async function processGroupModerationCommand(input: {
     const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
     const fields = TEMPLATE_FIELDS_BY_ACTION[action];
 
-    if (settings[fields.deleteCommand]) {
-      await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
-    }
     if (settings[fields.deleteTarget] && input.message.reply_to_message) {
       await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
     }

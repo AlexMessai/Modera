@@ -4,43 +4,31 @@ export const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
 
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
-  warnDeleteCommandMessage: boolean;
   warnDeleteTargetMessage: boolean;
   unwarnMessageTemplate: string;
-  unwarnDeleteCommandMessage: boolean;
   unwarnDeleteTargetMessage: boolean;
   muteMessageTemplate: string;
-  muteDeleteCommandMessage: boolean;
   muteDeleteTargetMessage: boolean;
   unmuteMessageTemplate: string;
-  unmuteDeleteCommandMessage: boolean;
   unmuteDeleteTargetMessage: boolean;
   banMessageTemplate: string;
-  banDeleteCommandMessage: boolean;
   banDeleteTargetMessage: boolean;
   unbanMessageTemplate: string;
-  unbanDeleteCommandMessage: boolean;
   unbanDeleteTargetMessage: boolean;
 };
 
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
   warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
-  warnDeleteCommandMessage: false,
   warnDeleteTargetMessage: false,
   unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
-  unwarnDeleteCommandMessage: false,
   unwarnDeleteTargetMessage: false,
   muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
-  muteDeleteCommandMessage: false,
   muteDeleteTargetMessage: false,
   unmuteMessageTemplate: "🔊 С %target% снят mute.",
-  unmuteDeleteCommandMessage: false,
   unmuteDeleteTargetMessage: false,
   banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
-  banDeleteCommandMessage: false,
   banDeleteTargetMessage: false,
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
-  unbanDeleteCommandMessage: false,
   unbanDeleteTargetMessage: false
 };
 
@@ -54,22 +42,16 @@ function normalizeTemplate(value: string, fallback: string) {
 export function normalizeManualModerationSettings(input: ManualModerationSettingsValue): ManualModerationSettingsValue {
   return {
     warnMessageTemplate: normalizeTemplate(input.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate),
-    warnDeleteCommandMessage: Boolean(input.warnDeleteCommandMessage),
     warnDeleteTargetMessage: Boolean(input.warnDeleteTargetMessage),
     unwarnMessageTemplate: normalizeTemplate(input.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate),
-    unwarnDeleteCommandMessage: Boolean(input.unwarnDeleteCommandMessage),
     unwarnDeleteTargetMessage: Boolean(input.unwarnDeleteTargetMessage),
     muteMessageTemplate: normalizeTemplate(input.muteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteMessageTemplate),
-    muteDeleteCommandMessage: Boolean(input.muteDeleteCommandMessage),
     muteDeleteTargetMessage: Boolean(input.muteDeleteTargetMessage),
     unmuteMessageTemplate: normalizeTemplate(input.unmuteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unmuteMessageTemplate),
-    unmuteDeleteCommandMessage: Boolean(input.unmuteDeleteCommandMessage),
     unmuteDeleteTargetMessage: Boolean(input.unmuteDeleteTargetMessage),
     banMessageTemplate: normalizeTemplate(input.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate),
-    banDeleteCommandMessage: Boolean(input.banDeleteCommandMessage),
     banDeleteTargetMessage: Boolean(input.banDeleteTargetMessage),
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
-    unbanDeleteCommandMessage: Boolean(input.unbanDeleteCommandMessage),
     unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage)
   };
 }
@@ -77,22 +59,16 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
 export function serializeManualModerationSettings(settings: ManualModerationSettingsValue): ManualModerationSettingsValue {
   return {
     warnMessageTemplate: settings.warnMessageTemplate,
-    warnDeleteCommandMessage: settings.warnDeleteCommandMessage,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
     unwarnMessageTemplate: settings.unwarnMessageTemplate,
-    unwarnDeleteCommandMessage: settings.unwarnDeleteCommandMessage,
     unwarnDeleteTargetMessage: settings.unwarnDeleteTargetMessage,
     muteMessageTemplate: settings.muteMessageTemplate,
-    muteDeleteCommandMessage: settings.muteDeleteCommandMessage,
     muteDeleteTargetMessage: settings.muteDeleteTargetMessage,
     unmuteMessageTemplate: settings.unmuteMessageTemplate,
-    unmuteDeleteCommandMessage: settings.unmuteDeleteCommandMessage,
     unmuteDeleteTargetMessage: settings.unmuteDeleteTargetMessage,
     banMessageTemplate: settings.banMessageTemplate,
-    banDeleteCommandMessage: settings.banDeleteCommandMessage,
     banDeleteTargetMessage: settings.banDeleteTargetMessage,
     unbanMessageTemplate: settings.unbanMessageTemplate,
-    unbanDeleteCommandMessage: settings.unbanDeleteCommandMessage,
     unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage
   };
 }
