@@ -27,8 +27,7 @@
 .profile-heading-line h1 { margin: 0; }
 .badge--premium { background: #f1eaff; color: #6f43b5; }
 .profile-title-row p { margin: 4px 0 0; color: var(--muted); }
-.profile-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: 12px; }
-.profile-panel { min-height: 100%; }
+.profile-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: 12px; align-items: start; }
 .detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 18px 0 0; }
 .detail-list > div { min-width: 0; padding: 12px 0; border-top: 1px solid var(--line); }
 .detail-list > div:nth-child(odd) { padding-right: 18px; }
