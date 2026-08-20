@@ -26,7 +26,7 @@ import { renderManualModerationTemplate, resolveEffectiveManualModerationSetting
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
-import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
+import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
@@ -303,12 +303,16 @@ const START_TEXT = [
   HELP_TEXT
 ].join("\n");
 
-// `admin=` makes Telegram prompt to grant exactly these rights right after
-// the group is picked, instead of adding the bot as a powerless member —
-// matches what canModerate() in status.ts actually requires. Per Telegram's
-// deep-link spec the rights must be joined with "+", not ",": a comma is
-// silently ignored, which is why the admin-rights prompt wasn't appearing.
-const REQUIRED_ADMIN_RIGHTS = "delete_messages+restrict_members";
+// `admin=` makes Telegram show these rights on the confirmation screen after
+// the group is picked, instead of adding the bot as a powerless member. But
+// whether they show pre-checked (so the user can just tap through) or
+// unchecked (needs manual toggling) is controlled separately, by the bot's
+// *default* administrator rights (setMyDefaultAdministratorRights) -- the
+// admin= param alone only decides which rights are shown, not their initial
+// state. GROUP_ADMIN_RIGHTS/buildAdminRightsDeepLinkParam keep both in sync
+// from one definition; see ensureGroupAdminRightsDefault below for the
+// setMyDefaultAdministratorRights half.
+const REQUIRED_ADMIN_RIGHTS = buildAdminRightsDeepLinkParam(GROUP_ADMIN_RIGHTS);
 
 function addToGroupButton(botUsername?: string): TelegramInlineKeyboardMarkup | undefined {
   if (!botUsername) return undefined;

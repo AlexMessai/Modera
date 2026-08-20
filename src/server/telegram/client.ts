@@ -63,6 +63,48 @@ export const UNRESTRICTED_CHAT_PERMISSIONS: TelegramChatPermissions = {
   can_manage_topics: true
 };
 
+export type TelegramChatAdministratorRights = {
+  is_anonymous: boolean;
+  can_manage_chat: boolean;
+  can_delete_messages: boolean;
+  can_manage_video_chats: boolean;
+  can_restrict_members: boolean;
+  can_promote_members: boolean;
+  can_change_info: boolean;
+  can_invite_users: boolean;
+  can_pin_messages: boolean;
+  can_manage_topics: boolean;
+};
+
+// The rights Modera actually needs to moderate a group (matches canModerate()
+// in status.ts) -- also the single source of truth for the "Добавить бота в
+// группу" deep link's admin= parameter, via buildAdminRightsDeepLinkParam
+// below, so the two can never drift apart.
+export const GROUP_ADMIN_RIGHTS: TelegramChatAdministratorRights = {
+  is_anonymous: false,
+  can_manage_chat: false,
+  can_delete_messages: true,
+  can_manage_video_chats: false,
+  can_restrict_members: true,
+  can_promote_members: false,
+  can_change_info: false,
+  can_invite_users: false,
+  can_pin_messages: false,
+  can_manage_topics: false
+};
+
+// Telegram's deep-link spec (core.telegram.org/api/links) joins requested
+// rights with "+", using the ChatAdministratorRights field name minus its
+// "can_" prefix.
+export function buildAdminRightsDeepLinkParam(
+  rights: TelegramChatAdministratorRights
+): string {
+  return Object.entries(rights)
+    .filter(([key, value]) => value && key.startsWith("can_"))
+    .map(([key]) => key.slice("can_".length))
+    .join("+");
+}
+
 export class TelegramApiError extends Error {
   constructor(
     message: string,
@@ -313,6 +355,13 @@ export class TelegramClient {
       secret_token: input.secretToken,
       allowed_updates: input.allowedUpdates,
       drop_pending_updates: false
+    });
+  }
+
+  setMyDefaultAdministratorRights(rights: TelegramChatAdministratorRights) {
+    return this.call<boolean>("setMyDefaultAdministratorRights", {
+      rights,
+      for_channels: false
     });
   }
 }
