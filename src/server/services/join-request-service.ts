@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { TelegramWebAppError, verifyTelegramWebAppInitData } from "@/server/auth/telegram-webapp";
 import { findBlockedTermsInText } from "@/server/services/automod-service";
 import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 import {
@@ -7,6 +8,7 @@ import {
   getTelegramClient,
   TelegramApiError
 } from "@/server/telegram/client";
+import { resolveAppBaseUrl } from "@/server/telegram/webhook-url";
 import type { TelegramChatJoinRequest, TelegramChatMember } from "@/server/telegram/types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -173,6 +175,7 @@ export async function recordTelegramJoinRequest(input: {
         userChatId: BigInt(input.request.user_chat_id),
         bio,
         inviteLink,
+        queryId: input.request.query_id ?? null,
         requestedAt
       },
       update: {}
@@ -181,13 +184,83 @@ export async function recordTelegramJoinRequest(input: {
 }
 
 /**
+ * Applies a guard-bot decision: calls answerChatJoinRequestQuery, and only
+ * touches JoinRequest/ChatMember/AuditLog state once Telegram actually
+ * confirms it — leaving the request PENDING (a honest fallback in the manual
+ * "Заявки" queue) instead of claiming a decision that never really happened.
+ */
+async function applyGuardBotDecision(input: {
+  chatId: string;
+  joinRequestId: string;
+  telegramUserId: number;
+  queryId: string;
+  approved: boolean;
+  reason: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await getTelegramClient().answerChatJoinRequestQuery(input.queryId, input.approved);
+  } catch (error) {
+    await prisma.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        source: "SYSTEM",
+        action: "JOIN_REQUEST_AUTO_RESOLUTION_FAILED",
+        reason: error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error",
+        metadata: { joinRequestId: input.joinRequestId, attemptedApproval: input.approved }
+      }
+    }).catch(() => undefined);
+    return false;
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const resolved = await tx.joinRequest.updateMany({
+      where: { id: input.joinRequestId, status: "PENDING" },
+      data: { status: input.approved ? "APPROVED" : "DECLINED", resolvedAt: now }
+    });
+    if (resolved.count === 0) return;
+
+    const user = await tx.telegramUser.findUnique({
+      where: { telegramUserId: BigInt(input.telegramUserId) },
+      select: { id: true }
+    });
+    if (!user) return;
+
+    await tx.chatMember.updateMany({
+      where: { chatId: input.chatId, userId: user.id, status: "PENDING" },
+      data: input.approved
+        ? { status: "MEMBER", joinedAt: now, leftAt: null, lastSeenAt: now }
+        : { status: "LEFT", leftAt: now, lastSeenAt: now }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        affectedUserId: user.id,
+        source: "SYSTEM",
+        action: input.approved ? "JOIN_REQUEST_AUTO_APPROVED" : "JOIN_REQUEST_AUTO_DECLINED",
+        reason: input.reason,
+        metadata: { joinRequestId: input.joinRequestId, ...input.metadata }
+      }
+    });
+  });
+  return true;
+}
+
+/**
  * Bot API 10.1 "Join Request Queries": a chat_join_request carrying a
  * query_id means this bot is the chat's designated guard_bot (set by chat
- * admins in Telegram itself) and Telegram expects a decision within 10
- * seconds — there's no time for the normal manual-review "Заявки" queue.
- * Screens the applicant's bio/name against the chat's blocked-terms list
- * (the same list automod already uses for messages) since that's the only
- * signal available without building a Mini App screening flow.
+ * admins in Telegram itself) and Telegram expects a decision — or at least
+ * an opened Mini App — within 10 seconds; there's no time for the normal
+ * manual-review "Заявки" queue.
+ *
+ * Prefers opening a Mini App confirmation screen (sendChatJoinRequestWebApp)
+ * — the applicant taps confirm there, which calls
+ * resolveJoinRequestFromMiniApp below, with no further time limit. Falls
+ * back to an immediate decision, screening bio/name against the chat's
+ * blocked-terms list (the same list automod already uses for messages),
+ * when no public app URL is configured or sending the Mini App fails.
  */
 export async function resolveGuardBotJoinRequest(input: {
   chatId: string;
@@ -196,6 +269,16 @@ export async function resolveGuardBotJoinRequest(input: {
 }) {
   const queryId = input.request.query_id;
   if (!queryId) return;
+
+  const baseUrl = resolveAppBaseUrl();
+  if (baseUrl) {
+    try {
+      await getTelegramClient().sendChatJoinRequestWebApp(queryId, `${baseUrl}/join-verify`);
+      return;
+    } catch {
+      // Fall through to the direct decision below.
+    }
+  }
 
   const { settings } = await resolveEffectiveModerationSettings(input.chatId);
   const candidateText = [
@@ -211,60 +294,71 @@ export async function resolveGuardBotJoinRequest(input: {
     : [];
   const approved = matchedTerms.length === 0;
 
-  try {
-    await getTelegramClient().answerChatJoinRequestQuery(queryId, approved);
-  } catch (error) {
-    // Don't touch JoinRequest/ChatMember state if Telegram never actually
-    // resolved the query — leaving it PENDING keeps the manual "Заявки"
-    // queue as an honest fallback instead of showing a decision that didn't
-    // really happen.
-    await prisma.auditLog.create({
-      data: {
-        chatId: input.chatId,
-        source: "SYSTEM",
-        action: "JOIN_REQUEST_AUTO_RESOLUTION_FAILED",
-        reason: error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error",
-        metadata: { joinRequestId: input.joinRequestId, attemptedApproval: approved }
-      }
-    }).catch(() => undefined);
-    return;
+  await applyGuardBotDecision({
+    chatId: input.chatId,
+    joinRequestId: input.joinRequestId,
+    telegramUserId: input.request.from.id,
+    queryId,
+    approved,
+    reason: matchedTerms.length ? `Совпадение с запрещённым списком: ${matchedTerms.join(", ")}` : null,
+    metadata: matchedTerms.length ? { matchedTerms } : undefined
+  });
+}
+
+export class JoinRequestMiniAppError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "JoinRequestMiniAppError";
+  }
+}
+
+/** The applicant tapped confirm inside the Mini App opened by resolveGuardBotJoinRequest. */
+export async function resolveJoinRequestFromMiniApp(initDataRaw: string) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) {
+    throw new JoinRequestMiniAppError("MINI_APP_UNAVAILABLE", "Бот не настроен.");
   }
 
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    const resolved = await tx.joinRequest.updateMany({
-      where: { id: input.joinRequestId, status: "PENDING" },
-      data: { status: approved ? "APPROVED" : "DECLINED", resolvedAt: now }
-    });
-    if (resolved.count === 0) return;
+  let initData;
+  try {
+    initData = verifyTelegramWebAppInitData(initDataRaw, botToken);
+  } catch (error) {
+    const message = error instanceof TelegramWebAppError ? error.message : "Не удалось проверить данные Telegram.";
+    throw new JoinRequestMiniAppError("INVALID_INIT_DATA", message);
+  }
+  if (!initData.queryId) {
+    throw new JoinRequestMiniAppError("NOT_A_JOIN_REQUEST", "Эта ссылка не связана с заявкой на вступление.");
+  }
 
-    const user = await tx.telegramUser.findUnique({
-      where: { telegramUserId: BigInt(input.request.from.id) },
-      select: { id: true }
-    });
-    if (!user) return;
-
-    await tx.chatMember.updateMany({
-      where: { chatId: input.chatId, userId: user.id, status: "PENDING" },
-      data: approved
-        ? { status: "MEMBER", joinedAt: now, leftAt: null, lastSeenAt: now }
-        : { status: "LEFT", leftAt: now, lastSeenAt: now }
-    });
-
-    await tx.auditLog.create({
-      data: {
-        chatId: input.chatId,
-        affectedUserId: user.id,
-        source: "SYSTEM",
-        action: approved ? "JOIN_REQUEST_AUTO_APPROVED" : "JOIN_REQUEST_AUTO_DECLINED",
-        reason: matchedTerms.length ? `Совпадение с запрещённым списком: ${matchedTerms.join(", ")}` : null,
-        metadata: {
-          joinRequestId: input.joinRequestId,
-          ...(matchedTerms.length ? { matchedTerms } : {})
-        }
-      }
-    });
+  const joinRequest = await prisma.joinRequest.findUnique({
+    where: { queryId: initData.queryId },
+    select: { id: true, chatId: true, status: true, user: { select: { telegramUserId: true } } }
   });
+  if (!joinRequest) {
+    throw new JoinRequestMiniAppError("JOIN_REQUEST_NOT_FOUND", "Заявка не найдена или уже устарела.");
+  }
+  if (joinRequest.user.telegramUserId !== BigInt(initData.userId)) {
+    throw new JoinRequestMiniAppError("USER_MISMATCH", "Эта заявка принадлежит другому пользователю.");
+  }
+  if (joinRequest.status !== "PENDING") {
+    return { alreadyResolved: true as const };
+  }
+
+  const ok = await applyGuardBotDecision({
+    chatId: joinRequest.chatId,
+    joinRequestId: joinRequest.id,
+    telegramUserId: initData.userId,
+    queryId: initData.queryId,
+    approved: true,
+    reason: null
+  });
+  if (!ok) {
+    throw new JoinRequestMiniAppError("TELEGRAM_RESOLUTION_FAILED", "Telegram не подтвердил заявку, попробуйте ещё раз.");
+  }
+  return { alreadyResolved: false as const };
 }
 
 export async function hasAnyJoinRequests() {
