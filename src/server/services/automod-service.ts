@@ -156,14 +156,19 @@ function containsBlockedTerm(content: string, term: string) {
   return expression.test(content);
 }
 
-export function findBlockedTerms(message: TelegramMessage, blockedTerms: string[]) {
-  const content = normalizeModerationText(
-    [message.text, message.caption].filter(Boolean).join(" ")
-  );
+export function findBlockedTermsInText(text: string, blockedTerms: string[]) {
+  const content = normalizeModerationText(text);
   if (!content) return [];
 
   return normalizeBlockedTerms(blockedTerms).filter((term) =>
     containsBlockedTerm(content, term)
+  );
+}
+
+export function findBlockedTerms(message: TelegramMessage, blockedTerms: string[]) {
+  return findBlockedTermsInText(
+    [message.text, message.caption].filter(Boolean).join(" "),
+    blockedTerms
   );
 }
 

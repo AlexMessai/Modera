@@ -243,6 +243,16 @@ export class TelegramClient {
     });
   }
 
+  // Bot API 10.1 "Join Request Queries" — resolves a chat_join_request that
+  // carries a query_id (only present when this bot is the chat's guard_bot).
+  // Must be called within 10 seconds of receiving the update.
+  answerChatJoinRequestQuery(queryId: string, approved: boolean) {
+    return this.call<boolean>("answerChatJoinRequestQuery", {
+      query_id: queryId,
+      approved
+    });
+  }
+
   sendMessage(input: {
     chatId: number;
     text: string;
