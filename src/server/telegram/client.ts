@@ -245,11 +245,17 @@ export class TelegramClient {
 
   // Bot API 10.1 "Join Request Queries" — resolves a chat_join_request that
   // carries a query_id (only present when this bot is the chat's guard_bot).
-  // Must be called within 10 seconds of receiving the update.
+  // Must be called within 10 seconds of receiving the update. The wire
+  // parameter is chat_join_request_query_id (NOT query_id — that's only the
+  // name of the field on the incoming ChatJoinRequest update), and the
+  // decision is the string "approve"/"decline" (NOT a boolean) — verified
+  // against the raw method reference table on core.telegram.org/bots/api,
+  // since every mirror/SDK doc checked while building this returned a
+  // different, wrong shape.
   answerChatJoinRequestQuery(queryId: string, approved: boolean) {
     return this.call<boolean>("answerChatJoinRequestQuery", {
-      query_id: queryId,
-      approved
+      chat_join_request_query_id: queryId,
+      result: approved ? "approve" : "decline"
     });
   }
 
@@ -258,7 +264,7 @@ export class TelegramClient {
   // then calls answerChatJoinRequestQuery itself with that same query_id.
   sendChatJoinRequestWebApp(queryId: string, webAppUrl: string) {
     return this.call<boolean>("sendChatJoinRequestWebApp", {
-      query_id: queryId,
+      chat_join_request_query_id: queryId,
       web_app_url: webAppUrl
     });
   }
