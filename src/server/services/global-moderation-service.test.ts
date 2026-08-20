@@ -76,3 +76,33 @@ test("chat moderation stays local by default and inherits global rules only afte
     await prisma.chat.delete({ where: { id: chat.id } });
   }
 });
+
+test("a chat with no ChatModerationSettings row at all follows the global profile", async () => {
+  const telegramChatId = -1009000000702n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "Global policy CI (unconfigured)", type: "supergroup" }
+  });
+
+  try {
+    await prisma.globalModerationSettings.upsert({
+      where: { id: GLOBAL_MODERATION_PROFILE_ID },
+      create: { id: GLOBAL_MODERATION_PROFILE_ID, spamEnabled: true, spamWindowSeconds: 12, spamMaxMessages: 3 },
+      update: { spamEnabled: true, spamWindowSeconds: 12, spamMaxMessages: 3 }
+    });
+
+    // No ChatModerationSettings row was ever created for this chat — it must
+    // still inherit the global profile, otherwise a protective global policy
+    // would silently apply to no chat at all until every chat is opened and
+    // switched on by hand.
+    const resolved = await resolveEffectiveModerationSettings(chat.id);
+    assert.equal(resolved.source, "GLOBAL");
+    assert.equal(resolved.useGlobalProfile, true);
+    assert.equal(resolved.settings.spamEnabled, true);
+    assert.equal(resolved.settings.spamWindowSeconds, 12);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+  }
+});

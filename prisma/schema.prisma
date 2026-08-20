@@ -258,7 +258,7 @@ model JoinRequest {
 model ChatModerationSettings {
   id                     String   @id @default(uuid()) @db.Uuid
   chatId                 String   @unique @db.Uuid
-  useGlobalProfile       Boolean  @default(false)
+  useGlobalProfile       Boolean  @default(true)
   blockLinks             Boolean  @default(false)
   allowedDomains         String[] @default([])
   spamEnabled            Boolean  @default(false)
@@ -317,7 +317,7 @@ model GlobalModerationSettings {
 model ChatCaptchaSettings {
   id               String            @id @default(uuid()) @db.Uuid
   chatId           String            @unique @db.Uuid
-  useGlobalProfile Boolean           @default(false)
+  useGlobalProfile Boolean           @default(true)
   enabled          Boolean           @default(false)
   timeoutMinutes   Int               @default(5)
   failAction       CaptchaFailAction @default(KICK)

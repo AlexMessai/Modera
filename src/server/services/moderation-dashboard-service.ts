@@ -61,8 +61,10 @@ export async function getModerationDashboard() {
   const items = chats.map((chat) => {
     const link = chat.botLinks[0];
     const permissions = link?.permissions as { canDeleteMessages?: boolean; canRestrictMembers?: boolean } | null | undefined;
-    const useGlobalProfile = chat.moderationSettings?.useGlobalProfile ?? false;
-    const effectiveSettings = useGlobalProfile ? globalSettings : chat.moderationSettings;
+    // A chat with no row at all follows the global profile — matches
+    // resolveEffectiveModerationSettings in global-moderation-service.ts.
+    const useGlobalProfile = chat.moderationSettings?.useGlobalProfile ?? true;
+    const effectiveSettings = useGlobalProfile ? globalSettings : (chat.moderationSettings ?? DEFAULT_MODERATION_SETTINGS);
     const rules = enabledRules(effectiveSettings);
 
     return {

@@ -114,7 +114,7 @@ export async function getChatModerationProfile(chatId: string) {
       checkedAt: link?.lastSeenAt?.toISOString() ?? null
     },
     policy: {
-      useGlobalProfile: chat.moderationSettings?.useGlobalProfile ?? false,
+      useGlobalProfile: chat.moderationSettings?.useGlobalProfile ?? true,
       effectiveSource: effective.source,
       globalProfilePersisted: globalProfile.persisted
     },

@@ -121,6 +121,12 @@ test("same Telegram message revision is processed once and a later edit is a new
       type: "supergroup"
     }
   });
+  // This test is about revision/dedup tracking, not rule matching — opt out
+  // of the global profile explicitly so it stays "DISABLED" regardless of
+  // whatever protective defaults the global profile carries.
+  await prisma.chatModerationSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false }
+  });
   const user = await prisma.telegramUser.create({
     data: {
       telegramUserId,

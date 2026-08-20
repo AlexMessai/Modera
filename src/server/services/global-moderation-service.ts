@@ -188,7 +188,11 @@ export async function resolveEffectiveModerationSettings(chatId: string) {
     where: { chatId }
   });
 
-  if (!local?.useGlobalProfile) {
+  // A chat that never made an explicit choice follows the global profile —
+  // otherwise a protective global policy would silently apply to no chat at
+  // all until an admin opens every single chat and flips the toggle by hand.
+  const useGlobalProfile = local?.useGlobalProfile ?? true;
+  if (!useGlobalProfile) {
     return {
       source: "CHAT" as const,
       useGlobalProfile: false,
