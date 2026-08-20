@@ -27,7 +27,7 @@ import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/serv
 import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { getTelegramBotProfile, getTelegramClient, TelegramApiError } from "@/server/telegram/client";
-import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
+import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
 const RULE_BY_AUTOMOD_RESULT: Record<string, string> = {
@@ -294,14 +294,23 @@ const HELP_TEXT = [
 ].join("\n");
 
 const START_TEXT = [
-  "Привет! Я модератор-бот чатов, в которых вы состоите.",
+  "Привет! Я бот-модератор для Telegram-групп.",
   "",
-  "Если вас ограничили — здесь можно самостоятельно снять mute (до 3 раз в каждом чате) или подать апелляцию на бан/предупреждение.",
+  "Чтобы начать модерировать свой чат — нажмите кнопку ниже и выберите группу. Мне понадобятся права администратора (удаление сообщений, ограничение участников), чтобы всё заработало.",
+  "",
+  "Если вас ограничили в чате, где я уже работаю — здесь можно самостоятельно снять mute (до 3 раз в каждом чате) или подать апелляцию на бан/предупреждение.",
   "",
   HELP_TEXT
 ].join("\n");
 
-async function processPrivateMessage(message: TelegramMessage, botTelegramId: number) {
+function addToGroupButton(botUsername?: string): TelegramInlineKeyboardMarkup | undefined {
+  if (!botUsername) return undefined;
+  return {
+    inline_keyboard: [[{ text: "➕ Добавить бота в группу", url: `https://t.me/${botUsername}?startgroup=setup` }]]
+  };
+}
+
+async function processPrivateMessage(message: TelegramMessage, botTelegramId: number, botUsername?: string) {
   const client = getTelegramClient();
   if (!message.from || message.from.id === botTelegramId || message.from.is_bot) {
     return { accepted: true, ignored: true };
@@ -315,12 +324,12 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   const text = message.text?.trim() ?? "";
 
   if (START_COMMAND_PATTERN.test(text)) {
-    await client.sendMessage({ chatId: message.from.id, text: START_TEXT }).catch(() => undefined);
+    await client.sendMessage({ chatId: message.from.id, text: START_TEXT, replyMarkup: addToGroupButton(botUsername) }).catch(() => undefined);
     return { accepted: true, ignored: false };
   }
 
   if (HELP_COMMAND_PATTERN.test(text)) {
-    await client.sendMessage({ chatId: message.from.id, text: HELP_TEXT }).catch(() => undefined);
+    await client.sendMessage({ chatId: message.from.id, text: HELP_TEXT, replyMarkup: addToGroupButton(botUsername) }).catch(() => undefined);
     return { accepted: true, ignored: false };
   }
 
@@ -460,7 +469,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
 
   if (chat?.type === "private" && update.message) {
     const botProfile = await getTelegramBotProfile();
-    return processPrivateMessage(update.message, botProfile.id);
+    return processPrivateMessage(update.message, botProfile.id, botProfile.username);
   }
 
   if (chat?.type === "private" && update.callback_query) {
