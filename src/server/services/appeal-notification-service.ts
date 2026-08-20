@@ -7,6 +7,21 @@ const ACTION_LABELS: Record<string, string> = {
   BAN: "блокировка (ban)"
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const APPEAL_CALLBACK_PREFIX = "appeal:";
+
+export function buildAppealCallbackData(appealId: string, decision: "APPROVE" | "REJECT") {
+  return `${APPEAL_CALLBACK_PREFIX}${appealId}:${decision}`;
+}
+
+export function parseAppealCallbackData(data: string): { appealId: string; decision: "APPROVE" | "REJECT" } | null {
+  if (!data.startsWith(APPEAL_CALLBACK_PREFIX)) return null;
+  const [appealId, decision] = data.slice(APPEAL_CALLBACK_PREFIX.length).split(":");
+  if (!appealId || !UUID_PATTERN.test(appealId)) return null;
+  if (decision !== "APPROVE" && decision !== "REJECT") return null;
+  return { appealId, decision: decision as "APPROVE" | "REJECT" };
+}
+
 function telegramErrorMessage(error: unknown) {
   return error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error";
 }
@@ -142,5 +157,43 @@ export async function notifyAppealDecision(input: {
     return { delivered: true as const };
   } catch {
     return { delivered: false as const };
+  }
+}
+
+export async function notifyAdminsOfNewAppeal(input: {
+  appealId: string;
+  chatTitle: string;
+  userDisplayName: string;
+  actionType: "WARNING" | "MUTE" | "BAN";
+  message: string;
+}) {
+  const admins = await prisma.adminUser.findMany({
+    where: {
+      isActive: true,
+      telegramUserId: { not: null },
+      role: { in: ["OWNER", "ADMIN", "MODERATOR"] }
+    },
+    select: { telegramUserId: true }
+  });
+  if (admins.length === 0) return;
+
+  const label = ACTION_LABELS[input.actionType] ?? input.actionType;
+  const text = `Новая апелляция от ${input.userDisplayName} по чату «${input.chatTitle}» (${label}):\n${input.message}`;
+  const client = getTelegramClient();
+
+  for (const admin of admins) {
+    if (!admin.telegramUserId) continue;
+    await client.sendMessage({
+      chatId: Number(admin.telegramUserId),
+      text,
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Одобрить", callback_data: buildAppealCallbackData(input.appealId, "APPROVE") },
+            { text: "❌ Отклонить", callback_data: buildAppealCallbackData(input.appealId, "REJECT") }
+          ]
+        ]
+      }
+    }).catch(() => undefined);
   }
 }

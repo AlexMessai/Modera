@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { deliverPendingAppealNotifications } from "./appeal-notification-service";
+import { buildAppealCallbackData, deliverPendingAppealNotifications, parseAppealCallbackData } from "./appeal-notification-service";
+
+test("appeal callback data round-trips through build/parse", () => {
+  const appealId = "9c4b8a2e-1f3d-4a5b-8c6e-7d8f9a0b1c2d";
+  assert.deepEqual(parseAppealCallbackData(buildAppealCallbackData(appealId, "APPROVE")), {
+    appealId,
+    decision: "APPROVE"
+  });
+  assert.deepEqual(parseAppealCallbackData(buildAppealCallbackData(appealId, "REJECT")), {
+    appealId,
+    decision: "REJECT"
+  });
+  assert.equal(parseAppealCallbackData("captcha:12345"), null);
+  assert.equal(parseAppealCallbackData("appeal:not-a-uuid:APPROVE"), null);
+});
 
 const CHAT_ID = -1009000015001n;
 const TELEGRAM_USER_ID = 900001501n;

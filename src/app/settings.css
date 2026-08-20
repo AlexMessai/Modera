@@ -1,4 +1,5 @@
 .settings-admin-panel { margin-bottom: 12px; }
+.settings-link-code { font-size: 18px; font-weight: 700; }
 .settings-toolbar { align-items: center; }
 .settings-toolbar > div:first-child { display: grid; gap: 3px; }
 .settings-toolbar > div:first-child strong { font-size: 14px; }

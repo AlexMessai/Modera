@@ -1,6 +1,8 @@
 import { prisma } from "@/server/db/prisma";
-import { deliverPendingAppealNotifications } from "@/server/services/appeal-notification-service";
-import { submitAppealFromReply } from "@/server/services/appeal-service";
+import { canModerate } from "@/server/auth/permissions";
+import { consumeLinkCode } from "@/server/services/admin-link-service";
+import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
+import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
@@ -281,6 +283,7 @@ const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
 const STATUS_COMMAND_PATTERN = /^\/status(?:@\w+)?\s*$/i;
 const UNMUTE_COMMAND_PATTERN = /^\/unmute(?:@\w+)?(?:\s+(\d+))?\s*$/i;
+const LINK_COMMAND_PATTERN = /^\/link(?:@\w+)?\s+(\d{6})\s*$/i;
 
 const HELP_TEXT = [
   "Доступные команды:",
@@ -324,6 +327,22 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   if (STATUS_COMMAND_PATTERN.test(text)) {
     const statusText = await getSelfServiceStatusMessage(message.from.id);
     await client.sendMessage({ chatId: message.from.id, text: statusText }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  const linkMatch = LINK_COMMAND_PATTERN.exec(text);
+  if (linkMatch) {
+    const result = await consumeLinkCode(linkMatch[1], {
+      id: message.from.id,
+      username: message.from.username,
+      firstName: message.from.first_name
+    });
+    const linkReplyText = {
+      linked: "✅ Telegram привязан к вашему аккаунту администратора. Теперь апелляции можно решать прямо здесь.",
+      invalid_code: "❌ Код неверный или истёк. Запросите новый код в панели (Система → Аккаунты).",
+      already_linked_elsewhere: "❌ Этот Telegram-аккаунт уже привязан к другому администратору."
+    }[result.outcome];
+    await client.sendMessage({ chatId: message.from.id, text: linkReplyText }).catch(() => undefined);
     return { accepted: true, ignored: false };
   }
 
@@ -387,12 +406,65 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   return { accepted: true, ignored: false };
 }
 
+async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUpdate["callback_query"]>) {
+  const client = getTelegramClient();
+  const parsed = callbackQuery.data ? parseAppealCallbackData(callbackQuery.data) : null;
+  if (!parsed || !callbackQuery.message) {
+    return { accepted: true, ignored: true };
+  }
+
+  const admin = await prisma.adminUser.findFirst({
+    where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
+  });
+  if (!admin || !canModerate(admin.role)) {
+    await client.answerCallbackQuery({
+      callbackQueryId: callbackQuery.id,
+      text: "У вас нет прав решать апелляции.",
+      showAlert: true
+    }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  try {
+    const before = await prisma.appeal.findUnique({ where: { id: parsed.appealId }, select: { status: true } });
+    const wasPending = before?.status === "PENDING";
+
+    const result = await resolveAppeal({
+      appealId: parsed.appealId,
+      actingAdminId: admin.id,
+      decision: parsed.decision
+    });
+
+    await client.answerCallbackQuery({
+      callbackQueryId: callbackQuery.id,
+      text: wasPending
+        ? (result.status === "APPROVED" ? "✅ Апелляция одобрена." : "❌ Апелляция отклонена.")
+        : "Уже решено."
+    }).catch(() => undefined);
+
+    await client.editMessageText({
+      chatId: callbackQuery.from.id,
+      messageId: callbackQuery.message.message_id,
+      text: `${callbackQuery.message.text ?? ""}\n\n— ${result.status === "APPROVED" ? "Одобрено" : "Отклонено"} (${admin.displayName})`
+    }).catch(() => undefined);
+  } catch (error) {
+    const message = error instanceof AppealError ? error.message : "Не удалось обработать апелляцию.";
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: message, showAlert: true }).catch(() => undefined);
+  }
+
+  return { accepted: true, ignored: false };
+}
+
 export async function processTelegramUpdate(update: TelegramUpdate) {
   const chat = extractChat(update);
 
   if (chat?.type === "private" && update.message) {
     const botProfile = await getTelegramBotProfile();
     return processPrivateMessage(update.message, botProfile.id);
+  }
+
+  if (chat?.type === "private" && update.callback_query) {
+    return processPrivateCallbackQuery(update.callback_query);
   }
 
   if (!chat || (chat.type !== "group" && chat.type !== "supergroup")) {

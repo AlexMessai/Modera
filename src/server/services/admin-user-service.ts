@@ -53,7 +53,8 @@ export async function listAdminUsers() {
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
-    activeSessionCount: user._count.sessions
+    activeSessionCount: user._count.sessions,
+    telegramLinked: user.telegramUserId !== null
   }));
 }
 

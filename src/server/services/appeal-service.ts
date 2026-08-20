@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { notifyAppealDecision } from "@/server/services/appeal-notification-service";
+import { notifyAdminsOfNewAppeal, notifyAppealDecision } from "@/server/services/appeal-notification-service";
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
 
@@ -28,7 +28,7 @@ export async function submitAppealFromReply(input: {
 
   const user = await prisma.telegramUser.findUnique({
     where: { telegramUserId: BigInt(input.fromTelegramUserId) },
-    select: { id: true }
+    select: { id: true, displayName: true }
   });
   if (!user) return { outcome: "action_not_found" as const };
 
@@ -38,15 +38,17 @@ export async function submitAppealFromReply(input: {
       type: { in: ["WARNING", "MUTE", "BAN"] },
       metadata: { path: ["appealDmMessageId"], equals: input.replyToMessageId }
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    include: { chat: { select: { title: true } } }
   });
   if (!action) return { outcome: "action_not_found" as const };
 
   const existing = await prisma.appeal.findUnique({ where: { moderationActionId: action.id } });
   if (existing) return { outcome: "already_submitted" as const };
 
+  let appeal;
   try {
-    await prisma.appeal.create({
+    appeal = await prisma.appeal.create({
       data: {
         chatId: action.chatId,
         userId: user.id,
@@ -70,6 +72,14 @@ export async function submitAppealFromReply(input: {
       metadata: { moderationActionId: action.id }
     }
   });
+
+  await notifyAdminsOfNewAppeal({
+    appealId: appeal.id,
+    chatTitle: action.chat.title,
+    userDisplayName: user.displayName,
+    actionType: action.type as "WARNING" | "MUTE" | "BAN",
+    message
+  }).catch(() => undefined);
 
   return { outcome: "submitted" as const };
 }
