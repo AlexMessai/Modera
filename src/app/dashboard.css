@@ -70,6 +70,13 @@
 .dashboard-event small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-event time { white-space: nowrap; }
 
+.statistics-rule-list { display: grid; gap: 10px; margin-top: 10px; }
+.statistics-rule-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 36px; gap: 10px; align-items: center; font-size: 12px; }
+.statistics-rule-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.statistics-rule-bar-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.statistics-rule-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+.statistics-rule-row b { text-align: right; font-size: 12px; }
+
 @media (max-width: 1180px) {
   .dashboard-main-grid, .dashboard-lower-grid { grid-template-columns: 1fr; }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }

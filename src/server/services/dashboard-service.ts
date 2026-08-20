@@ -1,7 +1,7 @@
 import { prisma } from "@/server/db/prisma";
+import { buildTrendSlots, DASHBOARD_PERIODS, periodMilliseconds, type DashboardPeriod } from "@/server/services/trend-utils";
 
-export const DASHBOARD_PERIODS = ["24H", "7D", "30D"] as const;
-export type DashboardPeriod = (typeof DASHBOARD_PERIODS)[number];
+export { DASHBOARD_PERIODS, type DashboardPeriod };
 
 const AUTOMOD_ENFORCEMENT_ACTIONS = [
   "AUTOMOD_LINK_DELETED",
@@ -41,65 +41,9 @@ const RECENT_ACTIONS = [
   ...ERROR_ACTIONS
 ];
 
-function periodMilliseconds(period: DashboardPeriod) {
-  if (period === "24H") return 24 * 60 * 60 * 1000;
-  if (period === "7D") return 7 * 24 * 60 * 60 * 1000;
-  return 30 * 24 * 60 * 60 * 1000;
-}
-
 function comparisonPercent(current: number, previous: number) {
   if (previous === 0) return current === 0 ? 0 : null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
-}
-
-function hourKey(date: Date) {
-  const copy = new Date(date);
-  copy.setUTCMinutes(0, 0, 0);
-  return copy.toISOString().replace(".000Z", "Z");
-}
-
-function dayKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function buildTrendSlots(period: DashboardPeriod, from: Date, now: Date) {
-  const hourly = period === "24H";
-  const result: Array<{ key: string; at: string; label: string }> = [];
-  const cursor = new Date(from);
-
-  if (hourly) {
-    cursor.setUTCMinutes(0, 0, 0);
-    while (cursor <= now) {
-      const key = hourKey(cursor);
-      result.push({
-        key,
-        at: new Date(cursor).toISOString(),
-        label: new Intl.DateTimeFormat("ru-RU", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "UTC"
-        }).format(cursor)
-      });
-      cursor.setUTCHours(cursor.getUTCHours() + 1);
-    }
-    return result.slice(-24);
-  }
-
-  cursor.setUTCHours(0, 0, 0, 0);
-  while (cursor <= now) {
-    const key = dayKey(cursor);
-    result.push({
-      key,
-      at: `${key}T00:00:00.000Z`,
-      label: new Intl.DateTimeFormat("ru-RU", {
-        day: "2-digit",
-        month: period === "30D" ? "short" : "2-digit",
-        timeZone: "UTC"
-      }).format(cursor)
-    });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return result.slice(period === "7D" ? -7 : -30);
 }
 
 type TrendRow = { bucket: string; count: number };

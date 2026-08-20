@@ -4,11 +4,13 @@ import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
+import { ChatStatistics } from "@/components/chat-statistics-client";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
+import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +45,11 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
-    getChatManualModerationProfile(id)
+    getChatManualModerationProfile(id),
+    getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
 
@@ -56,6 +59,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <div><Link className="back-link" href="/chats"><ArrowLeft size={15} /> Чаты</Link><span className="eyebrow">Telegram · Автомодерация</span><h1>{profile.chat.title}</h1><p>{profile.chat.username ? `@${profile.chat.username} · ` : ""}{profile.chat.type === "supergroup" ? "Супергруппа" : "Группа"} · ID {profile.chat.telegramChatId}</p></div>
         <div className="chat-detail-status"><span className={`badge badge--${profile.bot.status.toLowerCase()}`}>{botStatusLabels[profile.bot.status] ?? profile.bot.status}</span><small>Удаление сообщений: {profile.bot.canDeleteMessages ? "разрешено" : "нет права"}</small><small>Ограничение участников: {profile.bot.canRestrictMembers ? "разрешено" : "нет права"}</small><small>Политика: {profile.policy.effectiveSource === "GLOBAL" ? "глобальная" : "индивидуальная"}</small></div>
       </header>
+
+      {statistics ? (
+        <section className="profile-section">
+          <div className="panel-header"><div><h2>Статистика</h2><p>Активность, топ участников и срабатывания automod в этом чате.</p></div></div>
+          <ChatStatistics chatId={id} initial={statistics} />
+        </section>
+      ) : null}
 
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Правила чата</h2><p>Используйте глобальную политику или храните индивидуальные правила только для этого чата.</p></div></div>
