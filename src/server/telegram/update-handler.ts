@@ -686,7 +686,18 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         // those) -- deleteMessage won't find it, deleteEphemeralMessage will.
         const ephemeralMessageId = update.callback_query.message.ephemeral_message_id;
         if (ephemeralMessageId !== undefined) {
-          await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch(() => undefined);
+          await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch((error) => {
+            console.warn("[captcha] failed to delete ephemeral challenge after verification", {
+              chatId: chat.id,
+              ephemeralMessageId,
+              error: error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error"
+            });
+          });
+        } else {
+          console.warn("[captcha] verified callback had no ephemeral_message_id to delete", {
+            chatId: chat.id,
+            messageId: update.callback_query.message.message_id
+          });
         }
       } else if (result.outcome === "wrong_user") {
         await client.answerCallbackQuery({
