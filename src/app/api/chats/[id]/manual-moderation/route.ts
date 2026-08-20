@@ -12,22 +12,16 @@ export const dynamic = "force-dynamic";
 const settingsSchema = z.object({
   useGlobalProfile: z.boolean(),
   warnMessageTemplate: z.string().min(1).max(1000),
-  warnDeleteCommandMessage: z.boolean(),
   warnDeleteTargetMessage: z.boolean(),
   unwarnMessageTemplate: z.string().min(1).max(1000),
-  unwarnDeleteCommandMessage: z.boolean(),
   unwarnDeleteTargetMessage: z.boolean(),
   muteMessageTemplate: z.string().min(1).max(1000),
-  muteDeleteCommandMessage: z.boolean(),
   muteDeleteTargetMessage: z.boolean(),
   unmuteMessageTemplate: z.string().min(1).max(1000),
-  unmuteDeleteCommandMessage: z.boolean(),
   unmuteDeleteTargetMessage: z.boolean(),
   banMessageTemplate: z.string().min(1).max(1000),
-  banDeleteCommandMessage: z.boolean(),
   banDeleteTargetMessage: z.boolean(),
   unbanMessageTemplate: z.string().min(1).max(1000),
-  unbanDeleteCommandMessage: z.boolean(),
   unbanDeleteTargetMessage: z.boolean()
 });
 

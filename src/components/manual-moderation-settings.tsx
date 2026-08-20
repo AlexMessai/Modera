@@ -5,22 +5,16 @@ import { Check, Globe2, ShieldCheck } from "lucide-react";
 
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
-  warnDeleteCommandMessage: boolean;
   warnDeleteTargetMessage: boolean;
   unwarnMessageTemplate: string;
-  unwarnDeleteCommandMessage: boolean;
   unwarnDeleteTargetMessage: boolean;
   muteMessageTemplate: string;
-  muteDeleteCommandMessage: boolean;
   muteDeleteTargetMessage: boolean;
   unmuteMessageTemplate: string;
-  unmuteDeleteCommandMessage: boolean;
   unmuteDeleteTargetMessage: boolean;
   banMessageTemplate: string;
-  banDeleteCommandMessage: boolean;
   banDeleteTargetMessage: boolean;
   unbanMessageTemplate: string;
-  unbanDeleteCommandMessage: boolean;
   unbanDeleteTargetMessage: boolean;
 };
 
@@ -79,9 +73,6 @@ function placeholderHint(command: { hasReason: boolean; hasDuration: boolean; ha
 
 function templateKey(key: CommandKey) {
   return `${key}MessageTemplate` as const;
-}
-function deleteCommandKey(key: CommandKey) {
-  return `${key}DeleteCommandMessage` as const;
 }
 function deleteTargetKey(key: CommandKey) {
   return `${key}DeleteTargetMessage` as const;
@@ -174,7 +165,7 @@ export function ManualModerationSettings({
         </div>
       ) : null}
 
-      <small className="row-note">Команды выполняются ответом (Reply) на сообщение участника. %admin% — администратор, %target% — участник, %reason% — причина, %duration% — срок mute, %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute (пустые плейсхолдеры заменяются на пустую строку).</small>
+      <small className="row-note">Команды выполняются ответом (Reply) на сообщение участника. Сообщение с самой командой (например, «/warn спам») бот удаляет из чата всегда, сразу после обработки — независимо от результата. %admin% — администратор, %target% — участник, %reason% — причина, %duration% — срок mute, %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute (пустые плейсхолдеры заменяются на пустую строку).</small>
 
       {COMMAND_SECTIONS.map((section) => (
         <div className="manual-mod-section" key={section.title}>
@@ -207,15 +198,6 @@ export function ManualModerationSettings({
                   </label>
 
                   <div className="manual-mod-toggle-grid">
-                    <label className="automod-toggle-row automod-toggle-row--compact">
-                      <input
-                        type="checkbox"
-                        checked={visibleSettings[deleteCommandKey(key)]}
-                        disabled={fieldsDisabled}
-                        onChange={(event) => setField(deleteCommandKey(key), event.target.checked)}
-                      />
-                      <span>Удалить сообщение с командой</span>
-                    </label>
                     <label className="automod-toggle-row automod-toggle-row--compact">
                       <input
                         type="checkbox"

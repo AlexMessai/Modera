@@ -156,6 +156,9 @@ export async function updateChatModerationSettings(input: {
   muteDurationMinutes: number;
   banAfterWarnings: number;
   warningExpiryDays: number;
+  announceEscalationEnabled: boolean;
+  escalationMuteMessageTemplate: string;
+  escalationBanMessageTemplate: string;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
 
@@ -169,6 +172,8 @@ export async function updateChatModerationSettings(input: {
   const blockedTerms = normalizeBlockedTerms(input.blockedTerms);
   const blockedMessageTypes = normalizeBlockedMessageTypes(input.blockedMessageTypes);
   const warningExpiryDays = Math.min(3650, Math.max(0, Math.trunc(input.warningExpiryDays)));
+  const escalationMuteMessageTemplate = input.escalationMuteMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate;
+  const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
   const values = {
     useGlobalProfile: input.useGlobalProfile,
     blockLinks: input.blockLinks,
@@ -189,7 +194,10 @@ export async function updateChatModerationSettings(input: {
     muteAfterWarnings: input.muteAfterWarnings,
     muteDurationMinutes: input.muteDurationMinutes,
     banAfterWarnings: input.banAfterWarnings,
-    warningExpiryDays
+    warningExpiryDays,
+    announceEscalationEnabled: input.announceEscalationEnabled,
+    escalationMuteMessageTemplate,
+    escalationBanMessageTemplate
   };
 
   const saved = await prisma.$transaction(async (tx) => {

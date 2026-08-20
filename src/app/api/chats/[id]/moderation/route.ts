@@ -30,7 +30,10 @@ const settingsSchema = z.object({
   muteAfterWarnings: z.number().int().min(2).max(20),
   muteDurationMinutes: z.number().int().min(1).max(10080),
   banAfterWarnings: z.number().int().min(3).max(50),
-  warningExpiryDays: z.number().int().min(0).max(3650)
+  warningExpiryDays: z.number().int().min(0).max(3650),
+  announceEscalationEnabled: z.boolean(),
+  escalationMuteMessageTemplate: z.string().min(1).max(1000),
+  escalationBanMessageTemplate: z.string().min(1).max(1000)
 }).refine((value) => value.banAfterWarnings > value.muteAfterWarnings, {
   message: "Порог блокировки должен быть выше порога mute.",
   path: ["banAfterWarnings"]
