@@ -73,24 +73,38 @@ export type TelegramChatAdministratorRights = {
   can_change_info: boolean;
   can_invite_users: boolean;
   can_pin_messages: boolean;
+  can_post_stories: boolean;
+  can_edit_stories: boolean;
+  can_delete_stories: boolean;
   can_manage_topics: boolean;
+  can_manage_tags: boolean;
 };
 
-// The rights Modera actually needs to moderate a group (matches canModerate()
-// in status.ts) -- also the single source of truth for the "Добавить бота в
-// группу" deep link's admin= parameter, via buildAdminRightsDeepLinkParam
-// below, so the two can never drift apart.
+// Requested when adding the bot to a group -- everything except anonymity
+// (an anonymous admin's actions show up as "the group", which would break
+// audit attribution in the Журнал). Deliberately broader than what Modera's
+// own moderation code currently exercises (only can_delete_messages/
+// can_restrict_members are checked by canModerate() in status.ts): the user
+// asked for the one-tap "grant everything" experience Telegram's own
+// promote-to-admin screen defaults to, rather than a minimal-privilege set.
+// Also the single source of truth for the "Добавить бота в группу" deep
+// link's admin= parameter, via buildAdminRightsDeepLinkParam below, so the
+// two can never drift apart.
 export const GROUP_ADMIN_RIGHTS: TelegramChatAdministratorRights = {
   is_anonymous: false,
-  can_manage_chat: false,
+  can_manage_chat: true,
   can_delete_messages: true,
-  can_manage_video_chats: false,
+  can_manage_video_chats: true,
   can_restrict_members: true,
-  can_promote_members: false,
-  can_change_info: false,
-  can_invite_users: false,
-  can_pin_messages: false,
-  can_manage_topics: false
+  can_promote_members: true,
+  can_change_info: true,
+  can_invite_users: true,
+  can_pin_messages: true,
+  can_post_stories: true,
+  can_edit_stories: true,
+  can_delete_stories: true,
+  can_manage_topics: true,
+  can_manage_tags: true
 };
 
 // Telegram's deep-link spec (core.telegram.org/api/links) joins requested
