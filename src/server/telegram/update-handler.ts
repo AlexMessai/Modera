@@ -305,8 +305,10 @@ const START_TEXT = [
 
 // `admin=` makes Telegram prompt to grant exactly these rights right after
 // the group is picked, instead of adding the bot as a powerless member —
-// matches what canModerate() in status.ts actually requires.
-const REQUIRED_ADMIN_RIGHTS = "delete_messages,restrict_members";
+// matches what canModerate() in status.ts actually requires. Per Telegram's
+// deep-link spec the rights must be joined with "+", not ",": a comma is
+// silently ignored, which is why the admin-rights prompt wasn't appearing.
+const REQUIRED_ADMIN_RIGHTS = "delete_messages+restrict_members";
 
 function addToGroupButton(botUsername?: string): TelegramInlineKeyboardMarkup | undefined {
   if (!botUsername) return undefined;
