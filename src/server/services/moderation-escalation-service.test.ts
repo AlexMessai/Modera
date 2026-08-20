@@ -19,6 +19,7 @@ async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEM
       type: "supergroup",
       moderationSettings: {
         create: {
+          useGlobalProfile: false,
           autoEscalationEnabled: true,
           muteAfterWarnings: 5,
           muteDurationMinutes: 10,

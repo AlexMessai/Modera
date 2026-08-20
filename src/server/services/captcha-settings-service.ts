@@ -89,7 +89,9 @@ export async function getChatCaptchaProfile(chatId: string) {
 
   const globalProfile = await getGlobalCaptchaProfile();
   const local = chat.captchaSettings;
-  const useGlobalProfile = local?.useGlobalProfile ?? false;
+  // A chat that never made an explicit choice follows the global profile —
+  // see the matching fix in resolveEffectiveCaptchaSettings below.
+  const useGlobalProfile = local?.useGlobalProfile ?? true;
   const effective = useGlobalProfile
     ? globalProfile.settings
     : serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS);
@@ -161,7 +163,11 @@ export async function updateChatCaptchaProfile(input: {
 
 export async function resolveEffectiveCaptchaSettings(chatId: string) {
   const local = await prisma.chatCaptchaSettings.findUnique({ where: { chatId } });
-  if (!local?.useGlobalProfile) {
+  // A chat that never made an explicit choice follows the global profile —
+  // otherwise a protective global policy would silently apply to no chat at
+  // all until an admin opens every single chat and flips the toggle by hand.
+  const useGlobalProfile = local?.useGlobalProfile ?? true;
+  if (!useGlobalProfile) {
     return {
       source: "CHAT" as const,
       useGlobalProfile: false,
