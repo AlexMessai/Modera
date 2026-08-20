@@ -6,39 +6,51 @@ export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteTargetMessage: boolean;
   warnAnnounceInChat: boolean;
+  warnEphemeralMessageTemplate: string;
   unwarnMessageTemplate: string;
   unwarnDeleteTargetMessage: boolean;
   unwarnAnnounceInChat: boolean;
   muteMessageTemplate: string;
   muteDeleteTargetMessage: boolean;
   muteAnnounceInChat: boolean;
+  muteEphemeralMessageTemplate: string;
   unmuteMessageTemplate: string;
   unmuteDeleteTargetMessage: boolean;
   unmuteAnnounceInChat: boolean;
   banMessageTemplate: string;
   banDeleteTargetMessage: boolean;
   banAnnounceInChat: boolean;
+  banEphemeralMessageTemplate: string;
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
   unbanAnnounceInChat: boolean;
 };
 
+// The *EphemeralMessageTemplate fields back the punishment ephemeral notice
+// (Bot API 10.2 receiver_user_id, see appeal-notification-service.ts) --
+// sent for WARNING/MUTE/BAN regardless of how the punishment was applied
+// (manual command, automod escalation, or the admin panel), not just from
+// the in-chat commands the rest of this settings shape covers. Kept here
+// because the per-action data shape already matches exactly.
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
   warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
   warnDeleteTargetMessage: false,
   warnAnnounceInChat: true,
+  warnEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
   unwarnDeleteTargetMessage: false,
   unwarnAnnounceInChat: true,
   muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
   muteDeleteTargetMessage: false,
   muteAnnounceInChat: true,
+  muteEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: временное ограничение (mute). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unmuteMessageTemplate: "🔊 С %target% снят mute.",
   unmuteDeleteTargetMessage: false,
   unmuteAnnounceInChat: true,
   banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
   banDeleteTargetMessage: false,
   banAnnounceInChat: true,
+  banEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
   unbanDeleteTargetMessage: false,
   unbanAnnounceInChat: true
@@ -56,18 +68,21 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
     warnMessageTemplate: normalizeTemplate(input.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate),
     warnDeleteTargetMessage: Boolean(input.warnDeleteTargetMessage),
     warnAnnounceInChat: Boolean(input.warnAnnounceInChat),
+    warnEphemeralMessageTemplate: normalizeTemplate(input.warnEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnEphemeralMessageTemplate),
     unwarnMessageTemplate: normalizeTemplate(input.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate),
     unwarnDeleteTargetMessage: Boolean(input.unwarnDeleteTargetMessage),
     unwarnAnnounceInChat: Boolean(input.unwarnAnnounceInChat),
     muteMessageTemplate: normalizeTemplate(input.muteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteMessageTemplate),
     muteDeleteTargetMessage: Boolean(input.muteDeleteTargetMessage),
     muteAnnounceInChat: Boolean(input.muteAnnounceInChat),
+    muteEphemeralMessageTemplate: normalizeTemplate(input.muteEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteEphemeralMessageTemplate),
     unmuteMessageTemplate: normalizeTemplate(input.unmuteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unmuteMessageTemplate),
     unmuteDeleteTargetMessage: Boolean(input.unmuteDeleteTargetMessage),
     unmuteAnnounceInChat: Boolean(input.unmuteAnnounceInChat),
     banMessageTemplate: normalizeTemplate(input.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate),
     banDeleteTargetMessage: Boolean(input.banDeleteTargetMessage),
     banAnnounceInChat: Boolean(input.banAnnounceInChat),
+    banEphemeralMessageTemplate: normalizeTemplate(input.banEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banEphemeralMessageTemplate),
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
     unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage),
     unbanAnnounceInChat: Boolean(input.unbanAnnounceInChat)
@@ -79,18 +94,21 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
     warnMessageTemplate: settings.warnMessageTemplate,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
     warnAnnounceInChat: settings.warnAnnounceInChat,
+    warnEphemeralMessageTemplate: settings.warnEphemeralMessageTemplate,
     unwarnMessageTemplate: settings.unwarnMessageTemplate,
     unwarnDeleteTargetMessage: settings.unwarnDeleteTargetMessage,
     unwarnAnnounceInChat: settings.unwarnAnnounceInChat,
     muteMessageTemplate: settings.muteMessageTemplate,
     muteDeleteTargetMessage: settings.muteDeleteTargetMessage,
     muteAnnounceInChat: settings.muteAnnounceInChat,
+    muteEphemeralMessageTemplate: settings.muteEphemeralMessageTemplate,
     unmuteMessageTemplate: settings.unmuteMessageTemplate,
     unmuteDeleteTargetMessage: settings.unmuteDeleteTargetMessage,
     unmuteAnnounceInChat: settings.unmuteAnnounceInChat,
     banMessageTemplate: settings.banMessageTemplate,
     banDeleteTargetMessage: settings.banDeleteTargetMessage,
     banAnnounceInChat: settings.banAnnounceInChat,
+    banEphemeralMessageTemplate: settings.banEphemeralMessageTemplate,
     unbanMessageTemplate: settings.unbanMessageTemplate,
     unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage,
     unbanAnnounceInChat: settings.unbanAnnounceInChat
@@ -225,19 +243,23 @@ export async function resolveEffectiveManualModerationSettings(chatId: string) {
 export function renderManualModerationTemplate(
   template: string,
   placeholders: {
-    admin: string;
-    target: string;
-    reason: string;
-    duration: string;
-    warns: string;
-    warnsLimit: string;
+    admin?: string;
+    target?: string;
+    reason?: string;
+    duration?: string;
+    warns?: string;
+    warnsLimit?: string;
+    chat?: string;
+    contact?: string;
   }
 ) {
   return template
-    .replaceAll("%admin%", placeholders.admin)
-    .replaceAll("%target%", placeholders.target)
-    .replaceAll("%reason%", placeholders.reason)
-    .replaceAll("%duration%", placeholders.duration)
-    .replaceAll("%warns_limit%", placeholders.warnsLimit)
-    .replaceAll("%warns%", placeholders.warns);
+    .replaceAll("%admin%", placeholders.admin ?? "")
+    .replaceAll("%target%", placeholders.target ?? "")
+    .replaceAll("%reason%", placeholders.reason ?? "")
+    .replaceAll("%duration%", placeholders.duration ?? "")
+    .replaceAll("%warns_limit%", placeholders.warnsLimit ?? "")
+    .replaceAll("%warns%", placeholders.warns ?? "")
+    .replaceAll("%chat%", placeholders.chat ?? "")
+    .replaceAll("%contact%", placeholders.contact ?? "");
 }

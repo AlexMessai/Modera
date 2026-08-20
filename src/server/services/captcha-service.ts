@@ -26,6 +26,7 @@ export async function issueCaptchaChallenge(input: {
   userId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
+  challengeMessageTemplate: string;
 }) {
   try {
     await getTelegramClient().restrictChatMember({
@@ -70,7 +71,7 @@ export async function issueCaptchaChallenge(input: {
     const sent = await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
-      text: "Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).",
+      text: input.challengeMessageTemplate,
       replyMarkup: {
         inline_keyboard: [[{ text: "✅ Я не бот", callback_data: captchaCallbackData(input.telegramUserId) }]]
       }
@@ -135,7 +136,8 @@ export async function maybeIssueCaptchaChallenge(input: {
     membershipId: input.membershipId,
     userId: input.userId,
     telegramChatId: input.telegramChatId,
-    telegramUserId: input.telegramUserId
+    telegramUserId: input.telegramUserId,
+    challengeMessageTemplate: profile.settings.challengeMessageTemplate
   });
 }
 

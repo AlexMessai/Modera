@@ -17,9 +17,16 @@ async function cleanup() {
   await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
 }
 
-test("captcha settings are normalized to a plain boolean", () => {
-  assert.equal(normalizeCaptchaSettings({ enabled: true }).enabled, true);
-  assert.equal(normalizeCaptchaSettings({ enabled: false }).enabled, false);
+test("captcha settings are normalized: enabled coerced to boolean, blank template falls back to default", () => {
+  const normalized = normalizeCaptchaSettings({
+    ...DEFAULT_CAPTCHA_SETTINGS,
+    enabled: true,
+    challengeMessageTemplate: "   "
+  });
+  assert.equal(normalized.enabled, true);
+  assert.equal(normalized.challengeMessageTemplate, DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate);
+
+  assert.equal(normalizeCaptchaSettings({ ...DEFAULT_CAPTCHA_SETTINGS, enabled: false }).enabled, false);
 });
 
 test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
@@ -37,7 +44,7 @@ test("a chat that never chose follows the global profile; opting out uses its ow
     // silently apply to no chat at all.
     await updateGlobalCaptchaProfile({
       actingAdminId: admin.id,
-      settings: { enabled: true }
+      settings: { ...DEFAULT_CAPTCHA_SETTINGS, enabled: true }
     });
 
     const beforeAnyChatEdit = await resolveEffectiveCaptchaSettings(chat.id);
@@ -48,7 +55,7 @@ test("a chat that never chose follows the global profile; opting out uses its ow
       chatId: chat.id,
       actingAdminId: admin.id,
       useGlobalProfile: false,
-      settings: { enabled: false }
+      settings: { ...DEFAULT_CAPTCHA_SETTINGS, enabled: false }
     });
     assert.equal(saved?.useGlobalProfile, false);
 

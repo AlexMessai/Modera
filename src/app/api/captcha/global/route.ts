@@ -10,7 +10,8 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  enabled: z.boolean()
+  enabled: z.boolean(),
+  challengeMessageTemplate: z.string().min(1).max(1000)
 });
 
 export async function GET() {

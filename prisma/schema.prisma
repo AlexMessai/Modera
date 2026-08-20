@@ -310,41 +310,46 @@ model GlobalModerationSettings {
 }
 
 model ChatCaptchaSettings {
-  id               String   @id @default(uuid()) @db.Uuid
-  chatId           String   @unique @db.Uuid
-  useGlobalProfile Boolean  @default(true)
-  enabled          Boolean  @default(false)
-  createdAt        DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
-  chat             Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  id                       String   @id @default(uuid()) @db.Uuid
+  chatId                   String   @unique @db.Uuid
+  useGlobalProfile         Boolean  @default(true)
+  enabled                  Boolean  @default(false)
+  challengeMessageTemplate String   @default("Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).") @db.VarChar(1000)
+  createdAt                DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime @updatedAt @db.Timestamptz(3)
+  chat                     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
 
 model GlobalCaptchaSettings {
-  id        String   @id @default("global")
-  enabled   Boolean  @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id                       String   @id @default("global")
+  enabled                  Boolean  @default(false)
+  challengeMessageTemplate String   @default("Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).") @db.VarChar(1000)
+  createdAt                DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model ChatManualModerationSettings {
   id                         String   @id @default(uuid()) @db.Uuid
   chatId                     String   @unique @db.Uuid
   useGlobalProfile           Boolean  @default(true)
-  warnMessageTemplate        String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
-  warnDeleteTargetMessage    Boolean  @default(false)
-  warnAnnounceInChat         Boolean  @default(true)
+  warnMessageTemplate         String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
+  warnDeleteTargetMessage     Boolean  @default(false)
+  warnAnnounceInChat          Boolean  @default(true)
+  warnEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unwarnMessageTemplate      String   @default("✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).") @db.VarChar(1000)
   unwarnDeleteTargetMessage  Boolean  @default(false)
   unwarnAnnounceInChat       Boolean  @default(true)
   muteMessageTemplate        String   @default("🔇 %target% получил(а) mute на %duration%. %reason%") @db.VarChar(1000)
   muteDeleteTargetMessage    Boolean  @default(false)
   muteAnnounceInChat         Boolean  @default(true)
+  muteEphemeralMessageTemplate String @default("⚠️ В чате «%chat%» вам выдано: временное ограничение (mute). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unmuteMessageTemplate      String   @default("🔊 С %target% снят mute.") @db.VarChar(1000)
   unmuteDeleteTargetMessage  Boolean  @default(false)
   unmuteAnnounceInChat       Boolean  @default(true)
   banMessageTemplate         String   @default("⛔ %target% заблокирован(а). %reason%") @db.VarChar(1000)
   banDeleteTargetMessage     Boolean  @default(false)
   banAnnounceInChat          Boolean  @default(true)
+  banEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unbanMessageTemplate       String   @default("✅ С %target% снята блокировка.") @db.VarChar(1000)
   unbanDeleteTargetMessage   Boolean  @default(false)
   unbanAnnounceInChat        Boolean  @default(true)
@@ -355,21 +360,24 @@ model ChatManualModerationSettings {
 
 model GlobalManualModerationSettings {
   id                         String   @id @default("global")
-  warnMessageTemplate        String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
-  warnDeleteTargetMessage    Boolean  @default(false)
-  warnAnnounceInChat         Boolean  @default(true)
+  warnMessageTemplate         String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
+  warnDeleteTargetMessage     Boolean  @default(false)
+  warnAnnounceInChat          Boolean  @default(true)
+  warnEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unwarnMessageTemplate      String   @default("✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).") @db.VarChar(1000)
   unwarnDeleteTargetMessage  Boolean  @default(false)
   unwarnAnnounceInChat       Boolean  @default(true)
   muteMessageTemplate        String   @default("🔇 %target% получил(а) mute на %duration%. %reason%") @db.VarChar(1000)
   muteDeleteTargetMessage    Boolean  @default(false)
   muteAnnounceInChat         Boolean  @default(true)
+  muteEphemeralMessageTemplate String @default("⚠️ В чате «%chat%» вам выдано: временное ограничение (mute). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unmuteMessageTemplate      String   @default("🔊 С %target% снят mute.") @db.VarChar(1000)
   unmuteDeleteTargetMessage  Boolean  @default(false)
   unmuteAnnounceInChat       Boolean  @default(true)
   banMessageTemplate         String   @default("⛔ %target% заблокирован(а). %reason%") @db.VarChar(1000)
   banDeleteTargetMessage     Boolean  @default(false)
   banAnnounceInChat          Boolean  @default(true)
+  banEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
   unbanMessageTemplate       String   @default("✅ С %target% снята блокировка.") @db.VarChar(1000)
   unbanDeleteTargetMessage   Boolean  @default(false)
   unbanAnnounceInChat        Boolean  @default(true)

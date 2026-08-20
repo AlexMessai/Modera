@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -26,28 +27,43 @@ function telegramErrorMessage(error: unknown) {
   return error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error";
 }
 
+const EPHEMERAL_TEMPLATE_FIELD = {
+  WARNING: "warnEphemeralMessageTemplate",
+  MUTE: "muteEphemeralMessageTemplate",
+  BAN: "banEphemeralMessageTemplate"
+} as const;
+
 // Best-effort, in-chat companion to the DM below: an ephemeral message (Bot
 // API 10.2) is visible only to the punished member, posted right in the
 // group they're already in, so it doesn't depend on them ever having opened
 // a DM with the bot -- unlike the DM, which Telegram flatly refuses to
 // deliver first-contact (see docs/STAGE_3.md's "Отложенная доставка
 // уведомления"). Points at the DM rather than inviting a Reply here, since
-// the actual /appeal flow still matches replies by DM message id.
+// the actual /appeal flow still matches replies by DM message id. Text is
+// admin-editable (manual-moderation-settings-service.ts's per-action
+// *EphemeralMessageTemplate) even though this fires for any punishment
+// source, not just manual commands -- the per-action shape already matches.
 async function notifyPunishmentEphemeral(input: {
+  chatId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
   chatTitle: string;
   actionType: "WARNING" | "MUTE" | "BAN";
   reason: string | null;
 }) {
-  const label = ACTION_LABELS[input.actionType] ?? input.actionType;
   try {
     const botProfile = await getTelegramBotProfile();
-    const dmPointer = botProfile.username ? `@${botProfile.username}` : "мне в личные сообщения";
+    const contact = botProfile.username ? `@${botProfile.username}` : "мне в личные сообщения";
+    const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
+    const template = settings[EPHEMERAL_TEMPLATE_FIELD[input.actionType]];
     await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
-      text: `⚠️ В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЧтобы оспорить или узнать детали, напишите ${dmPointer}`
+      text: renderManualModerationTemplate(template, {
+        chat: input.chatTitle,
+        reason: input.reason ?? "",
+        contact
+      })
     });
   } catch {
     // Silently ignored -- e.g. the member was just removed from the chat
@@ -70,6 +86,7 @@ export async function notifyPunishmentAppealOption(input: {
   const text = `В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЕсли вы не согласны, ответьте на это сообщение (Reply) командой /appeal и опишите причину одним сообщением, например:\n/appeal я не отправлял это сообщение`;
 
   await notifyPunishmentEphemeral({
+    chatId: input.chatId,
     telegramChatId: input.telegramChatId,
     telegramUserId: input.telegramUserId,
     chatTitle: input.chatTitle,
