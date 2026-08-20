@@ -432,6 +432,9 @@ model AdminUser {
   passwordHash         String
   role                 AdminRole          @default(VIEWER)
   isActive             Boolean            @default(true)
+  telegramUserId       BigInt?            @unique
+  telegramUsername     String?
+  telegramFirstName    String?
   lastLoginAt          DateTime?          @db.Timestamptz(3)
   createdAt            DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime           @updatedAt @db.Timestamptz(3)

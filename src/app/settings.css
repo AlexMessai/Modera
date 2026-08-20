@@ -26,6 +26,11 @@
 .settings-active-toggle strong { font-size: 12px; }
 .settings-active-toggle small { color: var(--muted); font-size: 11px; }
 .settings-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.settings-telegram-link { display: grid; gap: 14px; }
+.settings-telegram-link-header { display: flex; align-items: flex-start; gap: 10px; }
+.settings-telegram-link-header svg { flex: 0 0 auto; margin-top: 2px; color: var(--muted); }
+.settings-telegram-link-header strong { display: block; margin-bottom: 2px; font-size: 14px; }
+.settings-telegram-link-header p { margin: 0; color: var(--muted); font-size: 12px; }
 
 @media (max-width: 1020px) {
   .settings-role-grid { grid-template-columns: 1fr 1fr; }

@@ -48,6 +48,8 @@ export async function listAdminUsers() {
     displayName: user.displayName,
     role: user.role,
     isActive: user.isActive,
+    telegramUsername: user.telegramUsername,
+    telegramFirstName: user.telegramFirstName,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

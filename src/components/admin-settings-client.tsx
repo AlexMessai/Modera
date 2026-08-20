@@ -3,12 +3,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   KeyRound,
+  Link2,
+  Link2Off,
   Pencil,
   RefreshCw,
   ShieldCheck,
   UserPlus,
   X
 } from "lucide-react";
+import { TelegramLoginWidget, type TelegramAuthUser } from "@/components/telegram-login-widget";
 
 type AdminRole = "OWNER" | "ADMIN" | "MODERATOR" | "VIEWER";
 
@@ -18,6 +21,8 @@ type AdminUser = {
   displayName: string;
   role: AdminRole;
   isActive: boolean;
+  telegramUsername: string | null;
+  telegramFirstName: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -62,7 +67,13 @@ async function requestAdmins() {
   return payload.data as AdminUser[];
 }
 
-export function AdminSettingsClient({ currentAdminId }: { currentAdminId: string }) {
+export function AdminSettingsClient({
+  currentAdminId,
+  telegramBotUsername
+}: {
+  currentAdminId: string;
+  telegramBotUsername?: string | null;
+}) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +150,7 @@ export function AdminSettingsClient({ currentAdminId }: { currentAdminId: string
                         <span className="account-avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>
                         <div className="stacked-cell">
                           <strong>{user.displayName}{user.id === currentAdminId ? " · Вы" : ""}</strong>
-                          <span>{user.email}</span>
+                          <span>{user.email}{user.telegramUsername ? ` · Telegram @${user.telegramUsername}` : ""}</span>
                         </div>
                       </div>
                     </td>
@@ -159,6 +170,12 @@ export function AdminSettingsClient({ currentAdminId }: { currentAdminId: string
           </div>
         ) : null}
       </section>
+
+      <MyTelegramLink
+        currentUser={users.find((user) => user.id === currentAdminId) ?? null}
+        telegramBotUsername={telegramBotUsername}
+        onLinked={refresh}
+      />
 
       <section className="settings-role-grid">
         {(Object.keys(roleLabels) as AdminRole[]).map((role) => (
@@ -314,5 +331,82 @@ function AdminEditor({
         </div>
       </form>
     </div>
+  );
+}
+
+function MyTelegramLink({
+  currentUser,
+  telegramBotUsername,
+  onLinked
+}: {
+  currentUser: AdminUser | null;
+  telegramBotUsername?: string | null;
+  onLinked: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function link(user: TelegramAuthUser) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin-users/telegram", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(user)
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось привязать Telegram.");
+      onLinked();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось привязать Telegram.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlink() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin-users/telegram", { method: "DELETE" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось отвязать Telegram.");
+      onLinked();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось отвязать Telegram.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!currentUser) return null;
+
+  return (
+    <section className="panel settings-telegram-link">
+      <div className="settings-telegram-link-header">
+        {currentUser.telegramUsername ? <Link2 size={18} /> : <Link2Off size={18} />}
+        <div>
+          <strong>Вход через Telegram</strong>
+          <p>
+            {currentUser.telegramUsername
+              ? `Привязан аккаунт @${currentUser.telegramUsername} — можно входить в панель без пароля.`
+              : "Привяжите свой Telegram-аккаунт, чтобы в дальнейшем входить в панель через Telegram вместо email и пароля."}
+          </p>
+        </div>
+      </div>
+
+      {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
+
+      {currentUser.telegramUsername ? (
+        <button className="button button--secondary" type="button" onClick={() => void unlink()} disabled={busy}>
+          {busy ? "Отвязываю…" : "Отвязать Telegram"}
+        </button>
+      ) : telegramBotUsername ? (
+        <TelegramLoginWidget botUsername={telegramBotUsername} onAuth={(user) => void link(user)} size="medium" />
+      ) : (
+        <small>Бот не настроен (TELEGRAM_BOT_TOKEN), привязка недоступна.</small>
+      )}
+    </section>
   );
 }

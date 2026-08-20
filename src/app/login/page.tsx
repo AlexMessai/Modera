@@ -1,9 +1,19 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { getCurrentAdmin } from "@/server/auth/session";
+import { getTelegramBotProfile } from "@/server/telegram/client";
+
+async function getTelegramBotUsername() {
+  try {
+    const profile = await getTelegramBotProfile();
+    return profile.username ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function LoginPage() {
-  const admin = await getCurrentAdmin();
+  const [admin, telegramBotUsername] = await Promise.all([getCurrentAdmin(), getTelegramBotUsername()]);
   if (admin) redirect("/overview");
 
   return (
@@ -14,7 +24,7 @@ export default async function LoginPage() {
           <h1>Вход в админ-панель</h1>
           <p>Управление Telegram-чатами, участниками и модерацией.</p>
         </div>
-        <LoginForm />
+        <LoginForm telegramBotUsername={telegramBotUsername} />
       </section>
     </main>
   );
