@@ -500,6 +500,14 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   }
 
   const client = getTelegramClient();
+  const groupMessageText = update.message?.text?.trim() ?? "";
+  const isGroupStartNoise = Boolean(update.message) && GROUP_START_NOISE_PATTERN.test(groupMessageText);
+  // Fired immediately, in parallel with the bot-state sync below, instead of
+  // waiting behind it -- this message appears right as the bot joins, so any
+  // extra delay before it's deleted is very visible to whoever added it.
+  const deleteNoiseMessage = isGroupStartNoise && update.message
+    ? client.deleteMessage(chat.id, update.message.message_id).catch(() => undefined)
+    : undefined;
   const botProfile = await getTelegramBotProfile();
   const bot = await upsertTelegramBot(botProfile);
   const existingChat = await prisma.chat.findUnique({
@@ -569,22 +577,21 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
   }
 
   if (update.message) {
-    await syncObservedMessage({
-      chatId: syncedChat.id,
-      message: update.message,
-      isEdited: false,
-      updateId: update.update_id
-    });
-    await syncServiceMemberships({
-      chatId: syncedChat.id,
-      message: update.message,
-      updateId: update.update_id,
-      skipTelegramUserId: botProfile.id
-    });
-    const groupMessageText = update.message.text?.trim() ?? "";
-    if (GROUP_START_NOISE_PATTERN.test(groupMessageText)) {
-      await client.deleteMessage(chat.id, update.message.message_id).catch(() => undefined);
+    if (isGroupStartNoise) {
+      await deleteNoiseMessage;
     } else {
+      await syncObservedMessage({
+        chatId: syncedChat.id,
+        message: update.message,
+        isEdited: false,
+        updateId: update.update_id
+      });
+      await syncServiceMemberships({
+        chatId: syncedChat.id,
+        message: update.message,
+        updateId: update.update_id,
+        skipTelegramUserId: botProfile.id
+      });
       const commandHandled = groupMessageText.startsWith("/")
         ? await processGroupModerationCommand({
             chatId: syncedChat.id,
