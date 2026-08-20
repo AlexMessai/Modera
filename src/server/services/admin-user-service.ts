@@ -183,6 +183,14 @@ export async function updateAdminUser(input: {
       );
     }
 
+    if (input.actingAdminId === current.id && nextRole !== current.role) {
+      throw new AdminUserError(
+        "SELF_ROLE_CHANGE_FORBIDDEN",
+        "Нельзя изменить роль собственной учётной записи.",
+        409
+      );
+    }
+
     if (nextEmail !== current.email) {
       const duplicate = await tx.adminUser.findUnique({
         where: { email: nextEmail },
