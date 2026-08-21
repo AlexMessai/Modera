@@ -601,7 +601,7 @@ test("renderSettingsMenu: Chat section, silence status reflects an active ChatSi
   }
 });
 
-test("renderSettingsMenu: Automation section summarizes auto-response rules without touching them", async () => {
+test("renderSettingsMenu: Automation menu + Auto Responses / Custom Commands summaries, all read-only", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
@@ -612,22 +612,46 @@ test("renderSettingsMenu: Automation section summarizes auto-response rules with
   await prisma.autoResponseRule.create({
     data: { chatId: chat.id, trigger: "где правила", matchType: "CONTAINS", responseText: "Смотрите /rules", enabled: true }
   });
+  await prisma.customCommand.create({
+    data: { chatId: chat.id, trigger: "price", responseText: "100 руб.", enabled: true }
+  });
 
   try {
-    const view = await renderSettingsMenu({
+    const menu = await renderSettingsMenu({
       chatId: chat.id,
       chatTitle: chat.title,
       telegramChatId: Number(CHAT_ID),
       actingAdminId: admin.id,
       path: "automation"
     });
-    assert.ok(view?.text.includes("1 из 1 включено"));
-    assert.ok(view?.text.includes("где правила"));
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Автоответы"))));
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Свои команды"))));
 
-    const stored = await prisma.autoResponseRule.findMany({ where: { chatId: chat.id } });
-    assert.equal(stored.length, 1, "the summary screen must be read-only");
+    const responses = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automation.responses"
+    });
+    assert.ok(responses?.text.includes("1 из 1"));
+    assert.ok(responses?.text.includes("где правила"));
+
+    const commands = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automation.commands"
+    });
+    assert.ok(commands?.text.includes("1 из 1"));
+    assert.ok(commands?.text.includes("/price"));
+
+    assert.equal((await prisma.autoResponseRule.findMany({ where: { chatId: chat.id } })).length, 1, "read-only");
+    assert.equal((await prisma.customCommand.findMany({ where: { chatId: chat.id } })).length, 1, "read-only");
   } finally {
     await prisma.autoResponseRule.deleteMany({ where: { chatId: chat.id } });
+    await prisma.customCommand.deleteMany({ where: { chatId: chat.id } });
     await cleanup();
   }
 });
