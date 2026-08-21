@@ -56,10 +56,10 @@ services are wired in from here, not from the admin API routes.
 - `src/server/services/*` — all business logic. Two recurring patterns:
   - **Global + per-chat settings with inheritance**: `Global<X>Settings` / `Chat<X>Settings` tables,
     a `useGlobalProfile` boolean, and a `resolveEffective<X>Settings(chatId)` helper that returns
-    `{ source: "CHAT" | "GLOBAL", settings }`. See `anti-raid-settings-service.ts`,
-    `captcha-settings-service.ts`, `chat-moderation-settings-service.ts` for the canonical shape —
-    copy one of these exactly when adding a new configurable feature rather than inventing a new
-    shape.
+    `{ source: "CHAT" | "GLOBAL", settings }`. See `captcha-settings-service.ts`,
+    `chat-moderation-settings-service.ts`, `manual-moderation-settings-service.ts` for the canonical
+    shape — copy one of these exactly when adding a new configurable feature rather than inventing a
+    new shape.
   - **Moderation actions funnel through `moderation-service.ts`**: `executeModerationAction` (admin),
     `executeAutomatedModerationAction` (automod escalation), `executeExpiredMuteRelease` (cron),
     `executeSelfServiceUnmute` (self-unmute) all delegate to the private `executeTelegramBackedAction`,
