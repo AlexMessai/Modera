@@ -47,7 +47,7 @@ export async function startSilence(input: {
     await client.setChatPermissions({ chatId: input.telegramChatId, permissions: MUTED_CHAT_PERMISSIONS });
 
     const expiresAt = new Date(Date.now() + input.durationMinutes * 60_000);
-    const saved = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const state = await tx.chatSilenceState.upsert({
         where: { chatId: input.chatId },
         create: {
@@ -80,7 +80,7 @@ export async function startSilence(input: {
       return state;
     });
 
-    return { expiresAt: saved.expiresAt };
+    return { expiresAt };
   } catch (error) {
     if (error instanceof SilenceError) throw error;
     throw new SilenceError("TELEGRAM_ERROR", "Не удалось ограничить чат — проверьте, что у бота есть право изменять права участников.");
