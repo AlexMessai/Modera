@@ -2,9 +2,65 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  findTriggeredEscalationRule,
   GLOBAL_MODERATION_PROFILE_ID,
+  lowestEscalationThreshold,
+  normalizeEscalationRules,
   resolveEffectiveModerationSettings
 } from "./global-moderation-service";
+
+test("findTriggeredEscalationRule picks the highest crossed-but-not-fired threshold", () => {
+  const rules = [
+    { order: 1, thresholdWarnings: 3, action: "MUTE" as const, durationMinutes: 10 },
+    { order: 2, thresholdWarnings: 6, action: "BAN" as const, durationMinutes: null }
+  ];
+  // Below both thresholds.
+  assert.equal(findTriggeredEscalationRule(rules, 2, 0), null);
+  // Crosses mute only.
+  assert.deepEqual(findTriggeredEscalationRule(rules, 3, 0), rules[0]);
+  // Already fired mute (marker at 3) but still below ban.
+  assert.equal(findTriggeredEscalationRule(rules, 5, 3), null);
+  // Jumps straight past both thresholds in one hit — ban wins, not mute.
+  assert.deepEqual(findTriggeredEscalationRule(rules, 6, 0), rules[1]);
+  // Already fired ban (marker at 6) — nothing left to trigger.
+  assert.equal(findTriggeredEscalationRule(rules, 9, 6), null);
+});
+
+test("lowestEscalationThreshold returns the smallest configured threshold, or null when empty", () => {
+  assert.equal(lowestEscalationThreshold([]), null);
+  assert.equal(
+    lowestEscalationThreshold([
+      { order: 1, thresholdWarnings: 6, action: "BAN", durationMinutes: null },
+      { order: 2, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 }
+    ]),
+    3
+  );
+});
+
+test("normalizeEscalationRules validates shape, bounds, and caps the list length", () => {
+  assert.deepEqual(normalizeEscalationRules("not an array"), []);
+  assert.deepEqual(normalizeEscalationRules([{ action: "KICK", thresholdWarnings: 3 }]), []);
+
+  const normalized = normalizeEscalationRules([
+    { order: 99, thresholdWarnings: 5000, action: "MUTE", durationMinutes: 999999 },
+    { order: 1, thresholdWarnings: -1, action: "BAN", durationMinutes: null }
+  ]);
+  assert.equal(normalized.length, 2);
+  assert.equal(normalized[0].order, 1);
+  assert.equal(normalized[0].thresholdWarnings, 999);
+  assert.equal(normalized[0].durationMinutes, 10080);
+  assert.equal(normalized[1].order, 2);
+  assert.equal(normalized[1].thresholdWarnings, 1);
+  assert.equal(normalized[1].durationMinutes, null);
+
+  const tooMany = Array.from({ length: 30 }, (_, index) => ({
+    order: index + 1,
+    thresholdWarnings: index + 1,
+    action: "MUTE" as const,
+    durationMinutes: null
+  }));
+  assert.equal(normalizeEscalationRules(tooMany).length, 20);
+});
 
 test("chat moderation stays local by default and inherits global rules only after explicit opt-in", async () => {
   const telegramChatId = -1009000000701n;

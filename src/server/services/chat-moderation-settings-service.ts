@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_MODERATION_SETTINGS,
   getGlobalModerationProfile,
+  normalizeEscalationRules,
   resolveEffectiveModerationSettings,
   serializeModerationSettings
 } from "@/server/services/global-moderation-service";
@@ -152,9 +153,7 @@ export async function updateChatModerationSettings(input: {
   blockedMessageTypes: string[];
   ignoreAdmins: boolean;
   autoEscalationEnabled: boolean;
-  muteAfterWarnings: number;
-  muteDurationMinutes: number;
-  banAfterWarnings: number;
+  escalationRules: unknown;
   warningExpiryDays: number;
   announceEscalationEnabled: boolean;
   escalationMuteMessageTemplate: string;
@@ -191,9 +190,7 @@ export async function updateChatModerationSettings(input: {
     blockedMessageTypes,
     ignoreAdmins: input.ignoreAdmins,
     autoEscalationEnabled: input.autoEscalationEnabled,
-    muteAfterWarnings: input.muteAfterWarnings,
-    muteDurationMinutes: input.muteDurationMinutes,
-    banAfterWarnings: input.banAfterWarnings,
+    escalationRules: normalizeEscalationRules(input.escalationRules),
     warningExpiryDays,
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate,

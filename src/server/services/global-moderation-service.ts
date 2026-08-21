@@ -2,6 +2,26 @@ import { prisma } from "@/server/db/prisma";
 
 export const GLOBAL_MODERATION_PROFILE_ID = "global";
 
+export type EscalationRuleAction = "MUTE" | "BAN";
+
+export type EscalationRuleValue = {
+  /** List position, admin-controlled (drag-to-reorder in the UI) — display only, not evaluation order. */
+  order: number;
+  thresholdWarnings: number;
+  action: EscalationRuleAction;
+  /** Minutes; null = permanent (indefinite mute, or permanent ban). */
+  durationMinutes: number | null;
+};
+
+// Keep these in sync with moderation-service.ts's MUTE_DURATION_MINUTES_MAX /
+// BAN_DURATION_MINUTES_MAX — not imported from there to avoid a settings
+// service depending on the moderation-execution service for two numbers.
+const ESCALATION_DURATION_MAX_BY_ACTION: Record<EscalationRuleAction, number> = {
+  MUTE: 10080,
+  BAN: 366 * 24 * 60
+};
+const MAX_ESCALATION_RULES = 20;
+
 export const DEFAULT_MODERATION_SETTINGS = {
   blockLinks: false,
   allowedDomains: [] as string[],
@@ -18,9 +38,10 @@ export const DEFAULT_MODERATION_SETTINGS = {
   blockedMessageTypes: [] as string[],
   ignoreAdmins: true,
   autoEscalationEnabled: false,
-  muteAfterWarnings: 3,
-  muteDurationMinutes: 10,
-  banAfterWarnings: 6,
+  escalationRules: [
+    { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 },
+    { order: 2, thresholdWarnings: 6, action: "BAN", durationMinutes: null }
+  ] as EscalationRuleValue[],
   warningExpiryDays: 0,
   announceEscalationEnabled: false,
   escalationMuteMessageTemplate: "🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
@@ -28,6 +49,55 @@ export const DEFAULT_MODERATION_SETTINGS = {
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
+
+/**
+ * Looser input shape accepted by normalize/serialize below: `escalationRules`
+ * comes in either well-typed (from API input already parsed by Zod) or as
+ * raw `Prisma.JsonValue` (a DB row read straight from `ChatModerationSettings`/
+ * `GlobalModerationSettings`) — normalizeEscalationRules validates either.
+ */
+type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules"> & { escalationRules: unknown };
+
+/** The lowest configured threshold — the closest analog to the old single "warns_limit" number for chat-reply placeholders. */
+export function lowestEscalationThreshold(rules: EscalationRuleValue[]): number | null {
+  if (rules.length === 0) return null;
+  return rules.reduce((min, rule) => Math.min(min, rule.thresholdWarnings), Infinity);
+}
+
+/**
+ * Highest-threshold rule that's been crossed but not yet fired (marker below
+ * its threshold) — evaluated by thresholdWarnings, not by `order` (a purely
+ * cosmetic list-position field), so the *strongest* applicable action always
+ * wins when a member's warning count jumps past multiple thresholds at once
+ * (e.g. straight past mute's threshold to ban's in one automod hit).
+ */
+export function findTriggeredEscalationRule(
+  rules: EscalationRuleValue[],
+  activeWarningCount: number,
+  escalationMarker: number
+): EscalationRuleValue | null {
+  const candidates = rules
+    .filter((rule) => activeWarningCount >= rule.thresholdWarnings && escalationMarker < rule.thresholdWarnings)
+    .sort((a, b) => b.thresholdWarnings - a.thresholdWarnings);
+  return candidates[0] ?? null;
+}
+
+export function normalizeEscalationRules(input: unknown): EscalationRuleValue[] {
+  if (!Array.isArray(input)) return [];
+  const rules: EscalationRuleValue[] = [];
+  for (const raw of input.slice(0, MAX_ESCALATION_RULES)) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = raw as Partial<EscalationRuleValue>;
+    if (candidate.action !== "MUTE" && candidate.action !== "BAN") continue;
+    const action = candidate.action;
+    const thresholdWarnings = boundedInteger(Number(candidate.thresholdWarnings), 1, 999);
+    const durationMinutes = candidate.durationMinutes === null || candidate.durationMinutes === undefined
+      ? null
+      : boundedInteger(Number(candidate.durationMinutes), 1, ESCALATION_DURATION_MAX_BY_ACTION[action]);
+    rules.push({ order: rules.length + 1, thresholdWarnings, action, durationMinutes });
+  }
+  return rules;
+}
 
 function normalizeDomain(value: string) {
   const trimmed = value.trim().toLowerCase().replace(/^\.+/, "");
@@ -87,7 +157,7 @@ function normalizeEscalationTemplate(value: string, fallback: string) {
   return trimmed ? trimmed.slice(0, 1000) : fallback;
 }
 
-export function normalizeModerationSettings(input: ModerationSettingsValue): ModerationSettingsValue {
+export function normalizeModerationSettings(input: ModerationSettingsInput): ModerationSettingsValue {
   return {
     blockLinks: input.blockLinks,
     allowedDomains: normalizeDomains(input.allowedDomains),
@@ -104,9 +174,7 @@ export function normalizeModerationSettings(input: ModerationSettingsValue): Mod
     blockedMessageTypes: normalizeMessageTypes(input.blockedMessageTypes),
     ignoreAdmins: input.ignoreAdmins,
     autoEscalationEnabled: input.autoEscalationEnabled,
-    muteAfterWarnings: input.muteAfterWarnings,
-    muteDurationMinutes: input.muteDurationMinutes,
-    banAfterWarnings: input.banAfterWarnings,
+    escalationRules: normalizeEscalationRules(input.escalationRules),
     warningExpiryDays: boundedInteger(input.warningExpiryDays, 0, 3650),
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate: normalizeEscalationTemplate(input.escalationMuteMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate),
@@ -114,7 +182,7 @@ export function normalizeModerationSettings(input: ModerationSettingsValue): Mod
   };
 }
 
-export function serializeModerationSettings(settings: ModerationSettingsValue): ModerationSettingsValue {
+export function serializeModerationSettings(settings: ModerationSettingsInput): ModerationSettingsValue {
   return {
     blockLinks: settings.blockLinks,
     allowedDomains: [...settings.allowedDomains],
@@ -131,9 +199,7 @@ export function serializeModerationSettings(settings: ModerationSettingsValue): 
     blockedMessageTypes: [...settings.blockedMessageTypes],
     ignoreAdmins: settings.ignoreAdmins,
     autoEscalationEnabled: settings.autoEscalationEnabled,
-    muteAfterWarnings: settings.muteAfterWarnings,
-    muteDurationMinutes: settings.muteDurationMinutes,
-    banAfterWarnings: settings.banAfterWarnings,
+    escalationRules: normalizeEscalationRules(settings.escalationRules),
     warningExpiryDays: settings.warningExpiryDays,
     announceEscalationEnabled: settings.announceEscalationEnabled,
     escalationMuteMessageTemplate: settings.escalationMuteMessageTemplate,

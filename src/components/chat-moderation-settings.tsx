@@ -1,13 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Globe2, ShieldCheck, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Globe2, Plus, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
 
 const mediaTypes = [
   ["PHOTO", "Фото"], ["VIDEO", "Видео"], ["ANIMATION", "GIF / анимации"], ["DOCUMENT", "Файлы"],
   ["STICKER", "Стикеры"], ["VOICE", "Голосовые"], ["AUDIO", "Аудио"], ["VIDEO_NOTE", "Видеосообщения"],
   ["POLL", "Опросы"], ["DICE", "Игровые кубики"], ["LOCATION", "Геолокация"], ["CONTACT", "Контакты"]
 ] as const;
+
+export type EscalationRuleValue = {
+  order: number;
+  thresholdWarnings: number;
+  action: "MUTE" | "BAN";
+  durationMinutes: number | null;
+};
 
 export type ModerationSettingsValue = {
   blockLinks: boolean;
@@ -25,14 +32,21 @@ export type ModerationSettingsValue = {
   blockedMessageTypes: string[];
   ignoreAdmins: boolean;
   autoEscalationEnabled: boolean;
-  muteAfterWarnings: number;
-  muteDurationMinutes: number;
-  banAfterWarnings: number;
+  escalationRules: EscalationRuleValue[];
   warningExpiryDays: number;
   announceEscalationEnabled: boolean;
   escalationMuteMessageTemplate: string;
   escalationBanMessageTemplate: string;
 };
+
+const ESCALATION_DURATION_MAX: Record<EscalationRuleValue["action"], number> = {
+  MUTE: 10080,
+  BAN: 366 * 24 * 60
+};
+
+function renumberEscalationRules(rules: EscalationRuleValue[]): EscalationRuleValue[] {
+  return rules.map((rule, index) => ({ ...rule, order: index + 1 }));
+}
 
 type Props = {
   chatId?: string;
@@ -110,6 +124,40 @@ export function ChatModerationSettings({
     setSettings((current) => ({ ...current, blockedMessageTypes: checked ? Array.from(new Set([...current.blockedMessageTypes, type])) : current.blockedMessageTypes.filter((item) => item !== type) }));
   }
 
+  function addEscalationRule() {
+    setSettings((current) => ({
+      ...current,
+      escalationRules: renumberEscalationRules([
+        ...current.escalationRules,
+        { order: 0, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 }
+      ])
+    }));
+  }
+
+  function updateEscalationRule(index: number, patch: Partial<EscalationRuleValue>) {
+    setSettings((current) => ({
+      ...current,
+      escalationRules: current.escalationRules.map((rule, position) => (position === index ? { ...rule, ...patch } : rule))
+    }));
+  }
+
+  function removeEscalationRule(index: number) {
+    setSettings((current) => ({
+      ...current,
+      escalationRules: renumberEscalationRules(current.escalationRules.filter((_, position) => position !== index))
+    }));
+  }
+
+  function moveEscalationRule(index: number, direction: -1 | 1) {
+    setSettings((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.escalationRules.length) return current;
+      const next = [...current.escalationRules];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...current, escalationRules: renumberEscalationRules(next) };
+    });
+  }
+
   return (
     <div className="automod-settings">
       {!isGlobalScope ? (
@@ -165,13 +213,62 @@ export function ChatModerationSettings({
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.autoEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, autoEscalationEnabled: event.target.checked }))} /><span><strong>Автоматические наказания</strong><small>Каждое успешно удалённое automod-сообщение добавляет предупреждение. По достижении порогов Modera применяет временный mute, затем ban.</small></span></label>
         {visibleSettings.autoEscalationEnabled ? <>
-          <div className="automod-number-grid">
-            <label className="automod-field"><span>Mute после предупреждений</span><input type="number" min={2} max={20} value={visibleSettings.muteAfterWarnings} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, muteAfterWarnings: Number(event.target.value) }))} /></label>
-            <label className="automod-field"><span>Срок mute, минут</span><input type="number" min={1} max={10080} value={visibleSettings.muteDurationMinutes} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, muteDurationMinutes: Number(event.target.value) }))} /></label>
-            <label className="automod-field"><span>Ban после предупреждений</span><input type="number" min={3} max={50} value={visibleSettings.banAfterWarnings} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, banAfterWarnings: Number(event.target.value) }))} /></label>
-            <label className="automod-field"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /></label>
+          <div className="escalation-rule-list">
+            {visibleSettings.escalationRules.length === 0 ? <p className="hint-note">Правил нет — предупреждения ни к чему не приводят автоматически. Добавьте хотя бы одно правило.</p> : null}
+            {visibleSettings.escalationRules.map((rule, index) => (
+              <div className="escalation-rule-row" key={index}>
+                <span className="escalation-rule-position">{index + 1}</span>
+                <label className="automod-field automod-field--short">
+                  <span>Порог предупреждений</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={rule.thresholdWarnings}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => updateEscalationRule(index, { thresholdWarnings: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="automod-field automod-field--short">
+                  <span>Действие</span>
+                  <select
+                    value={rule.action}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => {
+                      const action = event.target.value as EscalationRuleValue["action"];
+                      updateEscalationRule(index, {
+                        action,
+                        durationMinutes: rule.durationMinutes !== null ? Math.min(rule.durationMinutes, ESCALATION_DURATION_MAX[action]) : null
+                      });
+                    }}
+                  >
+                    <option value="MUTE">Mute</option>
+                    <option value="BAN">Ban</option>
+                  </select>
+                </label>
+                <label className="automod-field automod-field--short">
+                  <span>Срок, минут</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={ESCALATION_DURATION_MAX[rule.action]}
+                    placeholder="Без срока"
+                    value={rule.durationMinutes ?? ""}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => updateEscalationRule(index, { durationMinutes: event.target.value ? Number(event.target.value) : null })}
+                  />
+                </label>
+                <div className="escalation-rule-actions">
+                  <button type="button" className="icon-button" disabled={fieldsDisabled || index === 0} onClick={() => moveEscalationRule(index, -1)} title="Переместить выше"><ArrowUp size={15} /></button>
+                  <button type="button" className="icon-button" disabled={fieldsDisabled || index === visibleSettings.escalationRules.length - 1} onClick={() => moveEscalationRule(index, 1)} title="Переместить ниже"><ArrowDown size={15} /></button>
+                  <button type="button" className="icon-button icon-button--danger" disabled={fieldsDisabled} onClick={() => removeEscalationRule(index)} title="Удалить правило"><Trash2 size={15} /></button>
+                </div>
+              </div>
+            ))}
+            <button type="button" className="button button--secondary" disabled={fieldsDisabled} onClick={addEscalationRule}><Plus size={15} />Добавить правило</button>
           </div>
-          <small className="hint-note">0 предупреждений не сгорают, иначе старые перестают влиять на пороги по истечении срока. Telegram сам снимет временный mute по заданному сроку. Порог ban должен быть выше порога mute.</small>
+          <label className="automod-field automod-field--short"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={visibleSettings.warningExpiryDays} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /></label>
+          <small className="hint-note">0 — предупреждения не сгорают, иначе старые перестают учитываться в порогах по истечении срока. Пустой срок = бессрочно (до ручного unmute/unban). Если несколько порогов пройдены за раз, применяется правило с самым высоким порогом.</small>
 
           <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={visibleSettings.announceEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, announceEscalationEnabled: event.target.checked }))} /><span><strong>Объявлять в чате</strong><small>Когда automod доводит участника до mute/ban по порогу предупреждений, бот пишет об этом в чат (по умолчанию выключено — automod иначе наказывает молча).</small></span></label>
           {visibleSettings.announceEscalationEnabled ? <>
