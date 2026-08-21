@@ -5,6 +5,8 @@ import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/se
 import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
+import { sendWelcomeMessage } from "@/server/services/welcome-service";
+import { resolveEffectiveContentSettings } from "@/server/services/content-settings-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
@@ -599,6 +601,31 @@ async function processInfoCommand(input: {
   }
 
   await reply(lines.join("\n"));
+  return true;
+}
+
+const RULES_COMMAND_PATTERN = /^\/rules(?:@\w+)?\s*$/i;
+
+/**
+ * /rules — BOT_PRODUCT_SPEC §29. No permission gate (any member can ask to
+ * see the rules) and, unlike the admin commands above, deliberately public
+ * and doesn't delete the command message -- the text is meant for everyone
+ * in the chat, not just whoever typed the command.
+ */
+async function processRulesCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+  if (!RULES_COMMAND_PATTERN.test(text)) return false;
+
+  const { settings } = await resolveEffectiveContentSettings(input.chatId);
+  const reply = settings.rulesText.trim() || "Правила этого чата пока не заданы.";
+  await input.client.sendMessage({ chatId: input.telegramChatId, text: `📜 Правила чата\n\n${reply}` }).catch(() => undefined);
   return true;
 }
 
@@ -1213,6 +1240,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             telegramChatId: chat.id,
             message: update.message,
             client
+          })) || (await processRulesCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
           })) || (await processReportCommand({
             chatId: syncedChat.id,
             chatTitle: syncedChat.title,
@@ -1255,6 +1287,17 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       member: update.chat_member.new_chat_member,
       eventAt: new Date(update.chat_member.date * 1000)
     }).catch(() => undefined);
+
+    if (isNewMemberJoin(update.chat_member)) {
+      await sendWelcomeMessage({
+        chatId: syncedChat.id,
+        telegramChatId: chat.id,
+        chatTitle: syncedChat.title,
+        memberCount: syncedChat.knownMemberCount,
+        newMemberFirstName: update.chat_member.new_chat_member.user.first_name,
+        newMemberUsername: update.chat_member.new_chat_member.user.username ?? null
+      }).catch(() => undefined);
+    }
 
     if (
       isNewMemberJoin(update.chat_member) &&

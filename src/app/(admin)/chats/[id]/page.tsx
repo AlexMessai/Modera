@@ -8,6 +8,7 @@ import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { ReportSettings } from "@/components/report-settings";
 import { LogChannelSettings } from "@/components/log-channel-settings";
 import { ChatRolesSettings } from "@/components/chat-roles-settings";
+import { ContentSettings } from "@/components/content-settings";
 import { ChatStatistics } from "@/components/chat-statistics-client";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
@@ -18,6 +19,7 @@ import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-ser
 import { getChatReportProfile } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
 import { listChatRoles } from "@/server/services/chat-role-service";
+import { getChatContentProfile } from "@/server/services/content-settings-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +55,7 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -61,6 +63,7 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
     getChatReportProfile(id),
     getChatLogChannelProfile(id),
     listChatRoles(id),
+    getChatContentProfile(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -123,6 +126,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Роли</h2><p>Права каждой роли этого чата. Роль назначается автоматически по статусу в Telegram (владелец/администратор) или вручную доверенным участникам.</p></div></div>
           <ChatRolesSettings chatId={id} initial={roles} canEdit={canManageChatSettings(admin.role)} />
+        </section>
+      ) : null}
+
+      {contentProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Приветствие и правила</h2><p>Текст приветствия новым участникам и правила чата по команде /rules.</p></div></div>
+          <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} initialUseGlobalProfile={contentProfile.policy.useGlobalProfile} globalSettings={contentProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 

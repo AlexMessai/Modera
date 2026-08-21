@@ -7,6 +7,7 @@ import { getGlobalCaptchaProfile } from "@/server/services/captcha-settings-serv
 import { getGlobalManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 import { getGlobalAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getGlobalReportProfile } from "@/server/services/report-settings-service";
+import { getGlobalContentProfile } from "@/server/services/content-settings-service";
 import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
 
 export const dynamic = "force-dynamic";
@@ -24,13 +25,14 @@ function formatDate(value: string) {
 }
 
 export default async function ModerationPage() {
-  const [admin, data, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile] = await Promise.all([
+  const [admin, data, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, contentProfile] = await Promise.all([
     requireAdminPage(),
     getModerationDashboard(),
     getGlobalCaptchaProfile(),
     getGlobalManualModerationProfile(),
     getGlobalAntiRaidProfile(),
-    getGlobalReportProfile()
+    getGlobalReportProfile(),
+    getGlobalContentProfile()
   ]);
   const canEdit = canManageChatSettings(admin.role);
 
@@ -44,6 +46,7 @@ export default async function ModerationPage() {
         manualModerationInitial={manualModerationProfile.settings}
         antiRaidInitial={antiRaidProfile.settings}
         reportInitial={reportProfile.settings}
+        contentInitial={contentProfile.settings}
         canEdit={canEdit}
       />
 

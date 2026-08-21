@@ -116,6 +116,7 @@ model Chat {
   reports                  Report[]
   reportSettings           ChatReportSettings?
   logChannelSettings       ChatLogChannelSettings?
+  contentSettings          ChatContentSettings?
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -616,6 +617,30 @@ model ChatLogChannelSettings {
   createdAt             DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
   chat                  Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+// Welcome (§30) + Rules (§29) -- grouped into one settings domain since both
+// are just chat-facing text content shown to members, matching how the
+// Settings Center's own "Чат" section groups them together.
+model ChatContentSettings {
+  id                     String   @id @default(uuid()) @db.Uuid
+  chatId                 String   @unique @db.Uuid
+  useGlobalProfile       Boolean  @default(true)
+  welcomeEnabled         Boolean  @default(false)
+  welcomeMessageTemplate String   @default("Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников.") @db.VarChar(2000)
+  rulesText              String   @default("") @db.VarChar(4000)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+  chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalContentSettings {
+  id                     String   @id @default("global")
+  welcomeEnabled         Boolean  @default(false)
+  welcomeMessageTemplate String   @default("Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников.") @db.VarChar(2000)
+  rulesText              String   @default("") @db.VarChar(4000)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model AdminUser {
