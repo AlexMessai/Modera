@@ -21,6 +21,8 @@ import { getChatLogChannelProfile } from "@/server/services/log-channel-service"
 import { listChatRoles } from "@/server/services/chat-role-service";
 import { getChatContentProfile } from "@/server/services/content-settings-service";
 import { getActiveSilence } from "@/server/services/silence-service";
+import { AutoResponseSettings } from "@/components/auto-response-settings";
+import { listAutoResponseRules } from "@/server/services/auto-response-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +58,7 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -66,6 +68,7 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
     listChatRoles(id),
     getChatContentProfile(id),
     getActiveSilence(id),
+    listAutoResponseRules(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -145,6 +148,11 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         ) : (
           <div className="moderation-readonly"><span className="badge">Выключен</span><p>Обычные участники пишут как обычно.</p></div>
         )}
+      </section>
+
+      <section className="panel profile-section">
+        <div className="panel-header"><div><h2>Автоответы</h2><p>Бот автоматически отвечает, когда сообщение содержит заданную фразу.</p></div></div>
+        <AutoResponseSettings chatId={id} initial={autoResponses} canEdit={canManageChatSettings(admin.role)} />
       </section>
 
       <section className="panel profile-section">
