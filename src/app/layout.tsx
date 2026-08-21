@@ -11,6 +11,7 @@ import "./settings.css";
 import "./join-requests.css";
 import "./dashboard.css";
 import "./appeals.css";
+import "./commands.css";
 
 const onest = Onest({
   subsets: ["cyrillic", "latin"],
