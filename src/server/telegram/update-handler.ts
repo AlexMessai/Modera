@@ -158,6 +158,9 @@ function formatMinutes(minutes: number) {
   return `${minutes} мин.`;
 }
 
+/** One rendered outcome line — `announceInChat` says whether it also belongs in the public chat message, not just the admin's private summary. */
+type ModerationOutcomeLine = { text: string; announceInChat: boolean };
+
 /** Runs the moderation action against a single already-resolved target; used in a loop for multi-target commands. */
 async function applyModerationCommandToTarget(input: {
   chatId: string;
@@ -168,7 +171,7 @@ async function applyModerationCommandToTarget(input: {
   durationMinutes: number | null;
   telegramActor: { telegramUserId: number; username?: string; displayName?: string };
   settings: ManualModerationSettingsValue;
-}): Promise<string | null> {
+}): Promise<ModerationOutcomeLine[]> {
   const fields = TEMPLATE_FIELDS_BY_ACTION[input.action];
   let warns = "";
   let warnsLimit = "";
@@ -216,19 +219,23 @@ async function applyModerationCommandToTarget(input: {
     warns,
     warnsLimit
   };
-  const replyParts: string[] = [];
-  if (input.settings[fields.announceInChat]) {
-    replyParts.push(renderManualModerationTemplate(input.settings[fields.template] as string, placeholders));
-  }
+  // Rendered unconditionally — the admin running the command always gets a
+  // private confirmation that the action went through, even when public
+  // chat announcements are switched off (silent moderation is the default;
+  // "silent" means the chat stays quiet, not that the admin is left guessing).
+  const lines: ModerationOutcomeLine[] = [{
+    text: renderManualModerationTemplate(input.settings[fields.template] as string, placeholders),
+    announceInChat: input.settings[fields.announceInChat]
+  }];
 
   // The warning that crossed the threshold also triggered a punishment — say so
-  // in the same reply rather than leaving the chat to guess why the mute landed.
+  // in the same summary rather than leaving the admin to guess why the mute landed.
   // Visibility follows the escalated action's own toggle (mute/ban), not warn's --
-  // they're different actions and can be configured to show independently.
+  // they're different actions and can be configured to show independently in chat.
   if (escalation?.escalated && escalation.action) {
     const escalationFields = TEMPLATE_FIELDS_BY_ACTION[escalation.action];
-    if (input.settings[escalationFields.announceInChat]) {
-      replyParts.push(renderManualModerationTemplate(
+    lines.push({
+      text: renderManualModerationTemplate(
         input.settings[escalationFields.template] as string,
         {
           ...placeholders,
@@ -236,11 +243,12 @@ async function applyModerationCommandToTarget(input: {
           reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         }
-      ));
-    }
+      ),
+      announceInChat: input.settings[escalationFields.announceInChat]
+    });
   }
 
-  return replyParts.length > 0 ? replyParts.join("\n") : null;
+  return lines;
 }
 
 async function processGroupModerationCommand(input: {
@@ -266,11 +274,11 @@ async function processGroupModerationCommand(input: {
     { allowDuration, requireDurationUnit }
   );
 
-  // Validation hints and per-target errors are diagnostic information for
-  // whoever ran the command, not for the rest of the chat — sent ephemeral
-  // (Bot API 10.2, visible only to `from`) rather than as a normal chat
-  // message. The actual action result (below) is a separate, public
-  // announcement gated by the *AnnounceInChat setting, unrelated to this.
+  // Validation hints, per-target errors, and the admin's own action summary
+  // (below) are for whoever ran the command, not the rest of the chat — sent
+  // ephemeral (Bot API 10.2, visible only to `from`) rather than as a normal
+  // chat message. Only the separately-sent public announcement (also below,
+  // gated by the *AnnounceInChat setting) is meant for the whole chat.
   const privateReply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
@@ -325,11 +333,15 @@ async function processGroupModerationCommand(input: {
     await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
   }
 
-  const resultLines: string[] = [];
-  const errorLines: string[] = [];
+  // publicLines only holds lines whose *AnnounceInChat setting is on —
+  // adminSummaryLines holds every outcome regardless, so the admin who ran
+  // the command always gets private confirmation that it went through, even
+  // when the chat itself stays silent (the default).
+  const publicLines: string[] = [];
+  const adminSummaryLines: string[] = [];
   for (const target of targets) {
     try {
-      const line = await applyModerationCommandToTarget({
+      const outcomes = await applyModerationCommandToTarget({
         chatId: input.chatId,
         action,
         target,
@@ -338,24 +350,25 @@ async function processGroupModerationCommand(input: {
         telegramActor,
         settings
       });
-      if (line) resultLines.push(targets.length > 1 ? `${target.displayName}: ${line}` : line);
+      for (const outcome of outcomes) {
+        const line = targets.length > 1 ? `${target.displayName}: ${outcome.text}` : outcome.text;
+        adminSummaryLines.push(line);
+        if (outcome.announceInChat) publicLines.push(line);
+      }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
-      errorLines.push(`❌ ${target.displayName}: ${message}`);
+      adminSummaryLines.push(`❌ ${target.displayName}: ${message}`);
     }
   }
   if (unresolvedUsernames.length > 0) {
-    errorLines.push(`❌ Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}`);
+    adminSummaryLines.push(`❌ Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}`);
   }
 
-  // Successful-action announcements are public chat messages (subject to the
-  // *AnnounceInChat setting, same as before) — errors are diagnostic and
-  // stay private to the admin who ran the command.
-  if (resultLines.length > 0) {
-    await input.client.sendMessage({ chatId: input.telegramChatId, text: resultLines.join("\n") }).catch(() => undefined);
+  if (publicLines.length > 0) {
+    await input.client.sendMessage({ chatId: input.telegramChatId, text: publicLines.join("\n") }).catch(() => undefined);
   }
-  if (errorLines.length > 0) {
-    await privateReply(errorLines.join("\n"));
+  if (adminSummaryLines.length > 0) {
+    await privateReply(adminSummaryLines.join("\n"));
   }
 
   return true;
