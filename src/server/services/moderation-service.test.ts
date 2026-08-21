@@ -12,6 +12,40 @@ import {
   requiresReason
 } from "./moderation-service";
 
+test("mute/ban duration is validated before any lookup happens", async () => {
+  await assert.rejects(
+    executeModerationAction({
+      membershipId: "does-not-matter",
+      actingAdminId: "does-not-matter",
+      action: "MUTE",
+      reason: "test",
+      muteDurationMinutes: 10081
+    }),
+    (error: unknown) => error instanceof ModerationError && error.code === "INVALID_MUTE_DURATION"
+  );
+  await assert.rejects(
+    executeModerationAction({
+      membershipId: "does-not-matter",
+      actingAdminId: "does-not-matter",
+      action: "BAN",
+      reason: "test",
+      banDurationMinutes: 366 * 24 * 60 + 1
+    }),
+    (error: unknown) => error instanceof ModerationError && error.code === "INVALID_BAN_DURATION"
+  );
+  await assert.rejects(
+    executeTelegramActorModerationAction({
+      chatId: "does-not-matter",
+      targetTelegramUserId: 1,
+      action: "BAN",
+      reason: "test",
+      banDurationMinutes: 0,
+      telegramActor: { telegramUserId: 1 }
+    }),
+    (error: unknown) => error instanceof ModerationError && error.code === "INVALID_BAN_DURATION"
+  );
+});
+
 test("moderation command metadata is explicit", () => {
   assert.equal(isModerationAction("WARNING"), true);
   assert.equal(isModerationAction("UNBAN"), true);
@@ -38,6 +72,23 @@ test("timed mute stores expiry and unmute clears it", () => {
   assert.equal(unmuted.status, "MEMBER");
   assert.equal(unmuted.punishmentState, null);
   assert.equal(unmuted.punishmentExpiresAt, null);
+});
+
+test("timed ban stores expiry and unban clears it; permanent ban has no expiry", () => {
+  const now = new Date("2026-08-18T10:00:00.000Z");
+  const expiresAt = new Date("2026-08-25T10:00:00.000Z");
+  const banned = membershipUpdateFor("BAN", now, expiresAt);
+  assert.equal(banned.status, "BANNED");
+  assert.equal(banned.punishmentState, "BANNED");
+  assert.equal(banned.punishmentExpiresAt?.toISOString(), expiresAt.toISOString());
+
+  const permanentBan = membershipUpdateFor("BAN", now);
+  assert.equal(permanentBan.punishmentExpiresAt, null);
+
+  const unbanned = membershipUpdateFor("UNBAN", now);
+  assert.equal(unbanned.status, "LEFT");
+  assert.equal(unbanned.punishmentState, null);
+  assert.equal(unbanned.punishmentExpiresAt, null);
 });
 
 test("warning is persisted atomically without calling Telegram", async () => {

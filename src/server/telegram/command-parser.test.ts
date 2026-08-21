@@ -81,6 +81,19 @@ test("mixed username and ID targets", () => {
   assert.equal(result.reason, "реклама");
 });
 
+test("requireDurationUnit: bare number is left in the reason, not read as a duration", () => {
+  const result = parseModerationCommandArguments("5 нарушений подряд", { allowDuration: true, requireDurationUnit: true });
+  assert.equal(result.durationMinutes, null);
+  assert.equal(result.reason, "5 нарушений подряд");
+});
+
+test("requireDurationUnit: a unit-suffixed number is still read as a duration", () => {
+  const result = parseModerationCommandArguments("@user 7d спам", { allowDuration: true, requireDurationUnit: true });
+  assert.deepEqual(result.targetTokens, [{ type: "username", value: "user" }]);
+  assert.equal(result.durationMinutes, 10080);
+  assert.equal(result.reason, "спам");
+});
+
 test("empty args", () => {
   const result = parseModerationCommandArguments("", { allowDuration: true });
   assert.deepEqual(result.targetTokens, []);

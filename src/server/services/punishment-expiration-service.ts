@@ -1,5 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { executeExpiredMuteRelease, ModerationError } from "@/server/services/moderation-service";
+import { executeExpiredBanRelease, executeExpiredMuteRelease, ModerationError } from "@/server/services/moderation-service";
 
 export function isExpiredMuteCandidate(
   member: { punishmentState: string | null; punishmentExpiresAt: Date | null },
@@ -9,17 +9,25 @@ export function isExpiredMuteCandidate(
     Boolean(member.punishmentExpiresAt && member.punishmentExpiresAt <= now);
 }
 
+export function isExpiredBanCandidate(
+  member: { punishmentState: string | null; punishmentExpiresAt: Date | null },
+  now: Date
+) {
+  return member.punishmentState === "BANNED" &&
+    Boolean(member.punishmentExpiresAt && member.punishmentExpiresAt <= now);
+}
+
 export async function processExpiredPunishments(input?: { now?: Date; limit?: number }) {
   const now = input?.now ?? new Date();
   const limit = Math.min(100, Math.max(1, input?.limit ?? 25));
   const candidates = await prisma.chatMember.findMany({
     where: {
-      punishmentState: "MUTED",
+      punishmentState: { in: ["MUTED", "BANNED"] },
       punishmentExpiresAt: { lte: now }
     },
     orderBy: { punishmentExpiresAt: "asc" },
     take: limit,
-    select: { id: true }
+    select: { id: true, punishmentState: true }
   });
 
   let released = 0;
@@ -28,11 +36,13 @@ export async function processExpiredPunishments(input?: { now?: Date; limit?: nu
 
   for (const candidate of candidates) {
     try {
-      const result = await executeExpiredMuteRelease({ membershipId: candidate.id, now });
+      const result = candidate.punishmentState === "BANNED"
+        ? await executeExpiredBanRelease({ membershipId: candidate.id, now })
+        : await executeExpiredMuteRelease({ membershipId: candidate.id, now });
       if (result.outcome === "released") released += 1;
       else skipped += 1;
     } catch (error) {
-      if (error instanceof ModerationError && error.code === "NOT_MUTED") skipped += 1;
+      if (error instanceof ModerationError && (error.code === "NOT_MUTED" || error.code === "NOT_BANNED")) skipped += 1;
       else failed += 1;
     }
   }

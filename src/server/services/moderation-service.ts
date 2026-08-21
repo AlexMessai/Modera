@@ -9,7 +9,7 @@ import {
   UNRESTRICTED_CHAT_PERMISSIONS
 } from "@/server/telegram/client";
 import { extractBotPermissions } from "@/server/telegram/status";
-import { isMuteExpired } from "@/server/services/punishment-state";
+import { isBanExpired, isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN"] as const;
@@ -54,6 +54,19 @@ export function requiresReason(action: ModerationActionValue) {
   return action === "WARNING" || action === "MUTE" || action === "BAN";
 }
 
+// Telegram's own banChatMember/restrictChatMember reject an until_date more
+// than 366 days out (it's treated as permanent past that); mute stays capped
+// at a week, matching the bound this codebase already validated before ban
+// gained a duration too.
+const MUTE_DURATION_MINUTES_MAX = 10080;
+const BAN_DURATION_MINUTES_MAX = 366 * 24 * 60;
+
+function assertDurationMinutes(value: number | null | undefined, code: string, message: string, max: number) {
+  if (value !== undefined && value !== null && (value < 1 || value > max)) {
+    throw new ModerationError(code, message, 400);
+  }
+}
+
 export function isProtectedMemberStatus(status: string) {
   return status === "CREATOR" || status === "ADMINISTRATOR";
 }
@@ -90,7 +103,7 @@ function assertLocalActionAllowed(
   if (action === "UNMUTE" && member.status !== "RESTRICTED" && member.punishmentState !== "MUTED") {
     throw new ModerationError("NOT_MUTED", "У участника нет активного mute.", 409);
   }
-  if (action === "BAN" && (member.status === "BANNED" || member.punishmentState === "BANNED")) {
+  if (action === "BAN" && (member.status === "BANNED" || member.punishmentState === "BANNED") && !isBanExpired(member)) {
     throw new ModerationError("ALREADY_BANNED", "Участник уже заблокирован.", 409);
   }
   if (action === "UNBAN" && member.status !== "BANNED" && member.punishmentState !== "BANNED") {
@@ -268,7 +281,12 @@ async function performTelegramAction(input: {
       await client.restrictChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, permissions: UNRESTRICTED_CHAT_PERMISSIONS });
       break;
     case "BAN":
-      await client.banChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, revokeMessages: false });
+      await client.banChatMember({
+        chatId: input.chatTelegramId,
+        userId: input.targetTelegramId,
+        revokeMessages: false,
+        ...(input.expiresAt ? { untilDate: Math.floor(input.expiresAt.getTime() / 1000) } : {})
+      });
       break;
     case "UNBAN":
       await client.unbanChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, onlyIfBanned: true });
@@ -284,7 +302,7 @@ export function membershipUpdateFor(action: TelegramModerationAction, now: Date,
     case "UNMUTE":
       return { status: "MEMBER" as const, punishmentState: null, punishmentExpiresAt: null, leftAt: null, lastModerationAt: now };
     case "BAN":
-      return { status: "BANNED" as const, punishmentState: "BANNED", punishmentExpiresAt: null, leftAt: now, lastModerationAt: now };
+      return { status: "BANNED" as const, punishmentState: "BANNED", punishmentExpiresAt: expiresAt ?? null, leftAt: now, lastModerationAt: now };
     case "UNBAN":
       return { status: "LEFT" as const, punishmentState: null, punishmentExpiresAt: null, leftAt: now, lastModerationAt: now };
   }
@@ -424,12 +442,12 @@ export async function executeModerationAction(input: {
   action: ModerationActionValue;
   reason?: string | null;
   muteDurationMinutes?: number | null;
+  banDurationMinutes?: number | null;
 }) {
   const reason = normalizeReason(input.reason);
   if (requiresReason(input.action) && !reason) throw new ModerationError("REASON_REQUIRED", "Укажите причину действия модерации.", 400);
-  if (input.muteDurationMinutes !== undefined && input.muteDurationMinutes !== null && (input.muteDurationMinutes < 1 || input.muteDurationMinutes > 10080)) {
-    throw new ModerationError("INVALID_MUTE_DURATION", "Срок mute должен быть от 1 минуты до 7 дней.", 400);
-  }
+  assertDurationMinutes(input.muteDurationMinutes, "INVALID_MUTE_DURATION", "Срок mute должен быть от 1 минуты до 7 дней.", MUTE_DURATION_MINUTES_MAX);
+  assertDurationMinutes(input.banDurationMinutes, "INVALID_BAN_DURATION", "Срок бана должен быть от 1 минуты до 366 дней.", BAN_DURATION_MINUTES_MAX);
 
   const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -439,9 +457,8 @@ export async function executeModerationAction(input: {
     return recordWarning({ membershipId: member.id, member, actingAdminId: input.actingAdminId, source: "ADMIN", reason });
   }
 
-  const expiresAt = input.action === "MUTE" && input.muteDurationMinutes
-    ? new Date(Date.now() + input.muteDurationMinutes * 60_000)
-    : null;
+  const durationMinutes = input.action === "MUTE" ? input.muteDurationMinutes : input.action === "BAN" ? input.banDurationMinutes : null;
+  const expiresAt = durationMinutes ? new Date(Date.now() + durationMinutes * 60_000) : null;
 
   return executeTelegramBackedAction({
     member,
@@ -451,7 +468,9 @@ export async function executeModerationAction(input: {
     reason,
     expiresAt,
     auditAction: ACTION_AUDIT_LABELS[input.action],
-    metadata: input.muteDurationMinutes ? { muteDurationMinutes: input.muteDurationMinutes } : undefined
+    metadata: durationMinutes
+      ? (input.action === "MUTE" ? { muteDurationMinutes: durationMinutes } : { banDurationMinutes: durationMinutes })
+      : undefined
   });
 }
 
@@ -468,13 +487,13 @@ export async function executeTelegramActorModerationAction(input: {
   action: ModerationActionValue;
   reason?: string | null;
   muteDurationMinutes?: number | null;
+  banDurationMinutes?: number | null;
   telegramActor: TelegramActor;
 }) {
   const reason = normalizeReason(input.reason);
   if (requiresReason(input.action) && !reason) throw new ModerationError("REASON_REQUIRED", "Укажите причину действия модерации.", 400);
-  if (input.muteDurationMinutes !== undefined && input.muteDurationMinutes !== null && (input.muteDurationMinutes < 1 || input.muteDurationMinutes > 10080)) {
-    throw new ModerationError("INVALID_MUTE_DURATION", "Срок mute должен быть от 1 минуты до 7 дней.", 400);
-  }
+  assertDurationMinutes(input.muteDurationMinutes, "INVALID_MUTE_DURATION", "Срок mute должен быть от 1 минуты до 7 дней.", MUTE_DURATION_MINUTES_MAX);
+  assertDurationMinutes(input.banDurationMinutes, "INVALID_BAN_DURATION", "Срок бана должен быть от 1 минуты до 366 дней.", BAN_DURATION_MINUTES_MAX);
 
   const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -486,9 +505,8 @@ export async function executeTelegramActorModerationAction(input: {
     return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata });
   }
 
-  const expiresAt = input.action === "MUTE" && input.muteDurationMinutes
-    ? new Date(Date.now() + input.muteDurationMinutes * 60_000)
-    : null;
+  const durationMinutes = input.action === "MUTE" ? input.muteDurationMinutes : input.action === "BAN" ? input.banDurationMinutes : null;
+  const expiresAt = durationMinutes ? new Date(Date.now() + durationMinutes * 60_000) : null;
 
   return executeTelegramBackedAction({
     member,
@@ -498,7 +516,9 @@ export async function executeTelegramActorModerationAction(input: {
     reason,
     expiresAt,
     auditAction: ACTION_AUDIT_LABELS[input.action],
-    metadata: input.muteDurationMinutes ? { ...metadata, muteDurationMinutes: input.muteDurationMinutes } : metadata
+    metadata: durationMinutes
+      ? { ...metadata, ...(input.action === "MUTE" ? { muteDurationMinutes: durationMinutes } : { banDurationMinutes: durationMinutes }) }
+      : metadata
   });
 }
 
@@ -609,6 +629,36 @@ export async function executeExpiredMuteRelease(input: {
     action: "UNMUTE",
     reason: "Истёк срок временного mute.",
     auditAction: "MODERATION_EXPIRED_UNMUTE",
+    metadata: {
+      automaticExpiration: true,
+      scheduledFor: member.punishmentExpiresAt.toISOString()
+    }
+  });
+  return { outcome: "released" as const, result };
+}
+
+export async function executeExpiredBanRelease(input: {
+  membershipId: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const member = await loadMember(input.membershipId);
+  if (!member) return { outcome: "skipped" as const, reason: "MEMBER_NOT_FOUND" as const };
+  if (
+    member.punishmentState !== "BANNED" ||
+    !member.punishmentExpiresAt ||
+    member.punishmentExpiresAt > now
+  ) {
+    return { outcome: "skipped" as const, reason: "NOT_EXPIRED" as const };
+  }
+
+  const result = await executeTelegramBackedAction({
+    member,
+    actingAdminId: null,
+    source: "SYSTEM",
+    action: "UNBAN",
+    reason: "Истёк срок временной блокировки.",
+    auditAction: "MODERATION_EXPIRED_UNBAN",
     metadata: {
       automaticExpiration: true,
       scheduledFor: member.punishmentExpiresAt.toISOString()

@@ -20,6 +20,7 @@ import {
 import {
   describeWarningStanding,
   escalateAfterManualWarning,
+  listWarningsForMember,
   recordAutomodViolationAndEscalate,
   type ManualWarningEscalation
 } from "@/server/services/moderation-escalation-service";
@@ -112,12 +113,17 @@ const GROUP_START_NOISE_PATTERN = /^\/start(?:@\w+)?(?:\s+\S+)?\s*$/i;
 // GROUP_MODERATION_COMMANDS below, then command-parser.ts does the actual argument split.
 const GROUP_MODERATION_COMMAND_PATTERN = /^\/(warn|unwarn|mute|unmute|ban|unban)(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 
-const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand; allowDuration: boolean }> = {
+const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand; allowDuration: boolean; requireDurationUnit?: boolean }> = {
   warn: { action: "WARNING", allowDuration: false },
   unwarn: { action: "UNWARN", allowDuration: false },
   mute: { action: "MUTE", allowDuration: true },
   unmute: { action: "UNMUTE", allowDuration: false },
-  ban: { action: "BAN", allowDuration: false },
+  // Ban's duration is optional (a bare /ban stays permanent) — unlike mute,
+  // there's no "укажите срок" requirement blocking the command without one.
+  // requireDurationUnit: BAN has no legacy bare-minutes syntax to preserve,
+  // so require an explicit unit (7d/3h) rather than risk misreading a reason
+  // that starts with a digit as a duration.
+  ban: { action: "BAN", allowDuration: true, requireDurationUnit: true },
   unban: { action: "UNBAN", allowDuration: false }
 };
 
@@ -156,7 +162,8 @@ async function applyModerationCommandToTarget(input: {
   action: GroupModerationCommand;
   target: ResolvedModerationTarget;
   reason: string | null;
-  muteDurationMinutes: number | null;
+  /** Minutes; applies to MUTE or BAN depending on `action` — null means permanent/no duration. */
+  durationMinutes: number | null;
   telegramActor: { telegramUserId: number; username?: string; displayName?: string };
   settings: ManualModerationSettingsValue;
 }): Promise<string | null> {
@@ -183,7 +190,8 @@ async function applyModerationCommandToTarget(input: {
       targetTelegramUserId: input.target.telegramUserId,
       action: input.action,
       reason: input.reason,
-      muteDurationMinutes: input.muteDurationMinutes,
+      muteDurationMinutes: input.action === "MUTE" ? input.durationMinutes : null,
+      banDurationMinutes: input.action === "BAN" ? input.durationMinutes : null,
       telegramActor: input.telegramActor
     });
 
@@ -202,7 +210,7 @@ async function applyModerationCommandToTarget(input: {
     admin: input.telegramActor.displayName ?? input.telegramActor.username ?? "Администратор",
     target: input.target.displayName,
     reason: input.reason ?? "",
-    duration: input.action === "MUTE" && input.muteDurationMinutes ? formatMinutes(input.muteDurationMinutes) : "",
+    duration: (input.action === "MUTE" || input.action === "BAN") && input.durationMinutes ? formatMinutes(input.durationMinutes) : "",
     warns,
     warnsLimit
   };
@@ -249,11 +257,11 @@ async function processGroupModerationCommand(input: {
   const commandName = commandMatch[1].toLowerCase();
   const config = GROUP_MODERATION_COMMANDS[commandName];
   if (!config) return false;
-  const { action, allowDuration } = config;
+  const { action, allowDuration, requireDurationUnit } = config;
 
   const { targetTokens, durationMinutes, reason } = parseModerationCommandArguments(
     commandMatch[2] ?? "",
-    { allowDuration }
+    { allowDuration, requireDurationUnit }
   );
 
   const reply = (replyText: string) =>
@@ -319,7 +327,7 @@ async function processGroupModerationCommand(input: {
         action,
         target,
         reason,
-        muteDurationMinutes: durationMinutes,
+        durationMinutes,
         telegramActor,
         settings
       });
@@ -336,6 +344,80 @@ async function processGroupModerationCommand(input: {
   const combined = [...resultLines, ...errorLines].join("\n");
   if (combined) await reply(combined);
 
+  return true;
+}
+
+const WARNS_COMMAND_PATTERN = /^\/warns(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+
+/**
+ * /warns — a read-only lookup, so unlike the punishment commands it replies
+ * ephemerally (visible only to the admin who asked) rather than posting the
+ * target's warning history into the chat for everyone to see.
+ */
+async function processWarnsCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  const match = WARNS_COMMAND_PATTERN.exec(text);
+  if (!match) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
+  if (!isAdmin) {
+    await reply("❌ У вас нет прав администратора в этом чате.");
+    return true;
+  }
+
+  const { targetTokens } = parseModerationCommandArguments(match[1] ?? "", { allowDuration: false });
+  let targets: ResolvedModerationTarget[] = [];
+  let unresolvedUsernames: string[] = [];
+  if (targetTokens.length > 0) {
+    const resolution = await resolveTelegramTargets({ chatId: input.chatId, tokens: targetTokens });
+    targets = resolution.resolved;
+    unresolvedUsernames = resolution.unresolvedUsernames;
+  } else if (input.message.reply_to_message?.from) {
+    const replyFrom = input.message.reply_to_message.from;
+    targets = [{
+      telegramUserId: replyFrom.id,
+      displayName: telegramDisplayName(replyFrom),
+      token: { type: "id", value: replyFrom.id }
+    }];
+  }
+
+  if (targets.length === 0) {
+    await reply(unresolvedUsernames.length > 0
+      ? `Не удалось найти в этом чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}.`
+      : "Укажите цель: ответьте (Reply) на сообщение участника, либо укажите @username или Telegram ID после команды.");
+    return true;
+  }
+
+  const lines: string[] = [];
+  for (const target of targets) {
+    const standing = await listWarningsForMember({ chatId: input.chatId, telegramUserId: target.telegramUserId });
+    if (!standing) {
+      lines.push(`${target.displayName}: участник не найден в этом чате.`);
+      continue;
+    }
+    lines.push(`${target.displayName}: ${standing.activeWarningCount}/${standing.warnsLimit} активных предупреждений (всего выдано ${standing.totalWarningCount}).`);
+    for (const item of standing.recent.slice(0, 5)) {
+      const date = item.createdAt.toLocaleDateString("ru-RU");
+      lines.push(`  · ${date} — ${item.reason ?? "без причины"}`);
+    }
+  }
+  if (unresolvedUsernames.length > 0) {
+    lines.push(`Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}`);
+  }
+  await reply(lines.join("\n"));
   return true;
 }
 
@@ -649,12 +731,17 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         skipTelegramUserId: botProfile.id
       });
       const commandHandled = groupMessageText.startsWith("/")
-        ? await processGroupModerationCommand({
+        ? (await processGroupModerationCommand({
             chatId: syncedChat.id,
             telegramChatId: chat.id,
             message: update.message,
             client
-          })
+          })) || (await processWarnsCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          }))
         : false;
       if (!commandHandled) {
         await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });

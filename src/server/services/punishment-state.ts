@@ -6,16 +6,26 @@ export function isMuteExpired(
     Boolean(member.punishmentExpiresAt && member.punishmentExpiresAt <= now);
 }
 
+export function isBanExpired(
+  member: { punishmentState: string | null; punishmentExpiresAt: Date | null },
+  now = new Date()
+) {
+  return member.punishmentState === "BANNED" &&
+    Boolean(member.punishmentExpiresAt && member.punishmentExpiresAt <= now);
+}
+
 export function effectivePunishmentState(
   member: { punishmentState: string | null; punishmentExpiresAt: Date | null },
   now = new Date()
 ) {
-  return isMuteExpired(member, now) ? null : member.punishmentState;
+  return isMuteExpired(member, now) || isBanExpired(member, now) ? null : member.punishmentState;
 }
 
 export function effectiveMembershipStatus(
   member: { status: string; punishmentState: string | null; punishmentExpiresAt: Date | null },
   now = new Date()
 ) {
-  return isMuteExpired(member, now) && member.status === "RESTRICTED" ? "MEMBER" : member.status;
+  if (isMuteExpired(member, now) && member.status === "RESTRICTED") return "MEMBER";
+  if (isBanExpired(member, now) && member.status === "BANNED") return "LEFT";
+  return member.status;
 }
