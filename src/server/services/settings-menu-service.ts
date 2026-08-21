@@ -7,6 +7,7 @@ import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValu
 import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, updateChatLogChannelSettings, type LogChannelSettingsValue } from "@/server/services/log-channel-service";
 import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type ChatPermission, type ChatRoleSummary } from "@/server/services/chat-role-service";
 import { getChatContentProfile, updateChatContentSettings, type ContentSettingsValue } from "@/server/services/content-settings-service";
+import { getActiveSilence } from "@/server/services/silence-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -555,6 +556,7 @@ function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) 
       inline_keyboard: [
         [{ text: `👋 Приветствие: ${settings.welcomeEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.welcome") }],
         [{ text: `📜 Правила: ${settings.rulesText ? "заданы" : "не заданы"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.rules") }],
+        [{ text: "🔇 Режим тишины", callback_data: buildSettingsCallbackData(telegramChatId, "chat.silence") }],
         backRow("root", telegramChatId)
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -611,6 +613,14 @@ async function renderChatSection(input: { chatId: string; chatTitle: string; tel
   }
 
   if (input.path === "chat.rules") return renderRulesDetail(settings, input.telegramChatId);
+
+  if (input.path === "chat.silence") {
+    const active = await getActiveSilence(input.chatId);
+    const text = active
+      ? `🔇 Режим тишины\n\nСейчас включён до ${active.expiresAt ? new Date(active.expiresAt).toLocaleString("ru-RU") : "—"}. Снять раньше: команда /unsilence в чате.`
+      : `🔇 Режим тишины\n\nСейчас выключен. Включить: команда /silence [срок] в чате, например /silence 30m. Модераторы и администраторы продолжают писать, пока включён.`;
+    return { text, keyboard: { inline_keyboard: [backRow("chat", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup };
+  }
 
   return null;
 }
