@@ -1,0 +1,122 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { prisma } from "@/server/db/prisma";
+import { buildSettingsCallbackData, parseSettingsCallbackData, renderSettingsMenu } from "./settings-menu-service";
+
+const CHAT_ID = -1009000016001n;
+const ADMIN_EMAIL = "settings-menu-service-ci@example.com";
+
+async function cleanup() {
+  await prisma.chat.deleteMany({ where: { telegramChatId: CHAT_ID } });
+  await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
+}
+
+test("buildSettingsCallbackData/parseSettingsCallbackData round-trip and reject malformed data", () => {
+  const data = buildSettingsCallbackData(-1001234567890, "automod.flood.limit.+1");
+  const parsed = parseSettingsCallbackData(data);
+  assert.deepEqual(parsed, { telegramChatId: -1001234567890, path: "automod.flood.limit.+1" });
+
+  // Link-mode paths carry an uppercase mode name -- must not be rejected by the path charset.
+  const linkData = buildSettingsCallbackData(-1001234567890, "automod.links.set.WHITELIST_ONLY");
+  assert.deepEqual(parseSettingsCallbackData(linkData), { telegramChatId: -1001234567890, path: "automod.links.set.WHITELIST_ONLY" });
+
+  assert.equal(parseSettingsCallbackData("report:11111111-1111-4111-8111-111111111111:MUTE"), null);
+  assert.equal(parseSettingsCallbackData("s|not-a-number|root"), null);
+  assert.equal(parseSettingsCallbackData("s|-100123|"), null);
+});
+
+test("renderSettingsMenu: root and close render without touching the DB", async () => {
+  const root = await renderSettingsMenu({
+    chatId: "00000000-0000-4000-8000-000000000000",
+    chatTitle: "Any Chat",
+    telegramChatId: -1001234567890,
+    actingAdminId: "00000000-0000-4000-8000-000000000000",
+    path: "root"
+  });
+  assert.ok(root?.text.includes("Any Chat"));
+  assert.ok(root?.keyboard);
+
+  const closed = await renderSettingsMenu({
+    chatId: "00000000-0000-4000-8000-000000000000",
+    chatTitle: "Any Chat",
+    telegramChatId: -1001234567890,
+    actingAdminId: "00000000-0000-4000-8000-000000000000",
+    path: "close"
+  });
+  assert.equal(closed?.keyboard, null);
+});
+
+test("renderSettingsMenu: toggling flood persists to the chat's own profile and reflects in the rendered text", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automod.flood"
+    });
+    assert.ok(before?.text.includes("флуда"));
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("выключен"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automod.flood.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включён"))));
+
+    const stored = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.spamEnabled, true);
+    assert.equal(stored?.useGlobalProfile, false, "editing via Telegram must fork the chat off the global profile");
+
+    const incremented = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automod.flood.limit.+1"
+    });
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Лимит сообщений: 6"))));
+
+    const storedAfterIncrement = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(storedAfterIncrement?.spamMaxMessages, 6);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: link protection mode picker sets the mode and stays on the links screen", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const result = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automod.links.set.BLOCK_ALL"
+    });
+    assert.ok(result?.text.includes("ссылок"));
+
+    const stored = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.linkProtectionMode, "BLOCK_ALL");
+  } finally {
+    await cleanup();
+  }
+});
