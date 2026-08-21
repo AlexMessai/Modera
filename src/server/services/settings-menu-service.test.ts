@@ -190,12 +190,142 @@ test("renderSettingsMenu: Anti-Raid toggle and stepper persist to the chat's own
       actingAdminId: admin.id,
       path: "protection.antiraid.threshold.+5"
     });
-    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Порог, участников: 35"))));
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Порог: 35"))));
 
     const stored = await prisma.chatAntiRaidSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.enabled, true);
     assert.equal(stored?.joinThreshold, 35);
     assert.equal(stored?.useGlobalProfile, false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: Moderation menu, warnings expiry stepper persists to the chat's own profile", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatModerationSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false, warningExpiryDays: 0 }
+  });
+
+  try {
+    const menu = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation"
+    });
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Предупреждения"))));
+
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.warnings"
+    });
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Дней: бессрочно"))));
+
+    const incremented = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.warnings.expiry.+1"
+    });
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Дней: 1"))));
+
+    const stored = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.warningExpiryDays, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: Moderation menu, punishment toggles persist and the escalation chain renders read-only", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatModerationSettings.create({
+    data: {
+      chatId: chat.id,
+      useGlobalProfile: false,
+      autoEscalationEnabled: false,
+      announceEscalationEnabled: false,
+      escalationRules: [{ order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 }]
+    }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.punishments"
+    });
+    assert.ok(before?.text.includes("3 варн"));
+    assert.ok(before?.text.includes("mute"));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.punishments.auto.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включены"))));
+
+    const stored = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.autoEscalationEnabled, true);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: Moderation menu, notification toggle persists to the chat's own manual-moderation profile", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatManualModerationSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false, warnAnnounceInChat: true }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.notifications"
+    });
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("/warn: ✅"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "moderation.notifications.warn.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("/warn: ⬜"))));
+
+    const stored = await prisma.chatManualModerationSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.warnAnnounceInChat, false);
   } finally {
     await cleanup();
   }
