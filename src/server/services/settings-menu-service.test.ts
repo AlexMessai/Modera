@@ -92,7 +92,7 @@ test("renderSettingsMenu: toggling flood persists to the chat's own profile and 
       actingAdminId: admin.id,
       path: "automod.flood.limit.+1"
     });
-    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Лимит сообщений: 6"))));
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Сообщений: 6"))));
 
     const storedAfterIncrement = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(storedAfterIncrement?.spamMaxMessages, 6);

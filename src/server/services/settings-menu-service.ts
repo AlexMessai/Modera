@@ -111,12 +111,12 @@ function renderLinksDetail(settings: ModerationSettingsValue, telegramChatId: nu
 function renderFloodDetail(settings: ModerationSettingsValue, telegramChatId: number) {
   const rows = [toggleRow(`Статус: ${settings.spamEnabled ? "✅ включён" : "⬜ выключен"}`, "automod.flood.toggle", telegramChatId)];
   if (settings.spamEnabled) {
-    rows.push(stepperRow("Лимит сообщений", settings.spamMaxMessages, "limit", "automod.flood", telegramChatId, 1));
+    rows.push(stepperRow("Сообщений", settings.spamMaxMessages, "limit", "automod.flood", telegramChatId, 1));
     rows.push(stepperRow("Период, сек", settings.spamWindowSeconds, "window", "automod.flood", telegramChatId, 5));
   }
   rows.push(backRow("automod", telegramChatId));
   return {
-    text: `💬 Защита от флуда\n\nЕсли участник отправляет больше лимита сообщений за период — срабатывает предупреждение с обычной эскалацией (как за любое другое нарушение).`,
+    text: `💬 Защита от флуда\n\nЕсли участник отправляет больше «Сообщений» за «Период» секунд — срабатывает предупреждение с обычной эскалацией (как и за другие нарушения).`,
     keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
   };
 }
@@ -136,11 +136,11 @@ function renderTermsDetail(settings: ModerationSettingsValue, telegramChatId: nu
 function renderMentionsDetail(settings: ModerationSettingsValue, telegramChatId: number) {
   const rows = [toggleRow(`Статус: ${settings.massMentionsEnabled ? "✅ включено" : "⬜ выключено"}`, "automod.mentions.toggle", telegramChatId)];
   if (settings.massMentionsEnabled) {
-    rows.push(stepperRow("Макс. упоминаний", settings.maxMentions, "max", "automod.mentions", telegramChatId, 1));
+    rows.push(stepperRow("Упоминаний", settings.maxMentions, "max", "automod.mentions", telegramChatId, 1));
   }
   rows.push(backRow("automod", telegramChatId));
   return {
-    text: "📢 Защита от массовых упоминаний",
+    text: `📢 Защита от массовых упоминаний\n\nЕсли в одном сообщении участник упоминает (@username) больше чем «Упоминаний» людей — срабатывает предупреждение с обычной эскалацией (как и за другие нарушения).`,
     keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
   };
 }
@@ -148,12 +148,12 @@ function renderMentionsDetail(settings: ModerationSettingsValue, telegramChatId:
 function renderDuplicatesDetail(settings: ModerationSettingsValue, telegramChatId: number) {
   const rows = [toggleRow(`Статус: ${settings.duplicateEnabled ? "✅ включено" : "⬜ выключено"}`, "automod.duplicates.toggle", telegramChatId)];
   if (settings.duplicateEnabled) {
-    rows.push(stepperRow("Повторов подряд", settings.duplicateMaxMessages, "count", "automod.duplicates", telegramChatId, 1));
+    rows.push(stepperRow("Повторов", settings.duplicateMaxMessages, "count", "automod.duplicates", telegramChatId, 1));
     rows.push(stepperRow("Период, сек", settings.duplicateWindowSeconds, "window", "automod.duplicates", telegramChatId, 10));
   }
   rows.push(backRow("automod", telegramChatId));
   return {
-    text: "🔁 Защита от повторяющихся сообщений",
+    text: `🔁 Защита от повторяющихся сообщений\n\nЕсли участник отправляет одно и то же сообщение подряд «Повторов» раз в течение «Период» секунд — срабатывает предупреждение с обычной эскалацией (как и за другие нарушения).`,
     keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
   };
 }
