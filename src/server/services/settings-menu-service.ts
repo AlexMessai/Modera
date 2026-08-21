@@ -9,6 +9,7 @@ import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type 
 import { getChatContentProfile, updateChatContentSettings, type ContentSettingsValue } from "@/server/services/content-settings-service";
 import { getActiveSilence } from "@/server/services/silence-service";
 import { listAutoResponseRules } from "@/server/services/auto-response-service";
+import { listCustomCommands } from "@/server/services/custom-command-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -627,26 +628,60 @@ async function renderChatSection(input: { chatId: string; chatTitle: string; tel
   return null;
 }
 
-async function renderAutomationSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
-  if (input.path !== "automation") return null;
+// Trigger/response(-text) fields are each admin-controlled free text (up to
+// 200/1000 chars for auto-responses, 32/1000 for custom commands, up to 20
+// rows each) -- every list below is truncated per-line and capped in count
+// so it can't push past Telegram's 4096-char message limit the way an
+// untruncated preview did in an earlier PR.
+const MAX_LISTED_AUTOMATION_ITEMS = 10;
 
-  const rules = await listAutoResponseRules(input.chatId);
-  const enabledCount = rules.filter((rule) => rule.enabled).length;
-  // Trigger/response are each admin-controlled free text (up to 200/1000
-  // chars, up to MAX_AUTO_RESPONSE_RULES_PER_CHAT rules) -- truncated per
-  // line and capped in count so this can't push past Telegram's 4096-char
-  // message limit the way an untruncated preview did in an earlier PR.
-  const MAX_LISTED_RULES = 10;
-  const shown = rules.slice(0, MAX_LISTED_RULES);
-  const lines = shown.length
-    ? shown.map((rule) => `${rule.enabled ? "✅" : "⬜"} «${previewText(rule.trigger, 40)}» → ${previewText(rule.responseText, 60)}`)
-    : ["Автоответов пока нет."];
-  if (rules.length > MAX_LISTED_RULES) lines.push(`…и ещё ${rules.length - MAX_LISTED_RULES}, см. Web Admin.`);
-
+function renderAutomationMenu(telegramChatId: number) {
   return {
-    text: `🤖 Автоматизация\n\nАвтоответы: ${enabledCount} из ${rules.length} включено. Добавление и редактирование правил — в Web Admin.\n\n${lines.join("\n")}`,
-    keyboard: { inline_keyboard: [backRow("root", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+    text: "🤖 Автоматизация\n\nВыберите раздел. Добавление и редактирование — в Web Admin.",
+    keyboard: {
+      inline_keyboard: [
+        [{ text: "💬 Автоответы", callback_data: buildSettingsCallbackData(telegramChatId, "automation.responses") }],
+        [{ text: "⚙️ Свои команды", callback_data: buildSettingsCallbackData(telegramChatId, "automation.commands") }],
+        backRow("root", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
   };
+}
+
+async function renderAutomationSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  if (input.path === "automation") return renderAutomationMenu(input.telegramChatId);
+
+  if (input.path === "automation.responses") {
+    const rules = await listAutoResponseRules(input.chatId);
+    const enabledCount = rules.filter((rule) => rule.enabled).length;
+    const shown = rules.slice(0, MAX_LISTED_AUTOMATION_ITEMS);
+    const lines = shown.length
+      ? shown.map((rule) => `${rule.enabled ? "✅" : "⬜"} «${previewText(rule.trigger, 40)}» → ${previewText(rule.responseText, 60)}`)
+      : ["Автоответов пока нет."];
+    if (rules.length > MAX_LISTED_AUTOMATION_ITEMS) lines.push(`…и ещё ${rules.length - MAX_LISTED_AUTOMATION_ITEMS}, см. Web Admin.`);
+
+    return {
+      text: `💬 Автоответы\n\nВключено: ${enabledCount} из ${rules.length}.\n\n${lines.join("\n")}`,
+      keyboard: { inline_keyboard: [backRow("automation", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+    };
+  }
+
+  if (input.path === "automation.commands") {
+    const commands = await listCustomCommands(input.chatId);
+    const enabledCount = commands.filter((command) => command.enabled).length;
+    const shown = commands.slice(0, MAX_LISTED_AUTOMATION_ITEMS);
+    const lines = shown.length
+      ? shown.map((command) => `${command.enabled ? "✅" : "⬜"} /${command.trigger}${command.adminOnly ? " (админы)" : ""} → ${previewText(command.responseText, 60)}`)
+      : ["Своих команд пока нет."];
+    if (commands.length > MAX_LISTED_AUTOMATION_ITEMS) lines.push(`…и ещё ${commands.length - MAX_LISTED_AUTOMATION_ITEMS}, см. Web Admin.`);
+
+    return {
+      text: `⚙️ Свои команды\n\nВключено: ${enabledCount} из ${commands.length}.\n\n${lines.join("\n")}`,
+      keyboard: { inline_keyboard: [backRow("automation", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+    };
+  }
+
+  return null;
 }
 
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */

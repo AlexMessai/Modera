@@ -119,6 +119,7 @@ model Chat {
   contentSettings          ChatContentSettings?
   silenceState             ChatSilenceState?
   autoResponseRules        AutoResponseRule[]
+  customCommands           CustomCommand[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -689,6 +690,32 @@ model AutoResponseRule {
 enum AutoResponseMatch {
   CONTAINS
   EXACT
+}
+
+// Custom Commands (§41, Phase 10): admin-defined /commands with a canned
+// text response, e.g. /price /faq /contacts. Chat-only, same reasoning as
+// AutoResponseRule -- a list of custom commands is per-chat content, not a
+// shared policy default. trigger is the bare command word (no leading
+// slash, matching how Telegram's own BotCommand.command works) and is
+// unique per chat so two rules can't silently shadow each other.
+// adminOnly is the spec's "permissions" field, scoped down to a single
+// boolean (invocable by everyone vs. staff only) rather than the full
+// ChatPermission vocabulary -- reuses the same "automod.manage" staff gate
+// /settings itself is already checked against, instead of inventing a new
+// permission just for this.
+model CustomCommand {
+  id           String   @id @default(uuid()) @db.Uuid
+  chatId       String   @db.Uuid
+  trigger      String   @db.VarChar(32)
+  responseText String   @db.VarChar(1000)
+  adminOnly    Boolean  @default(false)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+  chat         Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, trigger])
+  @@index([chatId, enabled])
 }
 
 model AdminUser {

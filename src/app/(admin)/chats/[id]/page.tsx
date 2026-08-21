@@ -23,6 +23,8 @@ import { getChatContentProfile } from "@/server/services/content-settings-servic
 import { getActiveSilence } from "@/server/services/silence-service";
 import { AutoResponseSettings } from "@/components/auto-response-settings";
 import { listAutoResponseRules } from "@/server/services/auto-response-service";
+import { CustomCommandSettings } from "@/components/custom-command-settings";
+import { listCustomCommands } from "@/server/services/custom-command-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +60,7 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -69,6 +71,7 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
     getChatContentProfile(id),
     getActiveSilence(id),
     listAutoResponseRules(id),
+    listCustomCommands(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -153,6 +156,11 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Автоответы</h2><p>Бот автоматически отвечает, когда сообщение содержит заданную фразу.</p></div></div>
         <AutoResponseSettings chatId={id} initial={autoResponses} canEdit={canManageChatSettings(admin.role)} />
+      </section>
+
+      <section className="panel profile-section">
+        <div className="panel-header"><div><h2>Свои команды</h2><p>Команды вида /price, /faq, /contacts с готовым текстовым ответом.</p></div></div>
+        <CustomCommandSettings chatId={id} initial={customCommands} canEdit={canManageChatSettings(admin.role)} />
       </section>
 
       <section className="panel profile-section">

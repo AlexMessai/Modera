@@ -6,6 +6,7 @@ import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/serv
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
 import { findMatchingAutoResponse } from "@/server/services/auto-response-service";
+import { findCustomCommand } from "@/server/services/custom-command-service";
 import { sendWelcomeMessage } from "@/server/services/welcome-service";
 import { resolveEffectiveContentSettings } from "@/server/services/content-settings-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
@@ -628,6 +629,46 @@ async function processRulesCommand(input: {
   const { settings } = await resolveEffectiveContentSettings(input.chatId);
   const reply = settings.rulesText.trim() || "Правила этого чата пока не заданы.";
   await input.client.sendMessage({ chatId: input.telegramChatId, text: `📜 Правила чата\n\n${reply}` }).catch(() => undefined);
+  return true;
+}
+
+const CUSTOM_COMMAND_WORD_PATTERN = /^\/([a-zA-Z0-9_]{1,32})(?:@\w+)?(?:\s|$)/;
+
+/**
+ * Custom Commands (§41, Phase 10) -- checked last in the command chain so
+ * every built-in command above always wins a name collision (on top of
+ * custom-command-service.ts rejecting reserved trigger words outright at
+ * create/update time). Doesn't delete the invoking message -- like /rules,
+ * this is a "show me info" command, not a moderation action, and members
+ * generally expect their question to stay visible next to the answer.
+ */
+async function processCustomCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  const match = CUSTOM_COMMAND_WORD_PATTERN.exec(text);
+  if (!match) return false;
+
+  const command = await findCustomCommand(input.chatId, match[1]);
+  if (!command) return false;
+
+  if (command.adminOnly) {
+    const allowed = await hasChatPermission({
+      chatId: input.chatId,
+      chatTelegramId: input.telegramChatId,
+      telegramUserId: from.id,
+      permission: "automod.manage"
+    });
+    if (!allowed) return false;
+  }
+
+  await input.client.sendMessage({ chatId: input.telegramChatId, text: command.responseText }).catch(() => undefined);
   return true;
 }
 
@@ -1372,6 +1413,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
           })) || (await processSettingsCommand({
             chatId: syncedChat.id,
             chatTitle: syncedChat.title,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processCustomCommand({
+            chatId: syncedChat.id,
             telegramChatId: chat.id,
             message: update.message,
             client
