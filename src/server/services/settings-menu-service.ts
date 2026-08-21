@@ -1,5 +1,7 @@
 import { getChatModerationProfile, updateChatModerationSettings } from "@/server/services/chat-moderation-settings-service";
 import { LINK_PROTECTION_MODES, type LinkProtectionMode, type ModerationSettingsValue } from "@/server/services/global-moderation-service";
+import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsValue } from "@/server/services/captcha-settings-service";
+import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -62,6 +64,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
     keyboard: {
       inline_keyboard: [
         [{ text: "🛡 Автомодерация", callback_data: buildSettingsCallbackData(telegramChatId, "automod") }],
+        [{ text: "🔐 Защита", callback_data: buildSettingsCallbackData(telegramChatId, "protection") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -175,8 +178,48 @@ const AUTOMOD_VIEWS: Record<string, (settings: ModerationSettingsValue, telegram
   "automod.media": renderMediaDetail
 };
 
-/** Applies a mutating path segment (toggle / stepper / mode-set) to settings, returning the view path to render afterward. Non-mutating paths pass through unchanged. */
-async function applyAction(chatId: string, actingAdminId: string, settings: ModerationSettingsValue, path: string): Promise<{ viewPath: string; settings: ModerationSettingsValue }> {
+function renderProtectionMenu(captcha: CaptchaSettingsValue, antiRaid: AntiRaidSettingsValue, telegramChatId: number) {
+  return {
+    text: "🔐 Защита\n\nВыберите правило, чтобы посмотреть или изменить его.",
+    keyboard: {
+      inline_keyboard: [
+        [{ text: `🤖 CAPTCHA: ${captcha.enabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "protection.captcha") }],
+        [{ text: `🚨 Anti-Raid: ${antiRaid.enabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "protection.antiraid") }],
+        backRow("root", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+function renderCaptchaDetail(settings: CaptchaSettingsValue, telegramChatId: number) {
+  return {
+    text: `🤖 CAPTCHA при вступлении\n\nНовый участник должен подтвердить, что не бот, прежде чем сможет писать в чат. Кто не подтвердит — будет исключён (не заблокирован) при ближайшей ежедневной проверке. Текст сообщения с кнопкой подтверждения редактируется в Web Admin.`,
+    keyboard: {
+      inline_keyboard: [
+        toggleRow(`Статус: ${settings.enabled ? "✅ включена" : "⬜ выключена"}`, "protection.captcha.toggle", telegramChatId),
+        backRow("protection", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+function renderAntiRaidDetail(settings: AntiRaidSettingsValue, telegramChatId: number) {
+  const rows = [toggleRow(`Статус: ${settings.enabled ? "✅ включена" : "⬜ выключена"}`, "protection.antiraid.toggle", telegramChatId)];
+  if (settings.enabled) {
+    rows.push(stepperRow("Порог, участников", settings.joinThreshold, "threshold", "protection.antiraid", telegramChatId, 5));
+    rows.push(stepperRow("Окно, сек", settings.windowSeconds, "window", "protection.antiraid", telegramChatId, 5));
+    rows.push(stepperRow("Затишье, мин", settings.cooldownMinutes, "cooldown", "protection.antiraid", telegramChatId, 5));
+    rows.push(toggleRow(`Капча во время рейда: ${settings.forceCaptcha ? "✅ вкл" : "⬜ выкл"}`, "protection.antiraid.forcecaptcha", telegramChatId));
+  }
+  rows.push(backRow("protection", telegramChatId));
+  return {
+    text: `🚨 Anti-Raid\n\nЕсли за «Окно» секунд в чат вступает «Порог» и больше новых участников — это считается рейдом: капча включается принудительно (если включена опция ниже), пока наплыв не стихнет. Снимается автоматически после «Затишье» минут без новых вступлений (проверяется раз в сутки — может занять до суток).`,
+    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+/** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
+async function applyAutomodAction(chatId: string, actingAdminId: string, settings: ModerationSettingsValue, path: string): Promise<{ viewPath: string; settings: ModerationSettingsValue }> {
   let patch: Partial<ModerationSettingsValue> | null = null;
   let viewPath = path;
 
@@ -230,6 +273,98 @@ async function applyAction(chatId: string, actingAdminId: string, settings: Mode
   return { viewPath, settings: saved ?? merged };
 }
 
+async function renderAutomodSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  const profile = await getChatModerationProfile(input.chatId);
+  if (!profile) return null;
+
+  const { viewPath, settings } = await applyAutomodAction(input.chatId, input.actingAdminId, profile.effectiveSettings, input.path);
+  const renderer = AUTOMOD_VIEWS[viewPath];
+  if (!renderer) return renderRoot(input.chatTitle, input.telegramChatId);
+  return renderer(settings, input.telegramChatId);
+}
+
+type NumericAntiRaidField = "joinThreshold" | "windowSeconds" | "cooldownMinutes";
+const ANTIRAID_FIELD_BOUNDS: Record<NumericAntiRaidField, { min: number; max: number }> = {
+  joinThreshold: { min: 3, max: 500 },
+  windowSeconds: { min: 5, max: 600 },
+  cooldownMinutes: { min: 1, max: 1440 }
+};
+
+function clampAntiRaidField(field: NumericAntiRaidField, value: number) {
+  const bounds = ANTIRAID_FIELD_BOUNDS[field];
+  return Math.min(bounds.max, Math.max(bounds.min, value));
+}
+
+async function renderProtectionSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  const { path } = input;
+
+  if (path === "protection") {
+    const [captchaProfile, antiRaidProfile] = await Promise.all([
+      getChatCaptchaProfile(input.chatId),
+      getChatAntiRaidProfile(input.chatId)
+    ]);
+    if (!captchaProfile || !antiRaidProfile) return null;
+    return renderProtectionMenu(captchaProfile.effectiveSettings, antiRaidProfile.effectiveSettings, input.telegramChatId);
+  }
+
+  if (path === "protection.captcha" || path === "protection.captcha.toggle") {
+    const profile = await getChatCaptchaProfile(input.chatId);
+    if (!profile) return null;
+    let settings = profile.effectiveSettings;
+    if (path === "protection.captcha.toggle") {
+      const saved = await updateChatCaptchaProfile({
+        chatId: input.chatId,
+        actingAdminId: input.actingAdminId,
+        useGlobalProfile: false,
+        settings: { ...settings, enabled: !settings.enabled }
+      });
+      settings = saved ?? { ...settings, enabled: !settings.enabled };
+    }
+    return renderCaptchaDetail(settings, input.telegramChatId);
+  }
+
+  if (path.startsWith("protection.antiraid")) {
+    const profile = await getChatAntiRaidProfile(input.chatId);
+    if (!profile) return null;
+    let settings = profile.effectiveSettings;
+
+    let patch: Partial<AntiRaidSettingsValue> | null = null;
+    if (path === "protection.antiraid.toggle") {
+      patch = { enabled: !settings.enabled };
+    } else if (path === "protection.antiraid.forcecaptcha") {
+      patch = { forceCaptcha: !settings.forceCaptcha };
+    } else {
+      const stepperMatch = /^protection\.antiraid\.(threshold|window|cooldown)\.([+-]\d+)$/.exec(path);
+      if (stepperMatch) {
+        const [, fieldKey, deltaText] = stepperMatch;
+        const fieldByKey: Record<string, NumericAntiRaidField> = {
+          threshold: "joinThreshold",
+          window: "windowSeconds",
+          cooldown: "cooldownMinutes"
+        };
+        const field = fieldByKey[fieldKey];
+        if (field) {
+          patch = { [field]: clampAntiRaidField(field, settings[field] + Number(deltaText)) };
+        }
+      }
+    }
+
+    if (patch) {
+      const merged: AntiRaidSettingsValue = { ...settings, ...patch };
+      const saved = await updateChatAntiRaidSettings({
+        chatId: input.chatId,
+        actingAdminId: input.actingAdminId,
+        useGlobalProfile: false,
+        settings: merged
+      });
+      settings = saved ?? merged;
+    }
+    return renderAntiRaidDetail(settings, input.telegramChatId);
+  }
+
+  return null;
+}
+
 export async function renderSettingsMenu(input: {
   chatId: string;
   chatTitle: string;
@@ -243,13 +378,9 @@ export async function renderSettingsMenu(input: {
   if (input.path === "root") {
     return renderRoot(input.chatTitle, input.telegramChatId);
   }
+  if (input.path === "protection" || input.path.startsWith("protection.")) {
+    return (await renderProtectionSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
 
-  const profile = await getChatModerationProfile(input.chatId);
-  if (!profile) return null;
-  const baseSettings = profile.effectiveSettings;
-
-  const { viewPath, settings } = await applyAction(input.chatId, input.actingAdminId, baseSettings, input.path);
-  const renderer = AUTOMOD_VIEWS[viewPath];
-  if (!renderer) return renderRoot(input.chatTitle, input.telegramChatId);
-  return renderer(settings, input.telegramChatId);
+  return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
 }
