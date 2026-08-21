@@ -71,6 +71,11 @@ export type TelegramMessage = {
   chat: TelegramChat;
   from?: TelegramUser;
   reply_to_message?: { message_id: number; from?: TelegramUser };
+  // Bot API 7.0+ MessageOrigin union -- only the "channel" variant (a post
+  // forwarded straight from a channel, not a user's message forwarded out of
+  // a group) reliably carries the source chat's identity, which is what
+  // log-channel-service.ts's forward-to-link flow relies on.
+  forward_origin?: { type: string; chat?: TelegramChat; message_id?: number };
   text?: string;
   caption?: string;
   entities?: TelegramMessageEntity[];

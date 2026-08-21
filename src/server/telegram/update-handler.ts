@@ -39,6 +39,7 @@ import {
 import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
+import { completePendingLogChannelLink } from "@/server/services/log-channel-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { parseModerationCommandArguments } from "@/server/telegram/command-parser";
@@ -800,6 +801,33 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   // flush any punishment notifications that couldn't be sent earlier because Telegram
   // blocks bots from messaging users first.
   await deliverPendingAppealNotifications(message.from.id).catch(() => undefined);
+
+  // A forwarded post is how /settings' "Подключить канал" flow confirms a
+  // log channel -- only meaningful if this admin has an active pending link,
+  // so an unrelated forward from a non-admin (or one with nothing pending)
+  // falls through to the normal flow untouched.
+  if (message.forward_origin) {
+    const forwardingAdmin = await prisma.adminUser.findFirst({
+      where: { telegramUserId: BigInt(message.from.id), isActive: true }
+    });
+    if (forwardingAdmin) {
+      const linkResult = await completePendingLogChannelLink({
+        actingAdminId: forwardingAdmin.id,
+        forwardOrigin: message.forward_origin
+      });
+      if (linkResult.outcome !== "no_pending_link") {
+        const replyText = {
+          linked: linkResult.outcome === "linked"
+            ? `✅ Канал «${linkResult.channelTitle}» подключён для пересылки логов чата «${linkResult.chatTitle}».`
+            : "",
+          not_a_channel_forward: "Нужно переслать сообщение именно из канала (не из группы, и не скопированный текст). Попробуйте ещё раз.",
+          bot_not_in_channel: "Сначала добавьте меня в этот канал администратором с правом публикации сообщений, затем перешлите пост ещё раз."
+        }[linkResult.outcome];
+        await client.sendMessage({ chatId: message.from.id, text: replyText }).catch(() => undefined);
+        return { accepted: true, ignored: false };
+      }
+    }
+  }
 
   const text = message.text?.trim() ?? "";
 

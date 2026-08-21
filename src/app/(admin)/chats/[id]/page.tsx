@@ -6,6 +6,7 @@ import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { ReportSettings } from "@/components/report-settings";
+import { LogChannelSettings } from "@/components/log-channel-settings";
 import { ChatStatistics } from "@/components/chat-statistics-client";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
@@ -14,6 +15,7 @@ import { getChatModerationProfile } from "@/server/services/chat-moderation-sett
 import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getChatReportProfile } from "@/server/services/report-settings-service";
+import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +51,13 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
     getChatAntiRaidProfile(id),
     getChatReportProfile(id),
+    getChatLogChannelProfile(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -103,6 +106,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Жалобы</h2><p>Команда /report: участники жалуются на сообщение, администраторы получают приватную карточку с кнопками действий.</p></div></div>
           <ReportSettings chatId={reportProfile.chat.id} initial={reportProfile.settings} initialUseGlobalProfile={reportProfile.policy.useGlobalProfile} globalSettings={reportProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
+        </section>
+      ) : null}
+
+      {logChannelProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Канал логов</h2><p>Пересылка событий модерации в отдельный канал или группу. Подключается в Telegram через /settings.</p></div></div>
+          <LogChannelSettings chatId={logChannelProfile.chat.id} initial={logChannelProfile.settings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 
