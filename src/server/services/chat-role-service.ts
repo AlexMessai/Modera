@@ -108,7 +108,7 @@ export type ChatRoleSummary = {
   permissions: ChatPermission[];
 };
 
-const DEFAULT_ROLE_ORDER = new Map(DEFAULT_ROLE_KEYS.map((key, index) => [key, index]));
+const DEFAULT_ROLE_ORDER = new Map<string, number>(DEFAULT_ROLE_KEYS.map((key, index) => [key, index]));
 
 /** Ensures the 5 defaults exist, then returns every role for this chat (defaults first, in a fixed order; any future custom roles after). */
 export async function listChatRoles(chatId: string): Promise<ChatRoleSummary[]> {
