@@ -25,6 +25,9 @@ export type ManualModerationSettingsValue = {
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
   unbanAnnounceInChat: boolean;
+  kickMessageTemplate: string;
+  kickDeleteTargetMessage: boolean;
+  kickAnnounceInChat: boolean;
 };
 
 type Props = {
@@ -37,7 +40,7 @@ type Props = {
   onSaved?: (saved: ManualModerationSettingsValue) => void;
 };
 
-type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban";
+type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
 type EphemeralCommandKey = "warn" | "mute" | "ban";
 
 type CommandInfo = {
@@ -45,7 +48,8 @@ type CommandInfo = {
   command: string;
   description: string;
   hasReason: boolean;
-  hasDuration: boolean;
+  /** Badge text when this command's %duration% placeholder is meaningful; omitted when it isn't. */
+  durationLabel?: string;
   hasWarnCount: boolean;
 };
 
@@ -57,30 +61,36 @@ const COMMAND_SECTIONS: Array<{ title: string; commands: CommandInfo[] }> = [
   {
     title: "Предупреждения",
     commands: [
-      { key: "warn", command: "/warn", description: "Выдаёт предупреждение участнику. Учитывается в общем счётчике вместе с автомодерацией.", hasReason: true, hasDuration: false, hasWarnCount: true },
-      { key: "unwarn", command: "/unwarn", description: "Снимает одно предупреждение с участника.", hasReason: false, hasDuration: false, hasWarnCount: true }
+      { key: "warn", command: "/warn", description: "Выдаёт предупреждение участнику. Учитывается в общем счётчике вместе с автомодерацией.", hasReason: true, hasWarnCount: true },
+      { key: "unwarn", command: "/unwarn", description: "Снимает одно предупреждение с участника.", hasReason: false, hasWarnCount: true }
     ]
   },
   {
     title: "Mute",
     commands: [
-      { key: "mute", command: "/mute", description: "Запрещает участнику писать сообщения на указанный срок.", hasReason: true, hasDuration: true, hasWarnCount: false },
-      { key: "unmute", command: "/unmute", description: "Досрочно снимает mute с участника.", hasReason: false, hasDuration: false, hasWarnCount: false }
+      { key: "mute", command: "/mute", description: "Запрещает участнику писать сообщения на указанный срок.", hasReason: true, durationLabel: "Срок mute", hasWarnCount: false },
+      { key: "unmute", command: "/unmute", description: "Досрочно снимает mute с участника.", hasReason: false, hasWarnCount: false }
     ]
   },
   {
     title: "Блокировка",
     commands: [
-      { key: "ban", command: "/ban", description: "Блокирует участника в чате.", hasReason: true, hasDuration: false, hasWarnCount: false },
-      { key: "unban", command: "/unban", description: "Снимает блокировку — участник сможет вернуться в чат.", hasReason: false, hasDuration: false, hasWarnCount: false }
+      { key: "ban", command: "/ban", description: "Блокирует участника в чате. Можно указать срок (например, 7d) — иначе блокировка постоянная.", hasReason: true, durationLabel: "Срок блокировки", hasWarnCount: false },
+      { key: "unban", command: "/unban", description: "Снимает блокировку — участник сможет вернуться в чат.", hasReason: false, hasWarnCount: false }
+    ]
+  },
+  {
+    title: "Кик",
+    commands: [
+      { key: "kick", command: "/kick", description: "Удаляет участника из чата без блокировки — он сможет вернуться по ссылке-приглашению. Личное уведомление недоступно: участник уже покидает чат в момент действия.", hasReason: true, hasWarnCount: false }
     ]
   }
 ];
 
-function placeholderHint(command: { hasReason: boolean; hasDuration: boolean; hasWarnCount: boolean }) {
+function placeholderHint(command: { hasReason: boolean; durationLabel?: string; hasWarnCount: boolean }) {
   const list = ["%admin%", "%target%"];
   if (command.hasReason) list.push("%reason%");
-  if (command.hasDuration) list.push("%duration%");
+  if (command.durationLabel) list.push("%duration%");
   if (command.hasWarnCount) list.push("%warns%", "%warns_limit%");
   return `Доступны ${list.join(", ")}.`;
 }
@@ -213,7 +223,7 @@ export function ManualModerationSettings({
                     <div className="manual-mod-tags">
                       <span className="badge">Ответ на сообщение</span>
                       {commandInfo.hasReason ? <span className="badge">Причина</span> : null}
-                      {commandInfo.hasDuration ? <span className="badge">Срок mute</span> : null}
+                      {commandInfo.durationLabel ? <span className="badge">{commandInfo.durationLabel}</span> : null}
                       {commandInfo.hasWarnCount ? <span className="badge">Счётчик варнов</span> : null}
                     </div>
                   </div>

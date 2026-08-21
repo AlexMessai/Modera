@@ -111,7 +111,7 @@ const GROUP_START_NOISE_PATTERN = /^\/start(?:@\w+)?(?:\s+\S+)?\s*$/i;
 // Every moderation command shares one shape: /command[@bot] [targets…] [duration] [reason].
 // Which of those trailing pieces apply (duration only for /mute today) is decided by
 // GROUP_MODERATION_COMMANDS below, then command-parser.ts does the actual argument split.
-const GROUP_MODERATION_COMMAND_PATTERN = /^\/(warn|unwarn|mute|unmute|ban|unban)(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const GROUP_MODERATION_COMMAND_PATTERN = /^\/(warn|unwarn|mute|unmute|ban|unban|kick)(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 
 const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand; allowDuration: boolean; requireDurationUnit?: boolean }> = {
   warn: { action: "WARNING", allowDuration: false },
@@ -124,7 +124,8 @@ const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand
   // so require an explicit unit (7d/3h) rather than risk misreading a reason
   // that starts with a digit as a duration.
   ban: { action: "BAN", allowDuration: true, requireDurationUnit: true },
-  unban: { action: "UNBAN", allowDuration: false }
+  unban: { action: "UNBAN", allowDuration: false },
+  kick: { action: "KICK", allowDuration: false }
 };
 
 /** /unwarn is not a ModerationActionValue — it only takes a warning back locally. */
@@ -140,7 +141,8 @@ const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage", announceInChat: "muteAnnounceInChat" },
   UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage", announceInChat: "unmuteAnnounceInChat" },
   BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage", announceInChat: "banAnnounceInChat" },
-  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage", announceInChat: "unbanAnnounceInChat" }
+  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage", announceInChat: "unbanAnnounceInChat" },
+  KICK: { template: "kickMessageTemplate", deleteTarget: "kickDeleteTargetMessage", announceInChat: "kickAnnounceInChat" }
 };
 
 function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {

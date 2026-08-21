@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Ban, Check, LockKeyhole, RotateCcw, ShieldAlert, TriangleAlert, UnlockKeyhole } from "lucide-react";
+import { Ban, Check, DoorOpen, LockKeyhole, RotateCcw, ShieldAlert, TriangleAlert, UnlockKeyhole } from "lucide-react";
 
-type ActionName = "warning" | "mute" | "unmute" | "ban" | "unban";
+type ActionName = "warning" | "mute" | "unmute" | "ban" | "unban" | "kick";
 type Props = {
   membershipId: string;
   userDisplayName: string;
@@ -22,7 +22,8 @@ const ACTIONS: Record<ActionName, { label: string; confirmLabel: string; descrip
   mute: { label: "Mute", confirmLabel: "Ограничить отправку сообщений", description: "Telegram ограничит отправку сообщений на выбранный срок или до ручного снятия mute.", requiresReason: true, tone: "default" },
   unmute: { label: "Снять mute", confirmLabel: "Снять ограничения", description: "Telegram снимет индивидуальные ограничения участника.", requiresReason: false, tone: "default" },
   ban: { label: "Заблокировать", confirmLabel: "Заблокировать участника", description: "Участник будет удалён из чата и не сможет вернуться до разблокировки.", requiresReason: true, tone: "danger" },
-  unban: { label: "Разблокировать", confirmLabel: "Разблокировать участника", description: "Пользователь сможет снова вступить в чат, но Telegram не добавит его обратно автоматически.", requiresReason: false, tone: "default" }
+  unban: { label: "Разблокировать", confirmLabel: "Разблокировать участника", description: "Пользователь сможет снова вступить в чат, но Telegram не добавит его обратно автоматически.", requiresReason: false, tone: "default" },
+  kick: { label: "Кикнуть", confirmLabel: "Исключить из чата", description: "Участник будет удалён из чата без блокировки — сможет вернуться по ссылке-приглашению.", requiresReason: true, tone: "danger" }
 };
 
 const MUTE_DURATIONS = [
@@ -52,9 +53,10 @@ export function ModerationActions(props: Props) {
     if (!protectedTarget && !props.userIsBot) {
       if (props.chatType === "supergroup" && !banned) actions.push(muted ? "unmute" : "mute");
       actions.push(banned ? "unban" : "ban");
+      if (!banned && props.status !== "LEFT") actions.push("kick");
     }
     return actions;
-  }, [banned, muted, protectedTarget, props.chatType, props.userIsBot]);
+  }, [banned, muted, protectedTarget, props.chatType, props.status, props.userIsBot]);
 
   if (!props.adminCanModerate) return <div className="moderation-readonly"><ShieldAlert size={18} /><div><strong>Только просмотр</strong><p>Ваша роль не позволяет выполнять действия модерации.</p></div></div>;
   if (props.userIsBot) return <div className="moderation-readonly"><ShieldAlert size={18} /><div><strong>Telegram-бот</strong><p>Ручные действия модерации для аккаунтов ботов отключены.</p></div></div>;
@@ -131,5 +133,6 @@ function ActionIcon({ action }: { action: ActionName }) {
     case "unmute": return <UnlockKeyhole size={16} />;
     case "ban": return <Ban size={16} />;
     case "unban": return <RotateCcw size={16} />;
+    case "kick": return <DoorOpen size={16} />;
   }
 }

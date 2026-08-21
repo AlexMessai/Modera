@@ -47,6 +47,7 @@ enum ModerationActionType {
   UNMUTE
   BAN
   UNBAN
+  KICK
 }
 
 enum ModerationActionStatus {
@@ -353,6 +354,9 @@ model ChatManualModerationSettings {
   unbanMessageTemplate       String   @default("✅ С %target% снята блокировка.") @db.VarChar(1000)
   unbanDeleteTargetMessage   Boolean  @default(false)
   unbanAnnounceInChat        Boolean  @default(true)
+  kickMessageTemplate        String   @default("👢 %target% исключён(а) из чата. %reason%") @db.VarChar(1000)
+  kickDeleteTargetMessage    Boolean  @default(false)
+  kickAnnounceInChat         Boolean  @default(true)
   createdAt                  DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
   chat                       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -381,6 +385,9 @@ model GlobalManualModerationSettings {
   unbanMessageTemplate       String   @default("✅ С %target% снята блокировка.") @db.VarChar(1000)
   unbanDeleteTargetMessage   Boolean  @default(false)
   unbanAnnounceInChat        Boolean  @default(true)
+  kickMessageTemplate        String   @default("👢 %target% исключён(а) из чата. %reason%") @db.VarChar(1000)
+  kickDeleteTargetMessage    Boolean  @default(false)
+  kickAnnounceInChat         Boolean  @default(true)
   createdAt                  DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
 }

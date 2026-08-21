@@ -12,7 +12,7 @@ import { extractBotPermissions } from "@/server/telegram/status";
 import { isBanExpired, isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
 
-export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN"] as const;
+export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
 type TelegramModerationAction = Exclude<ModerationActionValue, "WARNING">;
 type ActionSource = "ADMIN" | "SYSTEM" | "TELEGRAM";
@@ -36,7 +36,8 @@ const ACTION_AUDIT_LABELS: Record<ModerationActionValue, string> = {
   MUTE: "MODERATION_MUTE",
   UNMUTE: "MODERATION_UNMUTE",
   BAN: "MODERATION_BAN",
-  UNBAN: "MODERATION_UNBAN"
+  UNBAN: "MODERATION_UNBAN",
+  KICK: "MODERATION_KICK"
 };
 
 export class ModerationError extends Error {
@@ -51,7 +52,7 @@ export function isModerationAction(value: string): value is ModerationActionValu
 }
 
 export function requiresReason(action: ModerationActionValue) {
-  return action === "WARNING" || action === "MUTE" || action === "BAN";
+  return action === "WARNING" || action === "MUTE" || action === "BAN" || action === "KICK";
 }
 
 // Telegram's own banChatMember/restrictChatMember reject an until_date more
@@ -108,6 +109,9 @@ function assertLocalActionAllowed(
   }
   if (action === "UNBAN" && member.status !== "BANNED" && member.punishmentState !== "BANNED") {
     throw new ModerationError("NOT_BANNED", "У участника нет активной блокировки.", 409);
+  }
+  if (action === "KICK" && (member.status === "LEFT" || member.status === "BANNED")) {
+    throw new ModerationError("TARGET_NOT_IN_CHAT", "Участник уже не состоит в чате.", 409);
   }
 }
 
@@ -291,6 +295,16 @@ async function performTelegramAction(input: {
     case "UNBAN":
       await client.unbanChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, onlyIfBanned: true });
       break;
+    case "KICK":
+      // Telegram has no standalone "remove without banning" call — same
+      // ban-then-immediately-unban pattern captcha's timeout-kick already
+      // uses, so the member is gone but leaves no ban record behind.
+      if (targetMember.status === "left" || targetMember.status === "kicked") {
+        throw new ModerationError("TARGET_NOT_IN_CHAT", "Участник уже не состоит в чате.", 409);
+      }
+      await client.banChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, revokeMessages: false });
+      await client.unbanChatMember({ chatId: input.chatTelegramId, userId: input.targetTelegramId, onlyIfBanned: true });
+      break;
   }
   return targetMember;
 }
@@ -304,6 +318,10 @@ export function membershipUpdateFor(action: TelegramModerationAction, now: Date,
     case "BAN":
       return { status: "BANNED" as const, punishmentState: "BANNED", punishmentExpiresAt: expiresAt ?? null, leftAt: now, lastModerationAt: now };
     case "UNBAN":
+      return { status: "LEFT" as const, punishmentState: null, punishmentExpiresAt: null, leftAt: now, lastModerationAt: now };
+    case "KICK":
+      // No persistent punishment state — a kicked member can rejoin via an
+      // invite link right away, same as captcha's timeout-kick today.
       return { status: "LEFT" as const, punishmentState: null, punishmentExpiresAt: null, leftAt: now, lastModerationAt: now };
   }
 }

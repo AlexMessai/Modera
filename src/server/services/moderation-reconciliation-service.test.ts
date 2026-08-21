@@ -63,6 +63,8 @@ test("pending action matcher is conservative", () => {
   assert.equal(pendingActionMatchesTelegramState("BAN", member), false);
   assert.equal(pendingActionMatchesTelegramState("UNMUTE", member), true);
   assert.equal(pendingActionMatchesTelegramState("UNBAN", member), true);
+  // Kick is ban-then-immediately-unban, so a finished kick looks like UNBAN on Telegram's side.
+  assert.equal(pendingActionMatchesTelegramState("KICK", member), true);
 });
 
 test("Telegram restricted state confirms pending mute and later clears expired punishment", async () => {

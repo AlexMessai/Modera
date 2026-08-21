@@ -73,6 +73,7 @@ const actionLabels: Record<string, string> = {
   AUTOMOD_AUTO_BAN: "Автоматическая блокировка",
   MODERATION_MUTE: "Выдан mute",
   MODERATION_BAN: "Пользователь заблокирован",
+  MODERATION_KICK: "Пользователь исключён из чата",
   TRUSTED_MEMBER_ADDED: "Добавлен доверенный пользователь",
   TRUSTED_MEMBER_REMOVED: "Удалён доверенный пользователь",
   MEMBER_TAG_UPDATED: "Тег участника изменён",
