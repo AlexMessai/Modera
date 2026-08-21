@@ -126,7 +126,7 @@ export function CaptchaSettings({
           />
           <small>Видит только сам новый участник (ephemeral) — не весь чат. Без плейсхолдеров, текст статичный.</small>
         </label>
-        <small className="row-note">Кто не пройдёт проверку — будет исключён (не заблокирован, сможет зайти снова) при следующей ежедневной проверке; это может занять до суток.</small>
+        <small className="hint-note">Кто не пройдёт проверку — будет исключён (не заблокирован, сможет зайти снова) при следующей ежедневной проверке; это может занять до суток.</small>
       </div>
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
