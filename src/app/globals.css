@@ -71,7 +71,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 @media (max-width: 760px) {
   .module-card-grid { grid-template-columns: 1fr; }
 }
-.module-settings-dialog { width: min(960px, 100%); max-height: 85vh; overflow: hidden; grid-template-rows: auto minmax(0, 1fr); }
+/* .dialog-card (messages.css) sets its own width: min(560px, 100%) at the
+   same specificity -- since messages.css imports after this file, it would
+   otherwise win regardless of what's set here. Combined selector bumps
+   specificity so this wins reliably, independent of CSS import order. */
+.dialog-card.module-settings-dialog { width: min(960px, 100%); max-height: 85vh; overflow: hidden; grid-template-rows: auto minmax(0, 1fr); }
 .module-settings-dialog-body { overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; min-height: 0; }
 .metric-card small { margin-top: auto; color: var(--muted); }
 .metric-card--muted strong { color: #a0a5ae; }
