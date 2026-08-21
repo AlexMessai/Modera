@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
+import { forwardModerationEventToLogChannel } from "@/server/services/log-channel-service";
 import { prisma } from "@/server/db/prisma";
 import {
   getTelegramBotProfile,
@@ -181,7 +182,7 @@ async function recordWarning(input: {
     status: string;
     punishmentState: string | null;
     chat: { title: string; telegramChatId: bigint };
-    user: { telegramUserId: bigint };
+    user: { telegramUserId: bigint; displayName?: string };
   };
   actingAdminId: string | null;
   source: ActionSource;
@@ -230,6 +231,14 @@ async function recordWarning(input: {
     telegramUserId: input.member.user.telegramUserId,
     chatTitle: input.member.chat.title,
     actionType: "WARNING",
+    reason: input.reason
+  }).catch(() => undefined);
+
+  await forwardModerationEventToLogChannel({
+    chatId: input.member.chatId,
+    chatTitle: input.member.chat.title,
+    action: "WARNING",
+    targetDisplayName: input.member.user.displayName ?? input.member.user.telegramUserId.toString(),
     reason: input.reason
   }).catch(() => undefined);
 
@@ -435,6 +444,14 @@ async function executeTelegramBackedAction(input: {
         reason: input.reason
       }).catch(() => undefined);
     }
+
+    await forwardModerationEventToLogChannel({
+      chatId: member.chatId,
+      chatTitle: member.chat.title,
+      action: input.action,
+      targetDisplayName: member.user.displayName,
+      reason: input.reason
+    }).catch(() => undefined);
 
     return {
       id: updated.completedAction.id,

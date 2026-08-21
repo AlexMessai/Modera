@@ -4,6 +4,7 @@ import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsVa
 import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
 import { getChatManualModerationProfile, updateChatManualModerationProfile, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValue } from "@/server/services/report-settings-service";
+import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, updateChatLogChannelSettings, type LogChannelSettingsValue } from "@/server/services/log-channel-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -69,6 +70,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
         [{ text: "🛡 Автомодерация", callback_data: buildSettingsCallbackData(telegramChatId, "automod") }],
         [{ text: "🔐 Защита", callback_data: buildSettingsCallbackData(telegramChatId, "protection") }],
         [{ text: "🚩 Жалобы", callback_data: buildSettingsCallbackData(telegramChatId, "reports") }],
+        [{ text: "📋 Логи", callback_data: buildSettingsCallbackData(telegramChatId, "logs") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -400,6 +402,59 @@ async function renderReportsSection(input: { chatId: string; chatTitle: string; 
   return renderReportsDetail(settings, input.telegramChatId);
 }
 
+function renderLogsDetail(settings: LogChannelSettingsValue, telegramChatId: number) {
+  if (!settings.logChannelTelegramId) {
+    return {
+      text: `📋 Логи\n\nКанал для пересылки событий модерации (mute/ban/kick/warn и их отмена) не подключён.\n\nЧтобы подключить:\n1. Добавьте меня в канал или группу администратором с правом публикации сообщений.\n2. Нажмите «Подключить канал».\n3. Перешлите мне сюда, в личные сообщения, любой пост из этого канала (именно «Переслать», не копию текста).`,
+      keyboard: {
+        inline_keyboard: [
+          [{ text: "🔗 Подключить канал", callback_data: buildSettingsCallbackData(telegramChatId, "logs.link") }],
+          backRow("root", telegramChatId)
+        ]
+      } satisfies TelegramInlineKeyboardMarkup
+    };
+  }
+  return {
+    text: `📋 Логи\n\nКанал: ${settings.logChannelTitle ?? settings.logChannelTelegramId}\nПересылаются события: mute/ban/kick/warn и их отмена.`,
+    keyboard: {
+      inline_keyboard: [
+        toggleRow(`Статус: ${settings.enabled ? "✅ пересылка включена" : "⬜ пересылка выключена"}`, "logs.toggle", telegramChatId),
+        [{ text: "🔁 Переподключить канал", callback_data: buildSettingsCallbackData(telegramChatId, "logs.link") }],
+        [{ text: "🗑 Отключить канал", callback_data: buildSettingsCallbackData(telegramChatId, "logs.unlink") }],
+        backRow("root", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+async function renderLogsSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  if (input.path === "logs.link") {
+    await startLogChannelLink({ chatId: input.chatId, actingAdminId: input.actingAdminId });
+    return {
+      text: `🔗 Подключение канала логов\n\nПерешлите мне сюда, в личные сообщения, любой пост из нужного канала (я уже должен быть в нём администратором с правом публикации). Жду в течение 10 минут.`,
+      keyboard: { inline_keyboard: [backRow("logs", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+    };
+  }
+  if (input.path === "logs.unlink") {
+    await unlinkLogChannel({ chatId: input.chatId, actingAdminId: input.actingAdminId });
+    return renderLogsDetail({ enabled: false, logChannelTelegramId: null, logChannelTitle: null }, input.telegramChatId);
+  }
+
+  const profile = await getChatLogChannelProfile(input.chatId);
+  if (!profile) return null;
+  let settings = profile.settings;
+
+  if (input.path === "logs.toggle" && settings.logChannelTelegramId) {
+    const saved = await updateChatLogChannelSettings({
+      chatId: input.chatId,
+      actingAdminId: input.actingAdminId,
+      enabled: !settings.enabled
+    });
+    settings = saved ?? settings;
+  }
+  return renderLogsDetail(settings, input.telegramChatId);
+}
+
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
 async function applyAutomodAction(chatId: string, actingAdminId: string, settings: ModerationSettingsValue, path: string): Promise<{ viewPath: string; settings: ModerationSettingsValue }> {
   let patch: Partial<ModerationSettingsValue> | null = null;
@@ -568,6 +623,9 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "reports" || input.path.startsWith("reports.")) {
     return (await renderReportsSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
+  if (input.path === "logs" || input.path.startsWith("logs.")) {
+    return (await renderLogsSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
 
   return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);

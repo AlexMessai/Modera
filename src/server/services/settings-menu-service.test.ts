@@ -388,3 +388,87 @@ test("renderSettingsMenu: Reports section, toggle and duration stepper persist t
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: Logs section shows the link prompt when no channel is linked, and logs.link opens a pending window", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "logs"
+    });
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Подключить канал"))));
+
+    const linking = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "logs.link"
+    });
+    assert.ok(linking?.text.includes("Перешлите"));
+
+    const stored = await prisma.chatLogChannelSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.pendingLinkAdminId, admin.id);
+    assert.ok(stored?.pendingLinkExpiresAt && stored.pendingLinkExpiresAt.getTime() > Date.now());
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: Logs section, toggle and unlink work once a channel is already linked", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatLogChannelSettings.create({
+    data: { chatId: chat.id, enabled: true, logChannelTelegramId: -1001111111111n, logChannelTitle: "My Channel" }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "logs"
+    });
+    assert.ok(before?.text.includes("My Channel"));
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включена"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "logs.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("выключена"))));
+
+    const unlinked = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "logs.unlink"
+    });
+    assert.ok(unlinked?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Подключить канал"))));
+
+    const stored = await prisma.chatLogChannelSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.logChannelTelegramId, null);
+  } finally {
+    await cleanup();
+  }
+});
