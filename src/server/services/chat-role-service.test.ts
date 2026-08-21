@@ -4,6 +4,7 @@ import { prisma } from "@/server/db/prisma";
 import {
   DEFAULT_ROLE_DEFINITIONS,
   ensureDefaultRolesForChat,
+  hasChatPermission,
   resolveChatPermissions,
   syncAutoChatRole
 } from "./chat-role-service";
@@ -110,5 +111,63 @@ test("syncAutoChatRole never overrides a manually-assigned role", async () => {
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.telegramUser.deleteMany({ where: { telegramUserId: 900000905n } });
+  }
+});
+
+test("hasChatPermission grants purely from an assigned role, no Telegram call needed", async () => {
+  const chat = await fixtureChat(4);
+  try {
+    const { member } = await fixtureMember(chat.id, 900000906);
+    await syncAutoChatRole({ chatId: chat.id, membershipId: member.id, status: "MEMBER", isTrusted: false });
+
+    // A custom role can grant a moderation permission to someone who isn't
+    // a live Telegram admin at all — this is the whole point of the model.
+    const customRole = await prisma.chatRole.create({
+      data: { chatId: chat.id, key: "junior-moderator", label: "Junior Moderator", isCustom: true, permissions: ["moderation.warn"] }
+    });
+    await prisma.chatMember.update({
+      where: { id: member.id },
+      data: { chatRoleId: customRole.id, chatRoleAssignedBy: "MANUAL" }
+    });
+
+    assert.equal(
+      await hasChatPermission({ chatId: chat.id, chatTelegramId: -1, telegramUserId: 900000906, permission: "moderation.warn" }),
+      true
+    );
+    // The role doesn't grant moderation.ban, and this member has no live
+    // Telegram admin status either (CI has no bot token, so the fallback
+    // check fails closed) — must come back false, not throw.
+    assert.equal(
+      await hasChatPermission({ chatId: chat.id, chatTelegramId: -1, telegramUserId: 900000906, permission: "moderation.ban" }),
+      false
+    );
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.deleteMany({ where: { telegramUserId: 900000906n } });
+  }
+});
+
+test("hasChatPermission with no role data falls back to a live check for moderation/history/users permissions only", async () => {
+  const chat = await fixtureChat(5);
+  try {
+    // No ChatMember row at all for this Telegram user — nothing to fall
+    // back from except the (CI: token-less, fails closed) live check.
+    assert.equal(
+      await hasChatPermission({ chatId: chat.id, chatTelegramId: -1, telegramUserId: 900000907, permission: "moderation.mute" }),
+      false
+    );
+    assert.equal(
+      await hasChatPermission({ chatId: chat.id, chatTelegramId: -1, telegramUserId: 900000907, permission: "history.view" }),
+      false
+    );
+    // roles.manage/settings.manage/automod.manage/logs.view are web-panel-
+    // only — no live-Telegram-admin fallback, so this must be false purely
+    // from having no role, without even attempting a Telegram call.
+    assert.equal(
+      await hasChatPermission({ chatId: chat.id, chatTelegramId: -1, telegramUserId: 900000907, permission: "roles.manage" }),
+      false
+    );
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
   }
 });

@@ -5,6 +5,7 @@ import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/se
 import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
+import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import {
@@ -34,7 +35,6 @@ import {
 } from "@/server/services/moderation-service";
 import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
-import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { parseModerationCommandArguments } from "@/server/telegram/command-parser";
 import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
@@ -143,6 +143,16 @@ const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage", announceInChat: "banAnnounceInChat" },
   UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage", announceInChat: "unbanAnnounceInChat" },
   KICK: { template: "kickMessageTemplate", deleteTarget: "kickDeleteTargetMessage", announceInChat: "kickAnnounceInChat" }
+};
+
+const CHAT_PERMISSION_BY_ACTION: Record<GroupModerationCommand, ChatPermission> = {
+  WARNING: "moderation.warn",
+  UNWARN: "moderation.warn",
+  MUTE: "moderation.mute",
+  UNMUTE: "moderation.mute",
+  BAN: "moderation.ban",
+  UNBAN: "moderation.ban",
+  KICK: "moderation.kick"
 };
 
 function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {
@@ -287,8 +297,13 @@ async function processGroupModerationCommand(input: {
   // the command succeeds, fails permission/format checks, or errors out.
   await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
 
-  const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
-  if (!isAdmin) {
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: CHAT_PERMISSION_BY_ACTION[action]
+  });
+  if (!allowed) {
     await privateReply("❌ У вас нет прав администратора в этом чате.");
     return true;
   }
@@ -399,8 +414,13 @@ async function processWarnsCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
-  if (!isAdmin) {
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "history.view"
+  });
+  if (!allowed) {
     await reply("❌ У вас нет прав администратора в этом чате.");
     return true;
   }
