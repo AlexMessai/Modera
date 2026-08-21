@@ -22,7 +22,8 @@ function serialize(settings: {
   };
 }
 
-const DEFAULT_SETTINGS: LogChannelSettingsValue = { enabled: false, logChannelTelegramId: null, logChannelTitle: null };
+const DEFAULT_SETTINGS: { enabled: boolean; logChannelTelegramId: bigint | null; logChannelTitle: string | null } =
+  { enabled: false, logChannelTelegramId: null, logChannelTitle: null };
 
 export async function getChatLogChannelProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
