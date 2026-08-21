@@ -5,6 +5,7 @@ import {
   getMemberProfile,
   isMembershipStatus,
   mapTelegramMembershipStatus,
+  resolveTelegramTargets,
   syncMemberStatus
 } from "./member-service";
 
@@ -212,6 +213,54 @@ test("Telegram profile, member tag and administrator title stay chat-scoped", as
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.telegramUser.deleteMany({
       where: { telegramUserId: BigInt(telegramUserId) }
+    });
+  }
+});
+
+test("resolveTelegramTargets resolves @username/ID only within the given chat and reports unresolved usernames", async () => {
+  const telegramChatId = -1009000000010n;
+  const knownUserId = 900000010;
+  const otherChatUserId = 900000011;
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "CI target-resolution chat", type: "supergroup" }
+  });
+  const otherChat = await prisma.chat.create({
+    data: { telegramChatId: -1009000000011n, title: "CI other chat", type: "supergroup" }
+  });
+
+  try {
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: { status: "member", user: { id: knownUserId, is_bot: false, first_name: "Known", username: "known_target" } },
+      date: 1_700_000_400,
+      updateId: 500
+    });
+    await syncMemberStatus({
+      chatId: otherChat.id,
+      member: { status: "member", user: { id: otherChatUserId, is_bot: false, first_name: "Elsewhere", username: "elsewhere_target" } },
+      date: 1_700_000_401,
+      updateId: 501
+    });
+
+    const result = await resolveTelegramTargets({
+      chatId: chat.id,
+      tokens: [
+        { type: "username", value: "KNOWN_TARGET" },
+        { type: "username", value: "elsewhere_target" },
+        { type: "username", value: "does_not_exist" },
+        { type: "id", value: knownUserId }
+      ]
+    });
+
+    assert.equal(result.resolved.length, 2);
+    assert.ok(result.resolved.every((entry) => entry.telegramUserId === knownUserId));
+    assert.ok(result.resolved.every((entry) => entry.displayName === "Known"));
+    assert.deepEqual(result.resolved.map((entry) => entry.token.type).sort(), ["id", "username"]);
+    assert.deepEqual(result.unresolvedUsernames.sort(), ["does_not_exist", "elsewhere_target"]);
+  } finally {
+    await prisma.chat.deleteMany({ where: { id: { in: [chat.id, otherChat.id] } } });
+    await prisma.telegramUser.deleteMany({
+      where: { telegramUserId: { in: [BigInt(knownUserId), BigInt(otherChatUserId)] } }
     });
   }
 });

@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { effectiveMembershipStatus, effectivePunishmentState } from "@/server/services/punishment-state";
+import type { ModerationTargetToken } from "@/server/telegram/command-parser";
 import type {
   TelegramChatMember,
   TelegramChatMemberUpdated,
@@ -683,4 +684,75 @@ export async function getMemberProfile(membershipId: string) {
 
 function BigIntSafe(value: string) {
   return /^-?\d{1,20}$/.test(value);
+}
+
+export interface ResolvedModerationTarget {
+  telegramUserId: number;
+  displayName: string;
+  token: ModerationTargetToken;
+}
+
+/**
+ * Resolves `@username`/numeric-ID command tokens to a Telegram user id +
+ * display name, scoped to members the bot has already observed in this
+ * specific chat (a `ChatMember` row must exist) — we never guess at a
+ * username the bot hasn't seen here, per the project's "no fake data" rule.
+ * Numeric-ID tokens are passed through even if unseen; the caller's
+ * moderation-service call validates real chat membership from there.
+ */
+export async function resolveTelegramTargets(input: {
+  chatId: string;
+  tokens: ModerationTargetToken[];
+}): Promise<{ resolved: ResolvedModerationTarget[]; unresolvedUsernames: string[] }> {
+  const usernameTokens = input.tokens.filter(
+    (token): token is Extract<ModerationTargetToken, { type: "username" }> => token.type === "username"
+  );
+  const idTokens = input.tokens.filter(
+    (token): token is Extract<ModerationTargetToken, { type: "id" }> => token.type === "id"
+  );
+
+  const usernameMatches = usernameTokens.length > 0
+    ? await prisma.chatMember.findMany({
+        where: {
+          chatId: input.chatId,
+          user: { username: { in: usernameTokens.map((token) => token.value), mode: "insensitive" } }
+        },
+        select: { user: { select: { telegramUserId: true, username: true, displayName: true } } }
+      })
+    : [];
+  const byUsername = new Map(
+    usernameMatches
+      .filter((match) => match.user.username)
+      .map((match) => [match.user.username!.toLowerCase(), match.user])
+  );
+
+  const idMatches = idTokens.length > 0
+    ? await prisma.chatMember.findMany({
+        where: { chatId: input.chatId, user: { telegramUserId: { in: idTokens.map((token) => BigInt(token.value)) } } },
+        select: { user: { select: { telegramUserId: true, displayName: true } } }
+      })
+    : [];
+  const byId = new Map(idMatches.map((match) => [match.user.telegramUserId.toString(), match.user.displayName]));
+
+  const resolved: ResolvedModerationTarget[] = [];
+  const unresolvedUsernames: string[] = [];
+
+  for (const token of usernameTokens) {
+    const match = byUsername.get(token.value.toLowerCase());
+    if (!match) {
+      unresolvedUsernames.push(token.value);
+      continue;
+    }
+    resolved.push({ telegramUserId: Number(match.telegramUserId), displayName: match.displayName, token });
+  }
+
+  for (const token of idTokens) {
+    resolved.push({
+      telegramUserId: token.value,
+      displayName: byId.get(String(token.value)) ?? `Telegram ${token.value}`,
+      token
+    });
+  }
+
+  return { resolved, unresolvedUsernames };
 }
