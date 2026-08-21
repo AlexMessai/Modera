@@ -8,6 +8,7 @@ import { CaptchaSettings, type CaptchaSettingsValue } from "@/components/captcha
 import { ManualModerationSettings, type ManualModerationSettingsValue } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings, type AntiRaidSettingsValue } from "@/components/anti-raid-settings";
 import { ReportSettings, type ReportSettingsValue } from "@/components/report-settings";
+import { ContentSettings, type ContentSettingsValue } from "@/components/content-settings";
 
 type Props = {
   automodInitial: ModerationSettingsValue;
@@ -15,10 +16,11 @@ type Props = {
   manualModerationInitial: ManualModerationSettingsValue;
   antiRaidInitial: AntiRaidSettingsValue;
   reportInitial: ReportSettingsValue;
+  contentInitial: ContentSettingsValue;
   canEdit: boolean;
 };
 
-type ModuleKey = "automod" | "captcha" | "manual" | "antiRaid" | "reports";
+type ModuleKey = "automod" | "captcha" | "manual" | "antiRaid" | "reports" | "content";
 
 const AUTOMOD_RULE_COUNT = 7;
 
@@ -34,12 +36,13 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
   ].filter(Boolean).length;
 }
 
-export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, reportInitial, canEdit }: Props) {
+export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, reportInitial, contentInitial, canEdit }: Props) {
   const [automod, setAutomod] = useState(automodInitial);
   const [captcha, setCaptcha] = useState(captchaInitial);
   const [manualModeration, setManualModeration] = useState(manualModerationInitial);
   const [antiRaid, setAntiRaid] = useState(antiRaidInitial);
   const [reportSettings, setReportSettings] = useState(reportInitial);
+  const [content, setContent] = useState(contentInitial);
   const [openModal, setOpenModal] = useState<ModuleKey | null>(null);
   const [togglingCaptcha, setTogglingCaptcha] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -113,6 +116,14 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
           status={reportSettings.enabled ? "Включены" : "Выключены"}
           onConfigure={() => setOpenModal("reports")}
         />
+        <ModuleCard
+          icon={<ShieldCheck size={18} />}
+          title="Приветствие и правила"
+          description="Текст приветствия новым участникам и правила чата по команде /rules."
+          tag="Чат"
+          status={content.welcomeEnabled ? "Приветствие включено" : "Приветствие выключено"}
+          onConfigure={() => setOpenModal("content")}
+        />
       </div>
 
       {toggleError ? <div className="moderation-feedback moderation-feedback--error">{toggleError}</div> : null}
@@ -124,7 +135,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               <div>
                 <span className="eyebrow">Глобальная политика</span>
                 <h2 id="module-settings-title">
-                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : openModal === "manual" ? "Ручная модерация" : openModal === "antiRaid" ? "Anti-Raid" : "Жалобы"}
+                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : openModal === "manual" ? "Ручная модерация" : openModal === "antiRaid" ? "Anti-Raid" : openModal === "reports" ? "Жалобы" : "Приветствие и правила"}
                 </h2>
               </div>
               <button className="icon-button" type="button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button>
@@ -135,6 +146,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               {openModal === "manual" ? <ManualModerationSettings scope="global" initial={manualModeration} canEdit={canEdit} onSaved={setManualModeration} /> : null}
               {openModal === "antiRaid" ? <AntiRaidSettings scope="global" initial={antiRaid} canEdit={canEdit} onSaved={setAntiRaid} /> : null}
               {openModal === "reports" ? <ReportSettings scope="global" initial={reportSettings} canEdit={canEdit} onSaved={setReportSettings} /> : null}
+              {openModal === "content" ? <ContentSettings scope="global" initial={content} canEdit={canEdit} onSaved={setContent} /> : null}
             </div>
           </div>
         </div>

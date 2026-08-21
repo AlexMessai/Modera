@@ -516,3 +516,50 @@ test("renderSettingsMenu: Users/Roles section lists roles and a permission toggl
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: Chat section, welcome toggle persists and rules preview reflects saved text", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatContentSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false, welcomeEnabled: false, rulesText: "Никакого спама." }
+  });
+
+  try {
+    const menu = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "chat"
+    });
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("заданы"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "chat.welcome.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включено"))));
+
+    const rules = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "chat.rules"
+    });
+    assert.ok(rules?.text.includes("Никакого спама."));
+
+    const stored = await prisma.chatContentSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.welcomeEnabled, true);
+  } finally {
+    await cleanup();
+  }
+});

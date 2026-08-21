@@ -6,6 +6,7 @@ import { getChatManualModerationProfile, updateChatManualModerationProfile, type
 import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValue } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, updateChatLogChannelSettings, type LogChannelSettingsValue } from "@/server/services/log-channel-service";
 import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type ChatPermission, type ChatRoleSummary } from "@/server/services/chat-role-service";
+import { getChatContentProfile, updateChatContentSettings, type ContentSettingsValue } from "@/server/services/content-settings-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -73,6 +74,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
         [{ text: "🚩 Жалобы", callback_data: buildSettingsCallbackData(telegramChatId, "reports") }],
         [{ text: "📋 Логи", callback_data: buildSettingsCallbackData(telegramChatId, "logs") }],
         [{ text: "👥 Пользователи", callback_data: buildSettingsCallbackData(telegramChatId, "users") }],
+        [{ text: "💬 Чат", callback_data: buildSettingsCallbackData(telegramChatId, "chat") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -546,6 +548,73 @@ async function renderUsersSection(input: { chatId: string; chatTitle: string; te
   return null;
 }
 
+function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) {
+  return {
+    text: "💬 Чат\n\nВыберите раздел, чтобы посмотреть или изменить его.",
+    keyboard: {
+      inline_keyboard: [
+        [{ text: `👋 Приветствие: ${settings.welcomeEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.welcome") }],
+        [{ text: `📜 Правила: ${settings.rulesText ? "заданы" : "не заданы"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.rules") }],
+        backRow("root", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+// Telegram caps a message at 4096 characters; welcomeMessageTemplate/
+// rulesText can be up to 2000/4000 on their own, so the preview shown here
+// (which also has to fit the surrounding explanation) is truncated -- the
+// full text is always visible in Web Admin, this is just a status preview.
+const CONTENT_PREVIEW_LIMIT = 1500;
+
+function previewText(value: string) {
+  return value.length > CONTENT_PREVIEW_LIMIT ? `${value.slice(0, CONTENT_PREVIEW_LIMIT)}…` : value;
+}
+
+function renderWelcomeDetail(settings: ContentSettingsValue, telegramChatId: number) {
+  return {
+    text: `👋 Приветствие новых участников\n\nОтправляется в чат сразу после вступления. Текст (с переменными {name}/{username}/{group}/{member_count}) редактируется в Web Admin.\n\nТекущий текст:\n${previewText(settings.welcomeMessageTemplate)}`,
+    keyboard: {
+      inline_keyboard: [
+        toggleRow(`Статус: ${settings.welcomeEnabled ? "✅ включено" : "⬜ выключено"}`, "chat.welcome.toggle", telegramChatId),
+        backRow("chat", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+function renderRulesDetail(settings: ContentSettingsValue, telegramChatId: number) {
+  return {
+    text: `📜 Правила чата\n\nПоказываются по команде /rules. Текст редактируется в Web Admin.\n\n${settings.rulesText ? previewText(settings.rulesText) : "Правила ещё не заданы."}`,
+    keyboard: { inline_keyboard: [backRow("chat", telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+async function renderChatSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  const profile = await getChatContentProfile(input.chatId);
+  if (!profile) return null;
+  let settings = profile.effectiveSettings;
+
+  if (input.path === "chat") return renderChatMenu(settings, input.telegramChatId);
+
+  if (input.path === "chat.welcome" || input.path === "chat.welcome.toggle") {
+    if (input.path === "chat.welcome.toggle") {
+      const saved = await updateChatContentSettings({
+        chatId: input.chatId,
+        actingAdminId: input.actingAdminId,
+        useGlobalProfile: false,
+        settings: { ...settings, welcomeEnabled: !settings.welcomeEnabled }
+      });
+      settings = saved ?? { ...settings, welcomeEnabled: !settings.welcomeEnabled };
+    }
+    return renderWelcomeDetail(settings, input.telegramChatId);
+  }
+
+  if (input.path === "chat.rules") return renderRulesDetail(settings, input.telegramChatId);
+
+  return null;
+}
+
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
 async function applyAutomodAction(chatId: string, actingAdminId: string, settings: ModerationSettingsValue, path: string): Promise<{ viewPath: string; settings: ModerationSettingsValue }> {
   let patch: Partial<ModerationSettingsValue> | null = null;
@@ -720,6 +789,9 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "users" || input.path.startsWith("users.")) {
     return (await renderUsersSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
+  if (input.path === "chat" || input.path.startsWith("chat.")) {
+    return (await renderChatSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
 
   return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
