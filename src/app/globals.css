@@ -71,7 +71,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 @media (max-width: 760px) {
   .module-card-grid { grid-template-columns: 1fr; }
 }
-.module-settings-dialog { width: min(720px, 100%); max-height: 85vh; overflow: hidden; grid-template-rows: auto minmax(0, 1fr); }
+.module-settings-dialog { width: min(960px, 100%); max-height: 85vh; overflow: hidden; grid-template-rows: auto minmax(0, 1fr); }
 .module-settings-dialog-body { overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; min-height: 0; }
 .metric-card small { margin-top: auto; color: var(--muted); }
 .metric-card--muted strong { color: #a0a5ae; }
@@ -115,6 +115,12 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .badge--insufficient_permissions, .badge--not_admin { background: var(--warning-soft); color: var(--warning); }
 .badge--removed, .badge--telegram_error { background: var(--danger-soft); color: var(--danger); }
 .row-note { max-width: 220px; margin-top: 4px; color: var(--danger); font-size: 11px; }
+/* Neutral counterpart to .row-note for informational text (placeholder
+   reference, "how this works" notes) inside settings modals -- .row-note
+   itself stays red/width-capped because it's also used for real Telegram
+   errors in tables (chats/join-requests lastError) that must keep reading
+   as warnings. */
+.hint-note { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .table-footer { min-height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; color: var(--muted); font-size: 12px; background: #fbfbfc; }
 .state-box { padding: 48px 20px; text-align: center; }
 .state-box strong { display: block; margin-bottom: 5px; font-size: 15px; }

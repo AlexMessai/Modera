@@ -112,6 +112,7 @@ export function ManualModerationSettings({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState(COMMAND_SECTIONS[0].title);
 
   const isGlobalScope = scope === "global";
   const inherited = !isGlobalScope && useGlobalProfile && Boolean(globalSettings);
@@ -185,11 +186,23 @@ export function ManualModerationSettings({
         </div>
       ) : null}
 
-      <small className="row-note">Команды выполняются ответом (Reply) на сообщение участника. Сообщение с самой командой (например, «/warn спам») бот удаляет из чата всегда, сразу после обработки — независимо от результата. %admin% — администратор, %target% — участник, %reason% — причина, %duration% — срок mute, %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute (пустые плейсхолдеры заменяются на пустую строку).</small>
+      <small className="hint-note">Команды выполняются ответом (Reply) на сообщение участника. Сообщение с самой командой (например, «/warn спам») бот удаляет из чата всегда, сразу после обработки — независимо от результата. %admin% — администратор, %target% — участник, %reason% — причина, %duration% — срок mute, %warns% / %warns_limit% — текущее число предупреждений и порог, после которого выдаётся mute (пустые плейсхолдеры заменяются на пустую строку).</small>
 
-      {COMMAND_SECTIONS.map((section) => (
+      <nav className="page-tabs" aria-label="Категории команд">
+        {COMMAND_SECTIONS.map((section) => (
+          <button
+            key={section.title}
+            type="button"
+            className={`page-tab ${activeSection === section.title ? "page-tab--active" : ""}`}
+            onClick={() => setActiveSection(section.title)}
+          >
+            {section.title}
+          </button>
+        ))}
+      </nav>
+
+      {COMMAND_SECTIONS.filter((section) => section.title === activeSection).map((section) => (
         <div className="manual-mod-section" key={section.title}>
-          <h3 className="manual-mod-section-title">{section.title}</h3>
           <div className="manual-mod-command-list">
             {section.commands.map((commandInfo) => {
               const { key, command, description } = commandInfo;
