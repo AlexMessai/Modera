@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   action: z.enum(["warning", "mute", "unmute", "ban", "unban", "kick"]),
   reason: z.string().trim().max(500).optional(),
-  muteDurationMinutes: z.number().int().min(1).max(10080).nullable().optional()
+  muteDurationMinutes: z.number().int().min(1).max(10080).nullable().optional(),
+  banDurationMinutes: z.number().int().min(1).max(527040).nullable().optional()
 });
 
 const actionMap = {
@@ -35,7 +36,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       actingAdminId: auth.admin.id,
       action: actionMap[parsed.data.action],
       reason: parsed.data.reason,
-      muteDurationMinutes: parsed.data.action === "mute" ? parsed.data.muteDurationMinutes : null
+      muteDurationMinutes: parsed.data.action === "mute" ? parsed.data.muteDurationMinutes : null,
+      banDurationMinutes: parsed.data.action === "ban" ? parsed.data.banDurationMinutes : null
     });
     return Response.json({ data: result });
   } catch (error) {
