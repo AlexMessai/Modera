@@ -6,7 +6,7 @@ import { executeModerationAction, ModerationError } from "@/server/services/mode
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  action: z.enum(["warning", "mute", "unmute", "ban", "unban"]),
+  action: z.enum(["warning", "mute", "unmute", "ban", "unban", "kick"]),
   reason: z.string().trim().max(500).optional(),
   muteDurationMinutes: z.number().int().min(1).max(10080).nullable().optional()
 });
@@ -16,7 +16,8 @@ const actionMap = {
   mute: "MUTE",
   unmute: "UNMUTE",
   ban: "BAN",
-  unban: "UNBAN"
+  unban: "UNBAN",
+  kick: "KICK"
 } as const;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {

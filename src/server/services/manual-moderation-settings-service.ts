@@ -24,6 +24,9 @@ export type ManualModerationSettingsValue = {
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
   unbanAnnounceInChat: boolean;
+  kickMessageTemplate: string;
+  kickDeleteTargetMessage: boolean;
+  kickAnnounceInChat: boolean;
 };
 
 // The *EphemeralMessageTemplate fields back the punishment ephemeral notice
@@ -53,7 +56,10 @@ export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue =
   banEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
   unbanDeleteTargetMessage: false,
-  unbanAnnounceInChat: true
+  unbanAnnounceInChat: true,
+  kickMessageTemplate: "👢 %target% исключён(а) из чата. %reason%",
+  kickDeleteTargetMessage: false,
+  kickAnnounceInChat: true
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -85,7 +91,10 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
     banEphemeralMessageTemplate: normalizeTemplate(input.banEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banEphemeralMessageTemplate),
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
     unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage),
-    unbanAnnounceInChat: Boolean(input.unbanAnnounceInChat)
+    unbanAnnounceInChat: Boolean(input.unbanAnnounceInChat),
+    kickMessageTemplate: normalizeTemplate(input.kickMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.kickMessageTemplate),
+    kickDeleteTargetMessage: Boolean(input.kickDeleteTargetMessage),
+    kickAnnounceInChat: Boolean(input.kickAnnounceInChat)
   };
 }
 
@@ -111,7 +120,10 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
     banEphemeralMessageTemplate: settings.banEphemeralMessageTemplate,
     unbanMessageTemplate: settings.unbanMessageTemplate,
     unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage,
-    unbanAnnounceInChat: settings.unbanAnnounceInChat
+    unbanAnnounceInChat: settings.unbanAnnounceInChat,
+    kickMessageTemplate: settings.kickMessageTemplate,
+    kickDeleteTargetMessage: settings.kickDeleteTargetMessage,
+    kickAnnounceInChat: settings.kickAnnounceInChat
   };
 }
 

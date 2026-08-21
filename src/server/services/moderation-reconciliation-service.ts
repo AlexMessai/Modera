@@ -54,6 +54,10 @@ export function pendingActionMatchesTelegramState(type: string, member: Telegram
       return member.status === "kicked";
     case "UNBAN":
       return member.status !== "kicked";
+    case "KICK":
+      // Kick is ban-then-immediately-unban, so its finished state looks the
+      // same on Telegram's side as UNBAN — no lingering "kicked" status.
+      return member.status !== "kicked";
     default:
       return false;
   }
@@ -111,7 +115,7 @@ export async function reconcileTelegramMemberState(input: {
       chatId: input.chatId,
       affectedUserId: user.id,
       status: "PENDING",
-      type: { in: ["MUTE", "UNMUTE", "BAN", "UNBAN"] }
+      type: { in: ["MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] }
     },
     orderBy: { createdAt: "asc" },
     take: 10
@@ -248,7 +252,7 @@ export async function reconcilePendingModerationActionLive(
     };
   }
 
-  if (!(["MUTE", "UNMUTE", "BAN", "UNBAN"] as string[]).includes(action.type)) {
+  if (!(["MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as string[]).includes(action.type)) {
     throw new ModerationReconciliationError(
       "ACTION_NOT_RECONCILABLE",
       "Это действие не требует сверки с Telegram.",

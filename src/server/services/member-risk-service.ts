@@ -135,7 +135,7 @@ export async function getMemberRisk(
       where: {
         chatId: membership.chatId,
         affectedUserId: membership.userId,
-        type: { in: ["MUTE", "BAN"] },
+        type: { in: ["MUTE", "BAN", "KICK"] },
         status: "SUCCEEDED",
         createdAt: { gte: activityFrom, lte: now }
       }

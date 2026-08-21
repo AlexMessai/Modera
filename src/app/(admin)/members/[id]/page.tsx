@@ -24,6 +24,7 @@ const auditLabels: Record<string, string> = {
   MODERATION_UNMUTE: "Mute снят",
   MODERATION_BAN: "Участник заблокирован",
   MODERATION_UNBAN: "Участник разблокирован",
+  MODERATION_KICK: "Участник исключён из чата",
   MODERATION_ACTION_FAILED: "Действие модерации не выполнено",
   AUTOMOD_WARNING: "Автоматическое предупреждение",
   AUTOMOD_AUTO_MUTE: "Автоматический mute",
@@ -45,7 +46,8 @@ const actionLabels: Record<string, string> = {
   MUTE: "Mute",
   UNMUTE: "Снятие mute",
   BAN: "Блокировка",
-  UNBAN: "Разблокировка"
+  UNBAN: "Разблокировка",
+  KICK: "Исключение из чата"
 };
 
 const actionStatusLabels: Record<string, string> = {

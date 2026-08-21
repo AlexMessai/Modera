@@ -30,7 +30,10 @@ const settingsSchema = z.object({
   banEphemeralMessageTemplate: z.string().min(1).max(1000),
   unbanMessageTemplate: z.string().min(1).max(1000),
   unbanDeleteTargetMessage: z.boolean(),
-  unbanAnnounceInChat: z.boolean()
+  unbanAnnounceInChat: z.boolean(),
+  kickMessageTemplate: z.string().min(1).max(1000),
+  kickDeleteTargetMessage: z.boolean(),
+  kickAnnounceInChat: z.boolean()
 });
 
 export async function GET() {

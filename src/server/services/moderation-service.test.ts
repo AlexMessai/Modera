@@ -49,15 +49,25 @@ test("mute/ban duration is validated before any lookup happens", async () => {
 test("moderation command metadata is explicit", () => {
   assert.equal(isModerationAction("WARNING"), true);
   assert.equal(isModerationAction("UNBAN"), true);
+  assert.equal(isModerationAction("KICK"), true);
   assert.equal(isModerationAction("DELETE"), false);
   assert.equal(requiresReason("WARNING"), true);
   assert.equal(requiresReason("MUTE"), true);
   assert.equal(requiresReason("BAN"), true);
+  assert.equal(requiresReason("KICK"), true);
   assert.equal(requiresReason("UNMUTE"), false);
   assert.equal(requiresReason("UNBAN"), false);
   assert.equal(isProtectedMemberStatus("CREATOR"), true);
   assert.equal(isProtectedMemberStatus("ADMINISTRATOR"), true);
   assert.equal(isProtectedMemberStatus("MEMBER"), false);
+});
+
+test("kick leaves no persistent punishment state, unlike ban", () => {
+  const now = new Date("2026-08-18T10:00:00.000Z");
+  const kicked = membershipUpdateFor("KICK", now);
+  assert.equal(kicked.status, "LEFT");
+  assert.equal(kicked.punishmentState, null);
+  assert.equal(kicked.punishmentExpiresAt, null);
 });
 
 test("timed mute stores expiry and unmute clears it", () => {

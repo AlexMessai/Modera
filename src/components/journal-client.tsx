@@ -27,6 +27,7 @@ const actionLabels: Record<string, string> = {
   MODERATION_UNMUTE: "Снятие mute",
   MODERATION_BAN: "Блокировка",
   MODERATION_UNBAN: "Разблокировка",
+  MODERATION_KICK: "Исключение из чата",
   MODERATION_ACTION_FAILED: "Ошибка ручной модерации",
   MODERATION_RECONCILIATION_CHECKED: "Сверка с Telegram",
   MODERATION_RECONCILIATION_CHECK_FAILED: "Ошибка сверки с Telegram",
@@ -79,7 +80,8 @@ const pendingLabels: Record<string, string> = {
   MUTE: "Mute",
   UNMUTE: "Снятие mute",
   BAN: "Блокировка",
-  UNBAN: "Разблокировка"
+  UNBAN: "Разблокировка",
+  KICK: "Исключение из чата"
 };
 
 const categoryLabels: Record<JournalCategory, string> = {
