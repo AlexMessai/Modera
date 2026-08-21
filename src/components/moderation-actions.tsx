@@ -36,10 +36,20 @@ const MUTE_DURATIONS = [
   ["10080", "7 дней"]
 ] as const;
 
+const BAN_DURATIONS = [
+  ["", "Навсегда"],
+  ["60", "1 час"],
+  ["1440", "24 часа"],
+  ["10080", "7 дней"],
+  ["43200", "30 дней"],
+  ["129600", "90 дней"]
+] as const;
+
 export function ModerationActions(props: Props) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [muteDuration, setMuteDuration] = useState("");
+  const [banDuration, setBanDuration] = useState("");
   const [confirming, setConfirming] = useState<ActionName | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +89,8 @@ export function ModerationActions(props: Props) {
         body: JSON.stringify({
           action,
           reason: reason.trim() || undefined,
-          ...(action === "mute" ? { muteDurationMinutes: muteDuration ? Number(muteDuration) : null } : {})
+          ...(action === "mute" ? { muteDurationMinutes: muteDuration ? Number(muteDuration) : null } : {}),
+          ...(action === "ban" ? { banDurationMinutes: banDuration ? Number(banDuration) : null } : {})
         })
       });
       const payload = await response.json().catch(() => null);
@@ -108,11 +119,21 @@ export function ModerationActions(props: Props) {
         </label>
       ) : null}
 
+      {visibleActions.includes("ban") ? (
+        <label className="automod-field automod-field--short">
+          <span>Срок бана</span>
+          <select value={banDuration} onChange={(event) => setBanDuration(event.target.value)} disabled={submitting}>
+            {BAN_DURATIONS.map(([value, label]) => <option key={value || "forever"} value={value}>{label}</option>)}
+          </select>
+          <small>Для временного бана Telegram сам снимет блокировку по истечении срока.</small>
+        </label>
+      ) : null}
+
       <div className="moderation-buttons">{visibleActions.map((action) => <button key={action} type="button" className={`button ${ACTIONS[action].tone === "danger" ? "button--danger" : "button--secondary"}`} onClick={() => prepare(action)} disabled={submitting}><ActionIcon action={action} />{ACTIONS[action].label}</button>)}</div>
 
       {confirming ? (
         <div className={`moderation-confirm ${ACTIONS[confirming].tone === "danger" ? "moderation-confirm--danger" : ""}`}>
-          <div><strong>{ACTIONS[confirming].confirmLabel}?</strong><p>{ACTIONS[confirming].description}</p><span>Участник: {props.userDisplayName}{confirming === "mute" && muteDuration ? ` · ${MUTE_DURATIONS.find(([value]) => value === muteDuration)?.[1] ?? "временно"}` : ""}</span></div>
+          <div><strong>{ACTIONS[confirming].confirmLabel}?</strong><p>{ACTIONS[confirming].description}</p><span>Участник: {props.userDisplayName}{confirming === "mute" && muteDuration ? ` · ${MUTE_DURATIONS.find(([value]) => value === muteDuration)?.[1] ?? "временно"}` : ""}{confirming === "ban" && banDuration ? ` · ${BAN_DURATIONS.find(([value]) => value === banDuration)?.[1] ?? "временно"}` : ""}</span></div>
           <div className="moderation-confirm-actions">
             <button type="button" className="button button--secondary" onClick={() => setConfirming(null)} disabled={submitting}>Отмена</button>
             <button type="button" className={`button ${ACTIONS[confirming].tone === "danger" ? "button--danger" : "button--primary"}`} onClick={() => void submit(confirming)} disabled={submitting}><Check size={16} />{submitting ? "Выполняю…" : "Подтвердить"}</button>
