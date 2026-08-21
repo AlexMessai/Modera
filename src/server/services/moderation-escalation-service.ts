@@ -1,6 +1,8 @@
 import { prisma } from "@/server/db/prisma";
 import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
 import {
+  findTriggeredEscalationRule,
+  lowestEscalationThreshold,
   resolveEffectiveModerationSettings,
   type ModerationSettingsValue
 } from "@/server/services/global-moderation-service";
@@ -10,17 +12,17 @@ import {
   ModerationError
 } from "@/server/services/moderation-service";
 
-type EscalationPolicy = Pick<
-  ModerationSettingsValue,
-  "muteAfterWarnings" | "muteDurationMinutes" | "banAfterWarnings"
->;
+type EscalationPolicy = Pick<ModerationSettingsValue, "escalationRules">;
 
 /** What the chat reply needs to know after an admin's manual /warn. */
 export type ManualWarningEscalation = {
   activeWarningCount: number;
-  warnsLimit: number;
+  /** Lowest configured threshold across the rule chain — null if no rules are configured. */
+  warnsLimit: number | null;
   escalated: boolean;
   action?: "MUTE" | "BAN";
+  /** The threshold of the rule that actually fired (not necessarily `warnsLimit`, when multiple rules are configured). */
+  threshold?: number;
   muteDurationMinutes?: number;
 };
 
@@ -45,6 +47,8 @@ export type WarningEscalationResult = {
   attemptedAction?: "MUTE" | "BAN";
   skippedConcurrentClaim?: boolean;
   action?: "MUTE" | "BAN";
+  /** The threshold of the rule that fired. */
+  threshold?: number;
   muteDurationMinutes?: number;
   result?: Awaited<ReturnType<typeof executeAutomatedModerationAction>>;
   error?: string;
@@ -72,7 +76,7 @@ export async function describeWarningStanding(input: { chatId: string; affectedU
     affectedUserId: input.affectedUserId,
     warningExpiryDays: resolved.settings.warningExpiryDays
   });
-  return { activeWarningCount, warnsLimit: resolved.settings.muteAfterWarnings };
+  return { activeWarningCount, warnsLimit: lowestEscalationThreshold(resolved.settings.escalationRules) };
 }
 
 /** Backs `/warns` — active-count + a short recent history for one member in one chat. */
@@ -100,7 +104,7 @@ export async function listWarningsForMember(input: { chatId: string; telegramUse
 
   return {
     activeWarningCount,
-    warnsLimit: resolved.settings.muteAfterWarnings,
+    warnsLimit: lowestEscalationThreshold(resolved.settings.escalationRules),
     totalWarningCount: member.warningCount,
     recent
   };
@@ -321,7 +325,7 @@ export async function escalateAfterManualWarning(input: {
       user: { select: { id: true, isBot: true } }
     }
   });
-  if (!member) return { activeWarningCount: 0, warnsLimit: policy.muteAfterWarnings, escalated: false };
+  if (!member) return { activeWarningCount: 0, warnsLimit: lowestEscalationThreshold(policy.escalationRules), escalated: false };
 
   const now = new Date();
   const cutoff = warningCutoff(now, policy.warningExpiryDays);
@@ -336,7 +340,7 @@ export async function escalateAfterManualWarning(input: {
 
   const idle: ManualWarningEscalation = {
     activeWarningCount,
-    warnsLimit: policy.muteAfterWarnings,
+    warnsLimit: lowestEscalationThreshold(policy.escalationRules),
     escalated: false
   };
   if (!policy.autoEscalationEnabled || member.user.isBot || isProtectedMemberStatus(member.status)) return idle;
@@ -365,9 +369,10 @@ export async function escalateAfterManualWarning(input: {
 
   return {
     activeWarningCount,
-    warnsLimit: policy.muteAfterWarnings,
+    warnsLimit: lowestEscalationThreshold(policy.escalationRules),
     escalated: escalation.escalated,
     action: escalation.escalated ? escalation.action : undefined,
+    threshold: escalation.escalated ? escalation.threshold : undefined,
     muteDurationMinutes: escalation.escalated ? escalation.muteDurationMinutes : undefined
   };
 }
@@ -387,23 +392,9 @@ export async function applyWarningEscalation(input: {
   escalationMarker: number;
 }): Promise<WarningEscalationResult> {
   const { policy } = input;
-  let action: "MUTE" | "BAN" | null = null;
-  let threshold = 0;
-  if (
-    input.activeWarningCount >= policy.banAfterWarnings &&
-    input.escalationMarker < policy.banAfterWarnings
-  ) {
-    action = "BAN";
-    threshold = policy.banAfterWarnings;
-  } else if (
-    input.activeWarningCount >= policy.muteAfterWarnings &&
-    input.escalationMarker < policy.muteAfterWarnings
-  ) {
-    action = "MUTE";
-    threshold = policy.muteAfterWarnings;
-  }
+  const triggered = findTriggeredEscalationRule(policy.escalationRules, input.activeWarningCount, input.escalationMarker);
 
-  if (!action) {
+  if (!triggered) {
     return {
       enabled: true,
       escalated: false,
@@ -411,6 +402,9 @@ export async function applyWarningEscalation(input: {
       activeWarningCount: input.activeWarningCount
     } as const;
   }
+
+  const action = triggered.action;
+  const threshold = triggered.thresholdWarnings;
 
   const previousMarker = input.escalationMarker;
   const claim = await prisma.chatMember.updateMany({
@@ -438,12 +432,11 @@ export async function applyWarningEscalation(input: {
     const result = await executeAutomatedModerationAction({
       membershipId: input.membershipId,
       action,
-      reason: action === "MUTE"
-        ? `${input.reason}. Достигнут порог ${policy.muteAfterWarnings} активных предупреждений.`
-        : `${input.reason}. Достигнут порог ${policy.banAfterWarnings} активных предупреждений.`,
+      reason: `${input.reason}. Достигнут порог ${threshold} активных предупреждений.`,
       escalationWarningCount: input.activeWarningCount,
       triggerRule: input.triggerRule,
-      ...(action === "MUTE" ? { muteDurationMinutes: policy.muteDurationMinutes } : {})
+      ...(action === "MUTE" ? { muteDurationMinutes: triggered.durationMinutes ?? undefined } : {}),
+      ...(action === "BAN" ? { banDurationMinutes: triggered.durationMinutes ?? undefined } : {})
     });
     return {
       enabled: true,
@@ -451,7 +444,8 @@ export async function applyWarningEscalation(input: {
       warningCount: input.warningCount,
       activeWarningCount: input.activeWarningCount,
       action,
-      muteDurationMinutes: action === "MUTE" ? policy.muteDurationMinutes : undefined,
+      threshold,
+      muteDurationMinutes: action === "MUTE" ? (triggered.durationMinutes ?? undefined) : undefined,
       result
     } as const;
   } catch (error) {

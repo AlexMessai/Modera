@@ -600,12 +600,12 @@ export async function executeAutomatedModerationAction(input: {
   escalationWarningCount: number;
   triggerRule: string;
   muteDurationMinutes?: number;
+  banDurationMinutes?: number;
 }) {
   const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
-  const expiresAt = input.action === "MUTE" && input.muteDurationMinutes
-    ? new Date(Date.now() + input.muteDurationMinutes * 60_000)
-    : null;
+  const durationMinutes = input.action === "MUTE" ? input.muteDurationMinutes : input.banDurationMinutes;
+  const expiresAt = durationMinutes ? new Date(Date.now() + durationMinutes * 60_000) : null;
 
   return executeTelegramBackedAction({
     member,

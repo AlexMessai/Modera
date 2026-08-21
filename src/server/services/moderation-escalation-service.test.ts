@@ -21,9 +21,10 @@ async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEM
         create: {
           useGlobalProfile: false,
           autoEscalationEnabled: true,
-          muteAfterWarnings: 5,
-          muteDurationMinutes: 10,
-          banAfterWarnings: 8
+          escalationRules: [
+            { order: 1, thresholdWarnings: 5, action: "MUTE", durationMinutes: 10 },
+            { order: 2, thresholdWarnings: 8, action: "BAN", durationMinutes: null }
+          ]
         }
       }
     }
@@ -205,7 +206,12 @@ test("manual /warn shares automod's threshold: below it nothing is attempted, th
   try {
     await prisma.chatModerationSettings.update({
       where: { chatId: data.chat.id },
-      data: { muteAfterWarnings: 3, muteDurationMinutes: 4320, banAfterWarnings: 8 }
+      data: {
+        escalationRules: [
+          { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 4320 },
+          { order: 2, thresholdWarnings: 8, action: "BAN", durationMinutes: null }
+        ]
+      }
     });
 
     for (let i = 1; i <= 2; i += 1) {
@@ -243,7 +249,12 @@ test("manual /warn shares automod's threshold: below it nothing is attempted, th
     // own return shape can't tell those two apart from the outside.
     const escalation = await applyWarningEscalation({
       membershipId: data.member.id,
-      policy: { muteAfterWarnings: 3, muteDurationMinutes: 4320, banAfterWarnings: 8 },
+      policy: {
+        escalationRules: [
+          { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 4320 },
+          { order: 2, thresholdWarnings: 8, action: "BAN", durationMinutes: null }
+        ]
+      },
       reason: "Нарушение 3",
       triggerRule: "MANUAL_WARN",
       warningCount: thirdWarning.warningCount,

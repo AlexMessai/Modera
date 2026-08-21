@@ -10,6 +10,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const escalationRuleSchema = z.object({
+  order: z.number().int().min(1).max(20),
+  thresholdWarnings: z.number().int().min(1).max(999),
+  action: z.enum(["MUTE", "BAN"]),
+  durationMinutes: z.number().int().min(1).max(527040).nullable()
+});
+
 const settingsSchema = z.object({
   blockLinks: z.boolean(),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
@@ -26,16 +33,11 @@ const settingsSchema = z.object({
   blockedMessageTypes: z.array(z.enum(RESTRICTABLE_MESSAGE_TYPES)).max(20),
   ignoreAdmins: z.boolean(),
   autoEscalationEnabled: z.boolean(),
-  muteAfterWarnings: z.number().int().min(2).max(20),
-  muteDurationMinutes: z.number().int().min(1).max(10080),
-  banAfterWarnings: z.number().int().min(3).max(50),
+  escalationRules: z.array(escalationRuleSchema).max(20),
   warningExpiryDays: z.number().int().min(0).max(3650),
   announceEscalationEnabled: z.boolean(),
   escalationMuteMessageTemplate: z.string().min(1).max(1000),
   escalationBanMessageTemplate: z.string().min(1).max(1000)
-}).refine((value) => value.banAfterWarnings > value.muteAfterWarnings, {
-  message: "Порог блокировки должен быть выше порога mute.",
-  path: ["banAfterWarnings"]
 });
 
 export async function GET() {

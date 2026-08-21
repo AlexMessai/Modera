@@ -270,9 +270,14 @@ model ChatModerationSettings {
   blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
   autoEscalationEnabled  Boolean  @default(false)
+  // Deprecated: superseded by escalationRules below (kept, unread by app
+  // code, so a rollback or a stray old query doesn't lose data — drop in a
+  // later migration once escalationRules has been live for a while).
   muteAfterWarnings      Int      @default(3)
   muteDurationMinutes    Int      @default(10)
   banAfterWarnings       Int      @default(6)
+  // Ordered chain of EscalationRuleValue: [{ order, thresholdWarnings, action: "MUTE"|"BAN", durationMinutes }].
+  escalationRules        Json     @default("[]")
   warningExpiryDays      Int      @default(0)
   announceEscalationEnabled     Boolean  @default(false)
   escalationMuteMessageTemplate String   @default("🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
@@ -299,9 +304,14 @@ model GlobalModerationSettings {
   blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
   autoEscalationEnabled  Boolean  @default(false)
+  // Deprecated: superseded by escalationRules below (kept, unread by app
+  // code, so a rollback or a stray old query doesn't lose data — drop in a
+  // later migration once escalationRules has been live for a while).
   muteAfterWarnings      Int      @default(3)
   muteDurationMinutes    Int      @default(10)
   banAfterWarnings       Int      @default(6)
+  // Ordered chain of EscalationRuleValue: [{ order, thresholdWarnings, action: "MUTE"|"BAN", durationMinutes }].
+  escalationRules        Json     @default("[]")
   warningExpiryDays      Int      @default(0)
   announceEscalationEnabled     Boolean  @default(false)
   escalationMuteMessageTemplate String   @default("🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)

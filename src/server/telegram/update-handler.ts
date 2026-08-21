@@ -98,7 +98,7 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
     reason: "",
     duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
     warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
-    warnsLimit: String(escalation.action === "MUTE" ? settings.muteAfterWarnings : settings.banAfterWarnings)
+    warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""
   });
   await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
 }
@@ -185,7 +185,7 @@ async function applyModerationCommandToTarget(input: {
       affectedUserId: revoked.affectedUserId
     });
     warns = String(remaining.activeWarningCount);
-    warnsLimit = String(remaining.warnsLimit);
+    warnsLimit = remaining.warnsLimit !== null ? String(remaining.warnsLimit) : "";
   } else {
     await executeTelegramActorModerationAction({
       chatId: input.chatId,
@@ -204,7 +204,7 @@ async function applyModerationCommandToTarget(input: {
         reason: input.reason ?? "Предупреждение от администратора чата"
       });
       warns = String(escalation.activeWarningCount);
-      warnsLimit = String(escalation.warnsLimit);
+      warnsLimit = escalation.warnsLimit !== null ? String(escalation.warnsLimit) : "";
     }
   }
 
@@ -233,7 +233,7 @@ async function applyModerationCommandToTarget(input: {
         {
           ...placeholders,
           admin: "Modera",
-          reason: `Достигнут порог ${escalation.warnsLimit} предупреждений.`,
+          reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         }
       ));
@@ -410,7 +410,8 @@ async function processWarnsCommand(input: {
       lines.push(`${target.displayName}: участник не найден в этом чате.`);
       continue;
     }
-    lines.push(`${target.displayName}: ${standing.activeWarningCount}/${standing.warnsLimit} активных предупреждений (всего выдано ${standing.totalWarningCount}).`);
+    const limitText = standing.warnsLimit !== null ? `/${standing.warnsLimit}` : "";
+    lines.push(`${target.displayName}: ${standing.activeWarningCount}${limitText} активных предупреждений (всего выдано ${standing.totalWarningCount}).`);
     for (const item of standing.recent.slice(0, 5)) {
       const date = item.createdAt.toLocaleDateString("ru-RU");
       lines.push(`  · ${date} — ${item.reason ?? "без причины"}`);

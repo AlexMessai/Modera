@@ -17,17 +17,24 @@
 .automod-field { display: grid; gap: 5px; }
 .automod-field--short { max-width: 220px; }
 .automod-field > span { font-size: 12px; font-weight: 650; }
-.automod-field textarea, .automod-field input { width: 100%; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; outline: 0; }
+.automod-field textarea, .automod-field input, .automod-field select { width: 100%; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; outline: 0; }
 .automod-field textarea { min-height: 76px; resize: vertical; padding: 8px 11px; line-height: 1.45; }
-.automod-field input { height: 36px; padding: 0 10px; }
-.automod-field textarea:focus, .automod-field input:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
-.automod-field textarea:disabled, .automod-field input:disabled { background: var(--surface-2); color: #9aa0aa; }
+.automod-field input, .automod-field select { height: 36px; padding: 0 10px; }
+.automod-field textarea:focus, .automod-field input:focus, .automod-field select:focus { border-color: #9bb7ee; box-shadow: 0 0 0 3px var(--accent-soft); }
+.automod-field textarea:disabled, .automod-field input:disabled, .automod-field select:disabled { background: var(--surface-2); color: #9aa0aa; }
 .automod-number-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 170px)); gap: 8px; }
 .automod-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .automod-media-option { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
 .automod-audit-list { margin-top: 14px; }
+
+.escalation-rule-list { display: grid; gap: 8px; }
+.escalation-rule-row { display: grid; grid-template-columns: 22px repeat(3, minmax(0, 170px)) auto; align-items: end; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.escalation-rule-position { align-self: center; justify-self: center; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; }
+.escalation-rule-actions { display: flex; gap: 2px; align-self: center; }
+.icon-button--danger { color: var(--danger); }
+.icon-button--danger:hover { background: #fff1f1; }
 
 .manual-mod-section { display: grid; gap: 10px; }
 .manual-mod-command-list { display: grid; gap: 10px; }
