@@ -266,8 +266,13 @@ async function processGroupModerationCommand(input: {
     { allowDuration, requireDurationUnit }
   );
 
-  const reply = (replyText: string) =>
-    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText }).catch(() => undefined);
+  // Validation hints and per-target errors are diagnostic information for
+  // whoever ran the command, not for the rest of the chat — sent ephemeral
+  // (Bot API 10.2, visible only to `from`) rather than as a normal chat
+  // message. The actual action result (below) is a separate, public
+  // announcement gated by the *AnnounceInChat setting, unrelated to this.
+  const privateReply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
   // The command text itself (e.g. "/warn спам") never belongs in the chat —
   // delete it immediately, before any validation, so it disappears whether
@@ -276,7 +281,7 @@ async function processGroupModerationCommand(input: {
 
   const isAdmin = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!isAdmin) {
-    await reply("❌ У вас нет прав администратора в этом чате.");
+    await privateReply("❌ У вас нет прав администратора в этом чате.");
     return true;
   }
 
@@ -296,14 +301,14 @@ async function processGroupModerationCommand(input: {
   }
 
   if (targets.length === 0) {
-    await reply(unresolvedUsernames.length > 0
+    await privateReply(unresolvedUsernames.length > 0
       ? `Не удалось найти в этом чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}.`
       : "Укажите цель: ответьте (Reply) на сообщение участника, либо укажите @username или Telegram ID после команды.");
     return true;
   }
 
   if (action === "MUTE" && !durationMinutes) {
-    await reply("Укажите срок mute, например: /mute @user 3h причина (или в минутах: /mute 180 причина)");
+    await privateReply("Укажите срок mute, например: /mute @user 3h причина (или в минутах: /mute 180 причина)");
     return true;
   }
 
@@ -343,8 +348,15 @@ async function processGroupModerationCommand(input: {
     errorLines.push(`❌ Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}`);
   }
 
-  const combined = [...resultLines, ...errorLines].join("\n");
-  if (combined) await reply(combined);
+  // Successful-action announcements are public chat messages (subject to the
+  // *AnnounceInChat setting, same as before) — errors are diagnostic and
+  // stay private to the admin who ran the command.
+  if (resultLines.length > 0) {
+    await input.client.sendMessage({ chatId: input.telegramChatId, text: resultLines.join("\n") }).catch(() => undefined);
+  }
+  if (errorLines.length > 0) {
+    await privateReply(errorLines.join("\n"));
+  }
 
   return true;
 }
