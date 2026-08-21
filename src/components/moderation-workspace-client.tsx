@@ -6,15 +6,17 @@ import { ModuleCard } from "@/components/module-card";
 import { ChatModerationSettings, type ModerationSettingsValue } from "@/components/chat-moderation-settings";
 import { CaptchaSettings, type CaptchaSettingsValue } from "@/components/captcha-settings";
 import { ManualModerationSettings, type ManualModerationSettingsValue } from "@/components/manual-moderation-settings";
+import { AntiRaidSettings, type AntiRaidSettingsValue } from "@/components/anti-raid-settings";
 
 type Props = {
   automodInitial: ModerationSettingsValue;
   captchaInitial: CaptchaSettingsValue;
   manualModerationInitial: ManualModerationSettingsValue;
+  antiRaidInitial: AntiRaidSettingsValue;
   canEdit: boolean;
 };
 
-type ModuleKey = "automod" | "captcha" | "manual";
+type ModuleKey = "automod" | "captcha" | "manual" | "antiRaid";
 
 const AUTOMOD_RULE_COUNT = 7;
 
@@ -30,10 +32,11 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
   ].filter(Boolean).length;
 }
 
-export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, canEdit }: Props) {
+export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, canEdit }: Props) {
   const [automod, setAutomod] = useState(automodInitial);
   const [captcha, setCaptcha] = useState(captchaInitial);
   const [manualModeration, setManualModeration] = useState(manualModerationInitial);
+  const [antiRaid, setAntiRaid] = useState(antiRaidInitial);
   const [openModal, setOpenModal] = useState<ModuleKey | null>(null);
   const [togglingCaptcha, setTogglingCaptcha] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -91,6 +94,14 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
           status="Настраивается"
           onConfigure={() => setOpenModal("manual")}
         />
+        <ModuleCard
+          icon={<ShieldCheck size={18} />}
+          title="Anti-Raid"
+          description="Защита от массового вступления ботов: усиливает капчу, пока наплыв новых участников не прекратится."
+          tag="Модерация_участников"
+          status={antiRaid.enabled ? "Включена" : "Выключена"}
+          onConfigure={() => setOpenModal("antiRaid")}
+        />
       </div>
 
       {toggleError ? <div className="moderation-feedback moderation-feedback--error">{toggleError}</div> : null}
@@ -102,7 +113,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               <div>
                 <span className="eyebrow">Глобальная политика</span>
                 <h2 id="module-settings-title">
-                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : "Ручная модерация"}
+                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : openModal === "manual" ? "Ручная модерация" : "Anti-Raid"}
                 </h2>
               </div>
               <button className="icon-button" type="button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button>
@@ -111,6 +122,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               {openModal === "automod" ? <ChatModerationSettings scope="global" initial={automod} canEdit={canEdit} onSaved={setAutomod} /> : null}
               {openModal === "captcha" ? <CaptchaSettings scope="global" initial={captcha} canEdit={canEdit} onSaved={setCaptcha} /> : null}
               {openModal === "manual" ? <ManualModerationSettings scope="global" initial={manualModeration} canEdit={canEdit} onSaved={setManualModeration} /> : null}
+              {openModal === "antiRaid" ? <AntiRaidSettings scope="global" initial={antiRaid} canEdit={canEdit} onSaved={setAntiRaid} /> : null}
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { isRaidForcingCaptcha } from "@/server/services/anti-raid-service";
 import { resolveEffectiveCaptchaSettings } from "@/server/services/captcha-settings-service";
 import {
   getTelegramClient,
@@ -116,8 +117,11 @@ export async function maybeIssueCaptchaChallenge(input: {
   telegramUserId: bigint;
 }) {
   if (input.chatType !== "supergroup") return { outcome: "skipped_chat_type" as const };
-  const profile = await resolveEffectiveCaptchaSettings(input.chatId);
-  if (!profile.settings.enabled) return { outcome: "disabled" as const };
+  const [profile, raidForcingCaptcha] = await Promise.all([
+    resolveEffectiveCaptchaSettings(input.chatId),
+    isRaidForcingCaptcha(input.chatId)
+  ]);
+  if (!profile.settings.enabled && !raidForcingCaptcha) return { outcome: "disabled" as const };
 
   const current = await prisma.chatMember.findUnique({
     where: { id: input.membershipId },
