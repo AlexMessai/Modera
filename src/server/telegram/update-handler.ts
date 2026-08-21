@@ -648,6 +648,10 @@ async function processReportCommand(input: {
     reason: (match[1] ?? "").trim() || null
   });
 
+  if (result.outcome === "disabled") {
+    await reply("Жалобы отключены в этом чате.");
+    return true;
+  }
   if (result.outcome === "self_report") {
     await reply("Нельзя пожаловаться на самого себя.");
     return true;

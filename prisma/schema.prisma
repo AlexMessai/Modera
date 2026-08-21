@@ -114,6 +114,7 @@ model Chat {
   appeals                  Appeal[]
   chatRoles                ChatRole[]
   reports                  Report[]
+  reportSettings           ChatReportSettings?
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -573,6 +574,27 @@ model Report {
   @@index([status, createdAt(sort: Desc)])
   @@index([chatId, status, createdAt(sort: Desc)])
   @@index([reportedUserId, createdAt(sort: Desc)])
+}
+
+model ChatReportSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  chatId              String   @unique @db.Uuid
+  useGlobalProfile    Boolean  @default(true)
+  enabled             Boolean  @default(true)
+  // Fixed duration used by the report card's "Ограничить" quick action --
+  // an inline button can't collect a custom value, see report-service.ts.
+  muteDurationMinutes Int      @default(60)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+  chat                Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalReportSettings {
+  id                  String   @id @default("global")
+  enabled             Boolean  @default(true)
+  muteDurationMinutes Int      @default(60)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model AdminUser {

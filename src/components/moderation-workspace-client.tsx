@@ -7,16 +7,18 @@ import { ChatModerationSettings, type ModerationSettingsValue } from "@/componen
 import { CaptchaSettings, type CaptchaSettingsValue } from "@/components/captcha-settings";
 import { ManualModerationSettings, type ManualModerationSettingsValue } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings, type AntiRaidSettingsValue } from "@/components/anti-raid-settings";
+import { ReportSettings, type ReportSettingsValue } from "@/components/report-settings";
 
 type Props = {
   automodInitial: ModerationSettingsValue;
   captchaInitial: CaptchaSettingsValue;
   manualModerationInitial: ManualModerationSettingsValue;
   antiRaidInitial: AntiRaidSettingsValue;
+  reportInitial: ReportSettingsValue;
   canEdit: boolean;
 };
 
-type ModuleKey = "automod" | "captcha" | "manual" | "antiRaid";
+type ModuleKey = "automod" | "captcha" | "manual" | "antiRaid" | "reports";
 
 const AUTOMOD_RULE_COUNT = 7;
 
@@ -32,11 +34,12 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
   ].filter(Boolean).length;
 }
 
-export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, canEdit }: Props) {
+export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, reportInitial, canEdit }: Props) {
   const [automod, setAutomod] = useState(automodInitial);
   const [captcha, setCaptcha] = useState(captchaInitial);
   const [manualModeration, setManualModeration] = useState(manualModerationInitial);
   const [antiRaid, setAntiRaid] = useState(antiRaidInitial);
+  const [reportSettings, setReportSettings] = useState(reportInitial);
   const [openModal, setOpenModal] = useState<ModuleKey | null>(null);
   const [togglingCaptcha, setTogglingCaptcha] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -102,6 +105,14 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
           status={antiRaid.enabled ? "Включена" : "Выключена"}
           onConfigure={() => setOpenModal("antiRaid")}
         />
+        <ModuleCard
+          icon={<ShieldCheck size={18} />}
+          title="Жалобы"
+          description="Команда /report: участники жалуются на сообщение, администраторы получают приватную карточку с кнопками действий."
+          tag="Модерация_сообщений"
+          status={reportSettings.enabled ? "Включены" : "Выключены"}
+          onConfigure={() => setOpenModal("reports")}
+        />
       </div>
 
       {toggleError ? <div className="moderation-feedback moderation-feedback--error">{toggleError}</div> : null}
@@ -113,7 +124,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               <div>
                 <span className="eyebrow">Глобальная политика</span>
                 <h2 id="module-settings-title">
-                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : openModal === "manual" ? "Ручная модерация" : "Anti-Raid"}
+                  {openModal === "automod" ? "Automod" : openModal === "captcha" ? "Капча при вступлении" : openModal === "manual" ? "Ручная модерация" : openModal === "antiRaid" ? "Anti-Raid" : "Жалобы"}
                 </h2>
               </div>
               <button className="icon-button" type="button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button>
@@ -123,6 +134,7 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
               {openModal === "captcha" ? <CaptchaSettings scope="global" initial={captcha} canEdit={canEdit} onSaved={setCaptcha} /> : null}
               {openModal === "manual" ? <ManualModerationSettings scope="global" initial={manualModeration} canEdit={canEdit} onSaved={setManualModeration} /> : null}
               {openModal === "antiRaid" ? <AntiRaidSettings scope="global" initial={antiRaid} canEdit={canEdit} onSaved={setAntiRaid} /> : null}
+              {openModal === "reports" ? <ReportSettings scope="global" initial={reportSettings} canEdit={canEdit} onSaved={setReportSettings} /> : null}
             </div>
           </div>
         </div>

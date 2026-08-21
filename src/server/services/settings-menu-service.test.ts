@@ -330,3 +330,61 @@ test("renderSettingsMenu: Moderation menu, notification toggle persists to the c
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: Reports section, toggle and duration stepper persist to the chat's own profile", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.chatReportSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false, enabled: true, muteDurationMinutes: 60 }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "reports"
+    });
+    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Срок, мин: 60"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "reports.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("выключены"))));
+
+    const incremented = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "reports.toggle"
+    });
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включены"))));
+
+    const durationChanged = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "reports.duration.+15"
+    });
+    assert.ok(durationChanged?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Срок, мин: 75"))));
+
+    const stored = await prisma.chatReportSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.enabled, true);
+    assert.equal(stored?.muteDurationMinutes, 75);
+    assert.equal(stored?.useGlobalProfile, false);
+  } finally {
+    await cleanup();
+  }
+});

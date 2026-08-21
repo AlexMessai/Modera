@@ -5,6 +5,7 @@ import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings } from "@/components/anti-raid-settings";
+import { ReportSettings } from "@/components/report-settings";
 import { ChatStatistics } from "@/components/chat-statistics-client";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
@@ -12,6 +13,7 @@ import { getChatCaptchaProfile } from "@/server/services/captcha-settings-servic
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
+import { getChatReportProfile } from "@/server/services/report-settings-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -47,11 +49,12 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
     getChatAntiRaidProfile(id),
+    getChatReportProfile(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -93,6 +96,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Anti-Raid</h2><p>Защита от массового вступления: усиливает капчу, пока наплыв новых участников не прекратится.</p></div></div>
           <AntiRaidSettings chatId={antiRaidProfile.chat.id} initial={antiRaidProfile.settings} initialUseGlobalProfile={antiRaidProfile.policy.useGlobalProfile} globalSettings={antiRaidProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
+        </section>
+      ) : null}
+
+      {reportProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Жалобы</h2><p>Команда /report: участники жалуются на сообщение, администраторы получают приватную карточку с кнопками действий.</p></div></div>
+          <ReportSettings chatId={reportProfile.chat.id} initial={reportProfile.settings} initialUseGlobalProfile={reportProfile.policy.useGlobalProfile} globalSettings={reportProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 

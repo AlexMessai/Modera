@@ -70,6 +70,8 @@ const actionLabels: Record<string, string> = {
   ANTI_RAID_RESOLVED: "Рейд завершён",
   ANTI_RAID_SETTINGS_UPDATED: "Изменены настройки Anti-Raid чата",
   GLOBAL_ANTI_RAID_SETTINGS_UPDATED: "Изменена глобальная политика Anti-Raid",
+  REPORT_SETTINGS_UPDATED: "Изменены настройки жалоб чата",
+  GLOBAL_REPORT_SETTINGS_UPDATED: "Изменена глобальная политика жалоб",
   APPEAL_SUBMITTED: "Подана апелляция",
   APPEAL_APPROVED: "Апелляция одобрена",
   APPEAL_REJECTED: "Апелляция отклонена",
