@@ -75,6 +75,7 @@ const actionLabels: Record<string, string> = {
   LOG_CHANNEL_LINKED: "Подключён канал логов",
   LOG_CHANNEL_UNLINKED: "Отключён канал логов",
   LOG_CHANNEL_SETTINGS_UPDATED: "Изменены настройки канала логов",
+  CHAT_ROLE_UPDATED: "Изменены права роли чата",
   APPEAL_SUBMITTED: "Подана апелляция",
   APPEAL_APPROVED: "Апелляция одобрена",
   APPEAL_REJECTED: "Апелляция отклонена",
