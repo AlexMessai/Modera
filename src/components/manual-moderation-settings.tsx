@@ -236,7 +236,7 @@ export function ManualModerationSettings({
               <span className="manual-mod-group-label">{section.title}</span>
               {section.commands.map((commandInfo) => (
                 <label className="automod-field" key={commandInfo.key}>
-                  <span>{commandInfo.label} ({commandInfo.command})</span>
+                  <span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>{commandInfo.label}</span>
                   <textarea
                     rows={2}
                     value={visibleSettings[templateKey(commandInfo.key)]}
@@ -300,7 +300,8 @@ export function ManualModerationSettings({
             {section.commands.map((commandInfo) => (
               <SettingsRow
                 key={commandInfo.key}
-                title={`Удалять сообщение участника — ${commandInfo.label} (${commandInfo.command})`}
+                title={<span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>Удалять сообщение участника — {commandInfo.label}</span>}
+                ariaLabel={`Удалять сообщение участника — ${commandInfo.label} (${commandInfo.command})`}
                 description="Удалять исходное сообщение при применении наказания."
                 checked={visibleSettings[deleteTargetKey(commandInfo.key)]}
                 disabled={fieldsDisabled}

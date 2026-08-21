@@ -3,7 +3,9 @@
 import type { ReactNode } from "react";
 
 type SettingsRowProps = {
-  title: string;
+  title: ReactNode;
+  /** Plain-text label for the switch's aria-label, when `title` isn't a plain string (e.g. it includes a command chip). */
+  ariaLabel?: string;
   description?: ReactNode;
   checked: boolean;
   disabled?: boolean;
@@ -17,7 +19,7 @@ type SettingsRowProps = {
  * .settings-row in automod.css. Pair with ConditionalSettingsSection for the
  * dependent block a switch reveals.
  */
-export function SettingsRow({ title, description, checked, disabled, onChange }: SettingsRowProps) {
+export function SettingsRow({ title, ariaLabel, description, checked, disabled, onChange }: SettingsRowProps) {
   return (
     <div className="settings-row">
       <div className="settings-row-text">
@@ -28,7 +30,7 @@ export function SettingsRow({ title, description, checked, disabled, onChange }:
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={title}
+        aria-label={ariaLabel ?? (typeof title === "string" ? title : undefined)}
         disabled={disabled}
         className={`switch ${checked ? "switch--on" : ""}`}
         onClick={() => onChange(!checked)}
