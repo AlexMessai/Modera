@@ -11,6 +11,7 @@ import {
   ScrollText,
   ServerCog,
   ShieldCheck,
+  Terminal,
   UserRoundPlus,
   UsersRound
 } from "lucide-react";
@@ -25,6 +26,9 @@ const baseNavigation = [
   { href: "/messages", label: "Сообщения", icon: MessagesSquare },
   { href: "/moderation", label: "Модерация", icon: ShieldCheck }
 ];
+
+// Public reference page (no login) — opens outside the admin shell, so it's a plain external link rather than a routed nav-item.
+const commandsReferenceLink = { href: "/commands", label: "Команды", icon: Terminal };
 
 const roleLabels: Record<string, string> = {
   OWNER: "Владелец",
@@ -70,6 +74,9 @@ export function Sidebar({
               </Link>
             );
           })}
+          <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
+            <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
+          </a>
         </nav>
       </div>
       <div className="sidebar-account">
