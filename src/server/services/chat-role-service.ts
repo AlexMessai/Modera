@@ -119,11 +119,15 @@ export async function syncAutoChatRole(input: {
   });
   if (!role) return;
 
+  // Expressed as a positive OR (unset, or previously AUTO) rather than
+  // `{ not: "MANUAL" }` — Prisma/Postgres's `not` on a nullable column
+  // doesn't match NULL rows (SQL's NULL != 'MANUAL' is unknown, not true),
+  // so a fresh member who's never had a role assigned would otherwise never
+  // get one — caught by chat-role-service.test.ts.
   await prisma.chatMember.updateMany({
     where: {
       id: input.membershipId,
-      chatRoleAssignedBy: { not: "MANUAL" },
-      NOT: { chatRoleId: role.id }
+      OR: [{ chatRoleAssignedBy: null }, { chatRoleAssignedBy: "AUTO" }]
     },
     data: { chatRoleId: role.id, chatRoleAssignedBy: "AUTO" }
   });
