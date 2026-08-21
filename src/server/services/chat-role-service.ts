@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 
 /**
  * BOT_PRODUCT_SPEC_FINAL_UPDATED.md §34 — "Role = collection of permissions",
@@ -135,10 +136,7 @@ export async function syncAutoChatRole(input: {
 
 /**
  * Resolves a Telegram user's permission set in a chat purely from the
- * ChatRole assignment — no live Telegram call, no fallback. Not yet wired
- * into any bot-side authorization decision (see telegram-admin-service.ts's
- * isLiveTelegramChatAdmin, still the actual gate) — this is Phase 1's
- * additive half; the switch-over is a separate, later change.
+ * ChatRole assignment — no live Telegram call, no fallback.
  */
 export async function resolveChatPermissions(chatId: string, telegramUserId: number): Promise<Set<ChatPermission>> {
   const member = await prisma.chatMember.findFirst({
@@ -147,4 +145,43 @@ export async function resolveChatPermissions(chatId: string, telegramUserId: num
   });
   const permissions = member?.chatRole?.permissions ?? [];
   return new Set(permissions.filter(isChatPermission));
+}
+
+// Permissions any live Telegram chat admin already has today, independent
+// of role data — every command currently gated by isLiveTelegramChatAdmin
+// covers one of these. history.view/users.view are included alongside the
+// moderation.* actions because /warns (a read-only lookup) is gated the
+// same way the mutating commands are; not every ChatPermission gets this
+// fallback (settings.manage/roles.manage/automod.manage/logs.view are web-
+// panel-only today and stay role-only, no live-admin bypass).
+const LIVE_ADMIN_FALLBACK_PERMISSIONS = new Set<ChatPermission>([
+  ...ALL_MODERATION_PERMISSIONS,
+  "history.view",
+  "users.view"
+]);
+
+/**
+ * Phase 1b — the actual authorization decision for bot-side moderation
+ * commands, replacing a bare isLiveTelegramChatAdmin check.
+ *
+ * ChatRole can currently only GRANT a moderation permission beyond what
+ * live Telegram admin status already allows (e.g. a custom "Moderator" role
+ * for someone who isn't a Telegram admin at all) — it can't yet RESTRICT a
+ * live Telegram admin's native rights below that. Doing so safely would
+ * require this member's role to be guaranteed fresh at decision time (an
+ * extra live Telegram call per command to catch a very recent promotion/
+ * demotion), rather than relying on the periodic admin-list sync
+ * (BOT_CHAT_REFRESH_MS, ~5 min) — deferred until that's actually needed;
+ * flagged here rather than silently assumed away.
+ */
+export async function hasChatPermission(input: {
+  chatId: string;
+  chatTelegramId: number;
+  telegramUserId: number;
+  permission: ChatPermission;
+}): Promise<boolean> {
+  const rolePermissions = await resolveChatPermissions(input.chatId, input.telegramUserId);
+  if (rolePermissions.has(input.permission)) return true;
+  if (!LIVE_ADMIN_FALLBACK_PERMISSIONS.has(input.permission)) return false;
+  return isLiveTelegramChatAdmin(input.chatTelegramId, input.telegramUserId);
 }
