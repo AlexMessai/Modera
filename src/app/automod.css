@@ -30,7 +30,7 @@
 .automod-audit-list { margin-top: 14px; }
 
 .manual-mod-section { display: grid; gap: 10px; }
-.manual-mod-command-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; }
+.manual-mod-command-list { display: grid; gap: 10px; }
 .manual-mod-card { display: grid; gap: 9px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
 .manual-mod-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .manual-mod-command-chip { padding: 3px 9px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -48,7 +48,7 @@
 @media (max-width: 760px) {
   .chat-detail-header { align-items: stretch; flex-direction: column; }
   .chat-detail-status { justify-items: start; }
-  .automod-number-grid, .automod-media-grid, .manual-mod-toggle-grid, .manual-mod-command-list { grid-template-columns: 1fr; }
+  .automod-number-grid, .automod-media-grid, .manual-mod-toggle-grid { grid-template-columns: 1fr; }
   .automod-field--short { max-width: none; }
   .automod-actions .button { width: 100%; }
 }
