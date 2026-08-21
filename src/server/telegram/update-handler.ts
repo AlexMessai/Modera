@@ -225,7 +225,7 @@ async function applyModerationCommandToTarget(input: {
   // "silent" means the chat stays quiet, not that the admin is left guessing).
   const lines: ModerationOutcomeLine[] = [{
     text: renderManualModerationTemplate(input.settings[fields.template] as string, placeholders),
-    announceInChat: input.settings[fields.announceInChat]
+    announceInChat: Boolean(input.settings[fields.announceInChat])
   }];
 
   // The warning that crossed the threshold also triggered a punishment — say so
@@ -244,7 +244,7 @@ async function applyModerationCommandToTarget(input: {
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         }
       ),
-      announceInChat: input.settings[escalationFields.announceInChat]
+      announceInChat: Boolean(input.settings[escalationFields.announceInChat])
     });
   }
 
