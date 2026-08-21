@@ -68,6 +68,12 @@ enum AppealStatus {
   REJECTED
 }
 
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -107,6 +113,7 @@ model Chat {
   auditLogs                AuditLog[]
   appeals                  Appeal[]
   chatRoles                ChatRole[]
+  reports                  Report[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -155,6 +162,8 @@ model TelegramUser {
   moderationActions ModerationAction[] @relation("ModeratedUser")
   auditLogs         AuditLog[]         @relation("AffectedUser")
   appeals           Appeal[]
+  reportsFiled      Report[]           @relation("ReportReporter")
+  reportsReceived   Report[]           @relation("ReportReportedUser")
 
   @@index([username])
   @@index([lastSeenAt(sort: Desc)])
@@ -539,6 +548,33 @@ model Appeal {
   @@index([userId, createdAt(sort: Desc)])
 }
 
+// BOT_PRODUCT_SPEC §32: a member reply-reports another member's message;
+// moderators resolve it via a private Telegram card with action buttons
+// (see report-service.ts's buildReportCallbackData / resolveReport).
+model Report {
+  id                String       @id @default(uuid()) @db.Uuid
+  chatId            String       @db.Uuid
+  reporterUserId    String       @db.Uuid
+  reportedUserId    String       @db.Uuid
+  messageTelegramId BigInt?
+  reason            String?      @db.VarChar(500)
+  status            ReportStatus @default(PENDING)
+  // Set only when status = RESOLVED: "DELETE" | "WARN" | "MUTE" | "BAN".
+  resolutionAction  String?
+  resolvedByAdminId String?      @db.Uuid
+  resolvedAt        DateTime?    @db.Timestamptz(3)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
+  chat              Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  reporter          TelegramUser @relation("ReportReporter", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  reportedUser      TelegramUser @relation("ReportReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  resolvedByAdmin   AdminUser?   @relation("ReportResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([chatId, status, createdAt(sort: Desc)])
+  @@index([reportedUserId, createdAt(sort: Desc)])
+}
+
 model AdminUser {
   id                        String             @id @default(uuid()) @db.Uuid
   email                     String             @unique
@@ -559,6 +595,7 @@ model AdminUser {
   resolvedJoinRequests      JoinRequest[]       @relation("JoinRequestResolver")
   auditLogs                 AuditLog[]         @relation("ActingAdmin")
   resolvedAppeals           Appeal[]           @relation("AppealResolver")
+  resolvedReports           Report[]           @relation("ReportResolver")
 
   @@index([role, isActive])
 }

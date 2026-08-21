@@ -37,6 +37,7 @@ import {
   type ModerationActionValue
 } from "@/server/services/moderation-service";
 import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { parseModerationCommandArguments } from "@/server/telegram/command-parser";
@@ -599,6 +600,78 @@ async function processInfoCommand(input: {
   return true;
 }
 
+const REPORT_COMMAND_PATTERN = /^\/report(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+
+/**
+ * /report — BOT_PRODUCT_SPEC §32. Unlike the admin commands above, any regular
+ * member can run this (no permission gate) — it only queues a private card
+ * for moderators, it doesn't act on its own. Reply-only, matching the spec's
+ * documented syntax; there's no @username/ID form since a report is
+ * inherently about a specific message.
+ */
+async function processReportCommand(input: {
+  chatId: string;
+  chatTitle: string;
+  chatUsername: string | null;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  const match = REPORT_COMMAND_PATTERN.exec(text);
+  if (!match) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const target = input.message.reply_to_message?.from;
+  if (!target || !input.message.reply_to_message) {
+    await reply("Чтобы пожаловаться, ответьте (Reply) на сообщение участника командой /report и, по желанию, причиной.");
+    return true;
+  }
+  if (target.is_bot) {
+    await reply("Нельзя пожаловаться на бота.");
+    return true;
+  }
+
+  const result = await createReport({
+    chatId: input.chatId,
+    reporterTelegramUserId: from.id,
+    reportedTelegramUserId: target.id,
+    messageTelegramId: input.message.reply_to_message.message_id,
+    reason: (match[1] ?? "").trim() || null
+  });
+
+  if (result.outcome === "self_report") {
+    await reply("Нельзя пожаловаться на самого себя.");
+    return true;
+  }
+  if (result.outcome === "reporter_not_found" || result.outcome === "reported_user_not_found") {
+    await reply("Не удалось отправить жалобу — участник ещё не распознан ботом. Попробуйте ещё раз чуть позже.");
+    return true;
+  }
+
+  await notifyAdminsOfNewReport({
+    reportId: result.reportId,
+    chatId: input.chatId,
+    chatTitle: input.chatTitle,
+    chatTelegramId: BigInt(input.telegramChatId),
+    chatUsername: input.chatUsername,
+    reporterDisplayName: result.reporterDisplayName,
+    reportedDisplayName: result.reportedDisplayName,
+    reason: (match[1] ?? "").trim() || null,
+    messageTelegramId: input.message.reply_to_message.message_id
+  }).catch(() => undefined);
+
+  await reply("✅ Жалоба отправлена администраторам чата.");
+  return true;
+}
+
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
@@ -750,13 +823,11 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   return { accepted: true, ignored: false };
 }
 
-async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUpdate["callback_query"]>) {
+async function processAppealCallback(
+  callbackQuery: NonNullable<TelegramUpdate["callback_query"]>,
+  parsed: NonNullable<ReturnType<typeof parseAppealCallbackData>>
+) {
   const client = getTelegramClient();
-  const parsed = callbackQuery.data ? parseAppealCallbackData(callbackQuery.data) : null;
-  if (!parsed || !callbackQuery.message) {
-    return { accepted: true, ignored: true };
-  }
-
   const admin = await prisma.adminUser.findFirst({
     where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
   });
@@ -788,8 +859,8 @@ async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUp
 
     await client.editMessageText({
       chatId: callbackQuery.from.id,
-      messageId: callbackQuery.message.message_id,
-      text: `${callbackQuery.message.text ?? ""}\n\n— ${result.status === "APPROVED" ? "Одобрено" : "Отклонено"} (${admin.displayName})`
+      messageId: callbackQuery.message!.message_id,
+      text: `${callbackQuery.message!.text ?? ""}\n\n— ${result.status === "APPROVED" ? "Одобрено" : "Отклонено"} (${admin.displayName})`
     }).catch(() => undefined);
   } catch (error) {
     const message = error instanceof AppealError ? error.message : "Не удалось обработать апелляцию.";
@@ -797,6 +868,63 @@ async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUp
   }
 
   return { accepted: true, ignored: false };
+}
+
+const REPORT_ACTION_LABELS: Record<ReportCallbackAction, string> = {
+  DELETE: "🗑 Сообщение удалено",
+  WARN: "⚠️ Выдано предупреждение",
+  MUTE: "🔇 Участник ограничен",
+  BAN: "⛔ Участник заблокирован",
+  DISMISS: "❌ Жалоба отклонена"
+};
+
+async function processReportCallback(
+  callbackQuery: NonNullable<TelegramUpdate["callback_query"]>,
+  parsed: NonNullable<ReturnType<typeof parseReportCallbackData>>
+) {
+  const client = getTelegramClient();
+  const admin = await prisma.adminUser.findFirst({
+    where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
+  });
+  if (!admin || !canModerate(admin.role)) {
+    await client.answerCallbackQuery({
+      callbackQueryId: callbackQuery.id,
+      text: "У вас нет прав решать жалобы.",
+      showAlert: true
+    }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  try {
+    const result = await resolveReport({ reportId: parsed.reportId, actingAdminId: admin.id, action: parsed.action });
+    const label = REPORT_ACTION_LABELS[result.actionTaken ?? "DISMISS"];
+    await client.answerCallbackQuery({
+      callbackQueryId: callbackQuery.id,
+      text: `${label} (${admin.displayName})`
+    }).catch(() => undefined);
+    await client.editMessageText({
+      chatId: callbackQuery.from.id,
+      messageId: callbackQuery.message!.message_id,
+      text: `${callbackQuery.message!.text ?? ""}\n\n— ${label} (${admin.displayName})`
+    }).catch(() => undefined);
+  } catch (error) {
+    const message = error instanceof ReportError ? error.message : "Не удалось обработать жалобу.";
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: message, showAlert: true }).catch(() => undefined);
+  }
+
+  return { accepted: true, ignored: false };
+}
+
+async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUpdate["callback_query"]>) {
+  if (!callbackQuery.message || !callbackQuery.data) return { accepted: true, ignored: true };
+
+  const appeal = parseAppealCallbackData(callbackQuery.data);
+  if (appeal) return processAppealCallback(callbackQuery, appeal);
+
+  const report = parseReportCallbackData(callbackQuery.data);
+  if (report) return processReportCallback(callbackQuery, report);
+
+  return { accepted: true, ignored: true };
 }
 
 export async function processTelegramUpdate(update: TelegramUpdate) {
@@ -921,6 +1049,13 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             client
           })) || (await processInfoCommand({
             chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processReportCommand({
+            chatId: syncedChat.id,
+            chatTitle: syncedChat.title,
+            chatUsername: syncedChat.username,
             telegramChatId: chat.id,
             message: update.message,
             client
