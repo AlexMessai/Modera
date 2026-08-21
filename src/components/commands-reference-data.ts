@@ -1,8 +1,14 @@
+export type UsageVariant = {
+  /** Short caption distinguishing this variant from the others (e.g. "Reply" vs "Без Reply") — otherwise multiple usage lines read as separate commands rather than alternative ways to name the same one. */
+  label: string;
+  line: string;
+};
+
 export type CommandDoc = {
   key: string;
   command: string;
-  /** Copy-paste usage line(s) shown in the code block. */
-  usage: string[];
+  /** Copy-paste usage variant(s) shown in the code block — always alternative ways to run the *same* command (different ways to specify the target), never different commands. */
+  usage: UsageVariant[];
   description: string;
   /** Chat permission required to run it (see Роли в панели). */
   permission: string;
@@ -29,7 +35,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "warn",
         command: "/warn",
-        usage: ["/warn [причина]", "/warn (@username|ID) [причина]"],
+        usage: [
+          { label: "Reply на сообщение", line: "/warn [причина]" },
+          { label: "По @username или ID", line: "/warn (@username|ID) [причина]" }
+        ],
         description: "Выдаёт участнику предупреждение. Причина — необязательна, весь текст после команды (или после цели).",
         permission: "Выдавать предупреждения",
         tags: ["Reply", "@username / ID", "Причина"],
@@ -41,7 +50,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "unwarn",
         command: "/unwarn",
-        usage: ["/unwarn", "/unwarn (@username|ID)"],
+        usage: [
+          { label: "Reply на сообщение", line: "/unwarn" },
+          { label: "По @username или ID", line: "/unwarn (@username|ID)" }
+        ],
         description: "Снимает одно предупреждение с участника (самое старое активное).",
         permission: "Выдавать предупреждения",
         tags: ["Reply", "@username / ID"]
@@ -56,7 +68,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "mute",
         command: "/mute",
-        usage: ["/mute <срок> [причина]", "/mute (@username|ID) <срок> [причина]"],
+        usage: [
+          { label: "Reply на сообщение", line: "/mute <срок> [причина]" },
+          { label: "По @username или ID", line: "/mute (@username|ID) <срок> [причина]" }
+        ],
         description: "Ограничивает участника на указанный срок. Срок обязателен.",
         permission: "Ограничивать (mute)",
         tags: ["Reply", "@username / ID", "Срок обязателен", "Причина"],
@@ -68,7 +83,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "unmute",
         command: "/unmute",
-        usage: ["/unmute", "/unmute (@username|ID)"],
+        usage: [
+          { label: "Reply на сообщение", line: "/unmute" },
+          { label: "По @username или ID", line: "/unmute (@username|ID)" }
+        ],
         description: "Досрочно снимает mute с участника.",
         permission: "Ограничивать (mute)",
         tags: ["Reply", "@username / ID"]
@@ -83,7 +101,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "ban",
         command: "/ban",
-        usage: ["/ban [срок] [причина]", "/ban (@username|ID) [срок] [причина]"],
+        usage: [
+          { label: "Reply на сообщение", line: "/ban [срок] [причина]" },
+          { label: "По @username или ID", line: "/ban (@username|ID) [срок] [причина]" }
+        ],
         description: "Блокирует участника. Без срока — блокировка постоянная.",
         permission: "Блокировать (ban)",
         tags: ["Reply", "@username / ID", "Срок опционален", "Причина"],
@@ -94,7 +115,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "unban",
         command: "/unban",
-        usage: ["/unban", "/unban (@username|ID)"],
+        usage: [
+          { label: "Reply на сообщение", line: "/unban" },
+          { label: "По @username или ID", line: "/unban (@username|ID)" }
+        ],
         description: "Снимает блокировку — участник сможет вернуться в чат по новой ссылке-приглашению.",
         permission: "Блокировать (ban)",
         tags: ["Reply", "@username / ID"]
@@ -109,7 +133,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "kick",
         command: "/kick",
-        usage: ["/kick [причина]", "/kick (@username|ID) [причина]"],
+        usage: [
+          { label: "Reply на сообщение", line: "/kick [причина]" },
+          { label: "По @username или ID", line: "/kick (@username|ID) [причина]" }
+        ],
         description: "Исключает участника из чата — он может вернуться по ссылке-приглашению.",
         permission: "Исключать (kick)",
         tags: ["Reply", "@username / ID", "Причина"],
@@ -125,7 +152,10 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
       {
         key: "warns",
         command: "/warns",
-        usage: ["/warns", "/warns (@username|ID)"],
+        usage: [
+          { label: "Reply на сообщение", line: "/warns" },
+          { label: "По @username или ID", line: "/warns (@username|ID)" }
+        ],
         description: "Показывает число активных и всего выданных предупреждений участнику. Ответ виден только тому, кто запросил.",
         permission: "Просматривать историю",
         tags: ["Reply", "@username / ID", "Только для запросившего"]

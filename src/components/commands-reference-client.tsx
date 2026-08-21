@@ -82,12 +82,17 @@ export function CommandsReference({ categories }: { categories: CommandCategory[
                       </div>
                     </div>
                     <p className="cmd-description">{cmd.description}</p>
-                    {cmd.usage.map((line) => (
-                      <div className="cmd-usage" key={line}>
-                        <code>{line}</code>
-                        <CopyButton text={line} />
-                      </div>
-                    ))}
+                    <div className="cmd-usage-list">
+                      {cmd.usage.map((variant) => (
+                        <div className="cmd-usage" key={variant.line}>
+                          <div className="cmd-usage-line">
+                            <span className="cmd-usage-label">{variant.label}</span>
+                            <code>{variant.line}</code>
+                          </div>
+                          <CopyButton text={variant.line} />
+                        </div>
+                      ))}
+                    </div>
                     {cmd.notes?.map((note) => <p className="cmd-note" key={note}>{note}</p>)}
                     <div className="cmd-permission"><span>Нужные права</span><strong>{cmd.permission}</strong></div>
                   </article>
