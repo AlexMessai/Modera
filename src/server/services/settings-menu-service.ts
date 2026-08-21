@@ -2,6 +2,7 @@ import { getChatModerationProfile, updateChatModerationSettings } from "@/server
 import { LINK_PROTECTION_MODES, type LinkProtectionMode, type ModerationSettingsValue } from "@/server/services/global-moderation-service";
 import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsValue } from "@/server/services/captcha-settings-service";
 import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
+import { getChatManualModerationProfile, updateChatManualModerationProfile, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -63,6 +64,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
     text: `⚙️ Настройки чата «${chatTitle}»\n\nИзменения здесь применяются только к этому чату (не влияют на глобальную политику и другие чаты).`,
     keyboard: {
       inline_keyboard: [
+        [{ text: "⚖️ Модерация", callback_data: buildSettingsCallbackData(telegramChatId, "moderation") }],
         [{ text: "🛡 Автомодерация", callback_data: buildSettingsCallbackData(telegramChatId, "automod") }],
         [{ text: "🔐 Защита", callback_data: buildSettingsCallbackData(telegramChatId, "protection") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
@@ -206,9 +208,9 @@ function renderCaptchaDetail(settings: CaptchaSettingsValue, telegramChatId: num
 function renderAntiRaidDetail(settings: AntiRaidSettingsValue, telegramChatId: number) {
   const rows = [toggleRow(`Статус: ${settings.enabled ? "✅ включена" : "⬜ выключена"}`, "protection.antiraid.toggle", telegramChatId)];
   if (settings.enabled) {
-    rows.push(stepperRow("Порог, участников", settings.joinThreshold, "threshold", "protection.antiraid", telegramChatId, 5));
+    rows.push(stepperRow("Порог", settings.joinThreshold, "threshold", "protection.antiraid", telegramChatId, 5));
     rows.push(stepperRow("Окно, сек", settings.windowSeconds, "window", "protection.antiraid", telegramChatId, 5));
-    rows.push(stepperRow("Затишье, мин", settings.cooldownMinutes, "cooldown", "protection.antiraid", telegramChatId, 5));
+    rows.push(stepperRow("Затишье", settings.cooldownMinutes, "cooldown", "protection.antiraid", telegramChatId, 5));
     rows.push(toggleRow(`Капча во время рейда: ${settings.forceCaptcha ? "✅ вкл" : "⬜ выкл"}`, "protection.antiraid.forcecaptcha", telegramChatId));
   }
   rows.push(backRow("protection", telegramChatId));
@@ -216,6 +218,143 @@ function renderAntiRaidDetail(settings: AntiRaidSettingsValue, telegramChatId: n
     text: `🚨 Anti-Raid\n\nЕсли за «Окно» секунд в чат вступает «Порог» и больше новых участников — это считается рейдом: капча включается принудительно (если включена опция ниже), пока наплыв не стихнет. Снимается автоматически после «Затишье» минут без новых вступлений (проверяется раз в сутки — может занять до суток).`,
     keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
   };
+}
+
+function renderModerationMenu(telegramChatId: number) {
+  return {
+    text: "⚖️ Модерация\n\nВыберите раздел, чтобы посмотреть или изменить его.",
+    keyboard: {
+      inline_keyboard: [
+        [{ text: "⚠️ Предупреждения", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.warnings") }],
+        [{ text: "🔨 Наказания", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.punishments") }],
+        [{ text: "📣 Уведомления", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.notifications") }],
+        backRow("root", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+function renderWarningsDetail(settings: ModerationSettingsValue, telegramChatId: number) {
+  const expiryLabel = settings.warningExpiryDays === 0 ? "бессрочно" : `${settings.warningExpiryDays}`;
+  return {
+    text: `⚠️ Предупреждения\n\nЧерез сколько дней снятое по времени предупреждение перестаёт учитываться при подсчёте для наказаний. «0» — предупреждения не истекают.`,
+    keyboard: {
+      inline_keyboard: [
+        [
+          { text: "➖", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.warnings.expiry.-1") },
+          { text: `Дней: ${expiryLabel}`, callback_data: buildSettingsCallbackData(telegramChatId, "moderation.warnings") },
+          { text: "➕", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.warnings.expiry.+1") }
+        ],
+        backRow("moderation", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+function formatRuleDuration(minutes: number | null) {
+  if (minutes === null) return "бессрочно";
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)} дн.`;
+  if (minutes % 60 === 0) return `${minutes / 60} ч.`;
+  return `${minutes} мин.`;
+}
+
+function renderPunishmentsDetail(settings: ModerationSettingsValue, telegramChatId: number) {
+  const chain = [...settings.escalationRules]
+    .sort((a, b) => a.order - b.order)
+    .map((rule) => `${rule.thresholdWarnings} варн(ов) → ${rule.action === "MUTE" ? "mute" : "бан"} (${formatRuleDuration(rule.durationMinutes)})`)
+    .join("\n");
+  return {
+    text: `🔨 Наказания\n\nЦепочка наказаний за накопленные предупреждения (полный список правил редактируется в Web Admin):\n${chain || "не настроена"}`,
+    keyboard: {
+      inline_keyboard: [
+        toggleRow(`Автонаказания: ${settings.autoEscalationEnabled ? "✅ включены" : "⬜ выключены"}`, "moderation.punishments.auto.toggle", telegramChatId),
+        toggleRow(`Объявлять в чате: ${settings.announceEscalationEnabled ? "✅ вкл" : "⬜ выкл"}`, "moderation.punishments.announce.toggle", telegramChatId),
+        backRow("moderation", telegramChatId)
+      ]
+    } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+type AnnounceField = "warnAnnounceInChat" | "unwarnAnnounceInChat" | "muteAnnounceInChat" | "unmuteAnnounceInChat" | "banAnnounceInChat" | "unbanAnnounceInChat" | "kickAnnounceInChat";
+
+const NOTIFICATION_COMMANDS: Array<{ key: string; label: string; field: AnnounceField }> = [
+  { key: "warn", label: "/warn", field: "warnAnnounceInChat" },
+  { key: "unwarn", label: "/unwarn", field: "unwarnAnnounceInChat" },
+  { key: "mute", label: "/mute", field: "muteAnnounceInChat" },
+  { key: "unmute", label: "/unmute", field: "unmuteAnnounceInChat" },
+  { key: "ban", label: "/ban", field: "banAnnounceInChat" },
+  { key: "unban", label: "/unban", field: "unbanAnnounceInChat" },
+  { key: "kick", label: "/kick", field: "kickAnnounceInChat" }
+];
+
+function renderNotificationsDetail(settings: ManualModerationSettingsValue, telegramChatId: number) {
+  const rows = NOTIFICATION_COMMANDS.map((command) =>
+    toggleRow(`${command.label}: ${settings[command.field] ? "✅ объявляется в чате" : "⬜ только приватно"}`, `moderation.notifications.${command.key}.toggle`, telegramChatId)
+  );
+  rows.push(backRow("moderation", telegramChatId));
+  return {
+    text: `📣 Уведомления\n\nДля каждой команды: объявлять ли результат публично в чате, или только приватно тому, кто выполнил команду (сами тексты сообщений редактируются в Web Admin).`,
+    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+async function renderModerationSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  const { path } = input;
+
+  if (path === "moderation") {
+    return renderModerationMenu(input.telegramChatId);
+  }
+
+  if (path === "moderation.warnings" || path.startsWith("moderation.warnings.expiry.")) {
+    const profile = await getChatModerationProfile(input.chatId);
+    if (!profile) return null;
+    let settings = profile.effectiveSettings;
+
+    const stepperMatch = /^moderation\.warnings\.expiry\.([+-]\d+)$/.exec(path);
+    if (stepperMatch) {
+      const nextValue = Math.min(3650, Math.max(0, settings.warningExpiryDays + Number(stepperMatch[1])));
+      const merged: ModerationSettingsValue = { ...settings, warningExpiryDays: nextValue };
+      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, ...merged });
+      settings = saved ?? merged;
+    }
+    return renderWarningsDetail(settings, input.telegramChatId);
+  }
+
+  if (path === "moderation.punishments" || path === "moderation.punishments.auto.toggle" || path === "moderation.punishments.announce.toggle") {
+    const profile = await getChatModerationProfile(input.chatId);
+    if (!profile) return null;
+    let settings = profile.effectiveSettings;
+
+    let patch: Partial<ModerationSettingsValue> | null = null;
+    if (path === "moderation.punishments.auto.toggle") patch = { autoEscalationEnabled: !settings.autoEscalationEnabled };
+    if (path === "moderation.punishments.announce.toggle") patch = { announceEscalationEnabled: !settings.announceEscalationEnabled };
+
+    if (patch) {
+      const merged: ModerationSettingsValue = { ...settings, ...patch };
+      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, ...merged });
+      settings = saved ?? merged;
+    }
+    return renderPunishmentsDetail(settings, input.telegramChatId);
+  }
+
+  if (path === "moderation.notifications" || path.startsWith("moderation.notifications.")) {
+    const profile = await getChatManualModerationProfile(input.chatId);
+    if (!profile) return null;
+    let settings = profile.effectiveSettings;
+
+    const toggleMatch = /^moderation\.notifications\.(\w+)\.toggle$/.exec(path);
+    if (toggleMatch) {
+      const command = NOTIFICATION_COMMANDS.find((item) => item.key === toggleMatch[1]);
+      if (command) {
+        const merged: ManualModerationSettingsValue = { ...settings, [command.field]: !settings[command.field] };
+        const saved = await updateChatManualModerationProfile({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, settings: merged });
+        settings = saved ?? merged;
+      }
+    }
+    return renderNotificationsDetail(settings, input.telegramChatId);
+  }
+
+  return null;
 }
 
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
@@ -380,6 +519,9 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "protection" || input.path.startsWith("protection.")) {
     return (await renderProtectionSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
+  if (input.path === "moderation" || input.path.startsWith("moderation.")) {
+    return (await renderModerationSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
 
   return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
