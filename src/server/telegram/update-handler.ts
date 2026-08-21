@@ -4,6 +4,7 @@ import { consumeLinkCode } from "@/server/services/admin-link-service";
 import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
 import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
+import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
@@ -957,6 +958,8 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       isNewMemberJoin(update.chat_member) &&
       syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE
     ) {
+      const joinedAt = new Date(update.chat_member.date * 1000);
+      await evaluateRaidOnJoin({ chatId: syncedChat.id, at: joinedAt }).catch(() => undefined);
       await maybeIssueCaptchaChallenge({
         chatId: syncedChat.id,
         chatType: chat.type,

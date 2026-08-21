@@ -100,6 +100,8 @@ model Chat {
   joinRequests             JoinRequest[]
   moderationSettings       ChatModerationSettings?
   captchaSettings          ChatCaptchaSettings?
+  antiRaidSettings         ChatAntiRaidSettings?
+  raidIncidents            RaidIncident[]
   manualModerationSettings ChatManualModerationSettings?
   moderationActions        ModerationAction[]
   auditLogs                AuditLog[]
@@ -376,6 +378,51 @@ model GlobalCaptchaSettings {
   challengeMessageTemplate String   @default("Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).") @db.VarChar(1000)
   createdAt                DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model ChatAntiRaidSettings {
+  id               String   @id @default(uuid()) @db.Uuid
+  chatId           String   @unique @db.Uuid
+  useGlobalProfile Boolean  @default(true)
+  enabled          Boolean  @default(false)
+  joinThreshold    Int      @default(30)
+  windowSeconds    Int      @default(20)
+  // How long without a new join before an active raid is considered over —
+  // resolved by the same daily cron that sweeps captcha timeouts/mute
+  // expiry (no more-frequent cron on the free Vercel plan, see docs/STAGE_2.md).
+  cooldownMinutes  Int      @default(15)
+  forceCaptcha     Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+  chat             Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model GlobalAntiRaidSettings {
+  id              String   @id @default("global")
+  enabled         Boolean  @default(false)
+  joinThreshold   Int      @default(30)
+  windowSeconds   Int      @default(20)
+  cooldownMinutes Int      @default(15)
+  forceCaptcha    Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// One row per detected raid, from first crossing the join threshold until
+// resolved (see anti-raid-service.ts). lastJoinAt drives resolution: the
+// daily cron closes any ACTIVE incident whose lastJoinAt is older than its
+// chat's cooldownMinutes.
+model RaidIncident {
+  id            String    @id @default(uuid()) @db.Uuid
+  chatId        String    @db.Uuid
+  status        String    @default("ACTIVE")
+  startedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  lastJoinAt    DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedAt    DateTime? @db.Timestamptz(3)
+  peakJoinCount Int       @default(0)
+  chat          Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, status])
 }
 
 model ChatManualModerationSettings {

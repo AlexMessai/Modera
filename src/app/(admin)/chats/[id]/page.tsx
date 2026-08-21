@@ -4,12 +4,14 @@ import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
+import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { ChatStatistics } from "@/components/chat-statistics-client";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
+import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -45,10 +47,11 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
+    getChatAntiRaidProfile(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -83,6 +86,13 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Ручная модерация</h2><p>Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в этом чате.</p></div></div>
           <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} initialUseGlobalProfile={manualModerationProfile.policy.useGlobalProfile} globalSettings={manualModerationProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
+        </section>
+      ) : null}
+
+      {antiRaidProfile ? (
+        <section className="panel profile-section">
+          <div className="panel-header"><div><h2>Anti-Raid</h2><p>Защита от массового вступления: усиливает капчу, пока наплыв новых участников не прекратится.</p></div></div>
+          <AntiRaidSettings chatId={antiRaidProfile.chat.id} initial={antiRaidProfile.settings} initialUseGlobalProfile={antiRaidProfile.policy.useGlobalProfile} globalSettings={antiRaidProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 

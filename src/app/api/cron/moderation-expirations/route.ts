@@ -1,3 +1,4 @@
+import { processStaleRaidIncidents } from "@/server/services/anti-raid-service";
 import { processExpiredCaptchaChallenges } from "@/server/services/captcha-service";
 import { processExpiredPunishments } from "@/server/services/punishment-expiration-service";
 
@@ -14,9 +15,10 @@ export async function GET(request: Request) {
   if (!isAuthorized(request)) {
     return Response.json({ error: { code: "UNAUTHORIZED", message: "Недействительный ключ задания." } }, { status: 401 });
   }
-  const [mutes, captcha] = await Promise.all([
+  const [mutes, captcha, raids] = await Promise.all([
     processExpiredPunishments(),
-    processExpiredCaptchaChallenges()
+    processExpiredCaptchaChallenges(),
+    processStaleRaidIncidents()
   ]);
-  return Response.json({ data: { mutes, captcha } });
+  return Response.json({ data: { mutes, captcha, raids } });
 }
