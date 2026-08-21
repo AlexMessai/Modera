@@ -13,28 +13,21 @@ const settingsSchema = z.object({
   useGlobalProfile: z.boolean(),
   warnMessageTemplate: z.string().min(1).max(1000),
   warnDeleteTargetMessage: z.boolean(),
-  warnAnnounceInChat: z.boolean(),
   warnEphemeralMessageTemplate: z.string().min(1).max(1000),
   unwarnMessageTemplate: z.string().min(1).max(1000),
   unwarnDeleteTargetMessage: z.boolean(),
-  unwarnAnnounceInChat: z.boolean(),
   muteMessageTemplate: z.string().min(1).max(1000),
   muteDeleteTargetMessage: z.boolean(),
-  muteAnnounceInChat: z.boolean(),
   muteEphemeralMessageTemplate: z.string().min(1).max(1000),
   unmuteMessageTemplate: z.string().min(1).max(1000),
   unmuteDeleteTargetMessage: z.boolean(),
-  unmuteAnnounceInChat: z.boolean(),
   banMessageTemplate: z.string().min(1).max(1000),
   banDeleteTargetMessage: z.boolean(),
-  banAnnounceInChat: z.boolean(),
   banEphemeralMessageTemplate: z.string().min(1).max(1000),
   unbanMessageTemplate: z.string().min(1).max(1000),
   unbanDeleteTargetMessage: z.boolean(),
-  unbanAnnounceInChat: z.boolean(),
   kickMessageTemplate: z.string().min(1).max(1000),
-  kickDeleteTargetMessage: z.boolean(),
-  kickAnnounceInChat: z.boolean()
+  kickDeleteTargetMessage: z.boolean()
 });
 
 export async function GET(

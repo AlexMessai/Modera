@@ -5,28 +5,34 @@ export const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
   warnDeleteTargetMessage: boolean;
-  warnAnnounceInChat: boolean;
   warnEphemeralMessageTemplate: string;
   unwarnMessageTemplate: string;
   unwarnDeleteTargetMessage: boolean;
-  unwarnAnnounceInChat: boolean;
   muteMessageTemplate: string;
   muteDeleteTargetMessage: boolean;
-  muteAnnounceInChat: boolean;
   muteEphemeralMessageTemplate: string;
   unmuteMessageTemplate: string;
   unmuteDeleteTargetMessage: boolean;
-  unmuteAnnounceInChat: boolean;
   banMessageTemplate: string;
   banDeleteTargetMessage: boolean;
-  banAnnounceInChat: boolean;
   banEphemeralMessageTemplate: string;
   unbanMessageTemplate: string;
   unbanDeleteTargetMessage: boolean;
-  unbanAnnounceInChat: boolean;
   kickMessageTemplate: string;
   kickDeleteTargetMessage: boolean;
-  kickAnnounceInChat: boolean;
+};
+
+// Single source of truth, global only -- no per-chat or per-command override.
+// publicPunishmentMessagesEnabled gates the group-chat announcement for every
+// manual punishment command; privatePunishmentMessagesEnabled gates the
+// ephemeral in-chat notice and DM sent to the punished member (independent of
+// the public one); proactiveDmNotificationsEnabled gates bot-initiated DMs
+// that aren't a direct reply to a command the user just sent (e.g. the
+// appeal-decision notice).
+export type ManualModerationVisibilitySettingsValue = {
+  publicPunishmentMessagesEnabled: boolean;
+  privatePunishmentMessagesEnabled: boolean;
+  proactiveDmNotificationsEnabled: boolean;
 };
 
 // The *EphemeralMessageTemplate fields back the punishment ephemeral notice
@@ -38,28 +44,27 @@ export type ManualModerationSettingsValue = {
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
   warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
   warnDeleteTargetMessage: false,
-  warnAnnounceInChat: true,
   warnEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
   unwarnDeleteTargetMessage: false,
-  unwarnAnnounceInChat: true,
   muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
   muteDeleteTargetMessage: false,
-  muteAnnounceInChat: true,
   muteEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: временное ограничение (mute). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unmuteMessageTemplate: "🔊 С %target% снят mute.",
   unmuteDeleteTargetMessage: false,
-  unmuteAnnounceInChat: true,
   banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
   banDeleteTargetMessage: false,
-  banAnnounceInChat: true,
   banEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
   unbanDeleteTargetMessage: false,
-  unbanAnnounceInChat: true,
   kickMessageTemplate: "👢 %target% исключён(а) из чата. %reason%",
-  kickDeleteTargetMessage: false,
-  kickAnnounceInChat: true
+  kickDeleteTargetMessage: false
+};
+
+export const DEFAULT_MANUAL_MODERATION_VISIBILITY: ManualModerationVisibilitySettingsValue = {
+  publicPunishmentMessagesEnabled: true,
+  privatePunishmentMessagesEnabled: true,
+  proactiveDmNotificationsEnabled: true
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -73,28 +78,29 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
   return {
     warnMessageTemplate: normalizeTemplate(input.warnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnMessageTemplate),
     warnDeleteTargetMessage: Boolean(input.warnDeleteTargetMessage),
-    warnAnnounceInChat: Boolean(input.warnAnnounceInChat),
     warnEphemeralMessageTemplate: normalizeTemplate(input.warnEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.warnEphemeralMessageTemplate),
     unwarnMessageTemplate: normalizeTemplate(input.unwarnMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unwarnMessageTemplate),
     unwarnDeleteTargetMessage: Boolean(input.unwarnDeleteTargetMessage),
-    unwarnAnnounceInChat: Boolean(input.unwarnAnnounceInChat),
     muteMessageTemplate: normalizeTemplate(input.muteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteMessageTemplate),
     muteDeleteTargetMessage: Boolean(input.muteDeleteTargetMessage),
-    muteAnnounceInChat: Boolean(input.muteAnnounceInChat),
     muteEphemeralMessageTemplate: normalizeTemplate(input.muteEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.muteEphemeralMessageTemplate),
     unmuteMessageTemplate: normalizeTemplate(input.unmuteMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unmuteMessageTemplate),
     unmuteDeleteTargetMessage: Boolean(input.unmuteDeleteTargetMessage),
-    unmuteAnnounceInChat: Boolean(input.unmuteAnnounceInChat),
     banMessageTemplate: normalizeTemplate(input.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate),
     banDeleteTargetMessage: Boolean(input.banDeleteTargetMessage),
-    banAnnounceInChat: Boolean(input.banAnnounceInChat),
     banEphemeralMessageTemplate: normalizeTemplate(input.banEphemeralMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banEphemeralMessageTemplate),
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
     unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage),
-    unbanAnnounceInChat: Boolean(input.unbanAnnounceInChat),
     kickMessageTemplate: normalizeTemplate(input.kickMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.kickMessageTemplate),
-    kickDeleteTargetMessage: Boolean(input.kickDeleteTargetMessage),
-    kickAnnounceInChat: Boolean(input.kickAnnounceInChat)
+    kickDeleteTargetMessage: Boolean(input.kickDeleteTargetMessage)
+  };
+}
+
+export function normalizeManualModerationVisibility(input: ManualModerationVisibilitySettingsValue): ManualModerationVisibilitySettingsValue {
+  return {
+    publicPunishmentMessagesEnabled: Boolean(input.publicPunishmentMessagesEnabled),
+    privatePunishmentMessagesEnabled: Boolean(input.privatePunishmentMessagesEnabled),
+    proactiveDmNotificationsEnabled: Boolean(input.proactiveDmNotificationsEnabled)
   };
 }
 
@@ -102,28 +108,29 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
   return {
     warnMessageTemplate: settings.warnMessageTemplate,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
-    warnAnnounceInChat: settings.warnAnnounceInChat,
     warnEphemeralMessageTemplate: settings.warnEphemeralMessageTemplate,
     unwarnMessageTemplate: settings.unwarnMessageTemplate,
     unwarnDeleteTargetMessage: settings.unwarnDeleteTargetMessage,
-    unwarnAnnounceInChat: settings.unwarnAnnounceInChat,
     muteMessageTemplate: settings.muteMessageTemplate,
     muteDeleteTargetMessage: settings.muteDeleteTargetMessage,
-    muteAnnounceInChat: settings.muteAnnounceInChat,
     muteEphemeralMessageTemplate: settings.muteEphemeralMessageTemplate,
     unmuteMessageTemplate: settings.unmuteMessageTemplate,
     unmuteDeleteTargetMessage: settings.unmuteDeleteTargetMessage,
-    unmuteAnnounceInChat: settings.unmuteAnnounceInChat,
     banMessageTemplate: settings.banMessageTemplate,
     banDeleteTargetMessage: settings.banDeleteTargetMessage,
-    banAnnounceInChat: settings.banAnnounceInChat,
     banEphemeralMessageTemplate: settings.banEphemeralMessageTemplate,
     unbanMessageTemplate: settings.unbanMessageTemplate,
     unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage,
-    unbanAnnounceInChat: settings.unbanAnnounceInChat,
     kickMessageTemplate: settings.kickMessageTemplate,
-    kickDeleteTargetMessage: settings.kickDeleteTargetMessage,
-    kickAnnounceInChat: settings.kickAnnounceInChat
+    kickDeleteTargetMessage: settings.kickDeleteTargetMessage
+  };
+}
+
+function serializeManualModerationVisibility(settings: ManualModerationVisibilitySettingsValue): ManualModerationVisibilitySettingsValue {
+  return {
+    publicPunishmentMessagesEnabled: settings.publicPunishmentMessagesEnabled,
+    privatePunishmentMessagesEnabled: settings.privatePunishmentMessagesEnabled,
+    proactiveDmNotificationsEnabled: settings.proactiveDmNotificationsEnabled
   };
 }
 
@@ -133,32 +140,51 @@ export async function getGlobalManualModerationProfile() {
   });
   return {
     persisted: Boolean(stored),
-    settings: serializeManualModerationSettings(stored ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
+    settings: serializeManualModerationSettings(stored ?? DEFAULT_MANUAL_MODERATION_SETTINGS),
+    visibility: serializeManualModerationVisibility(stored ?? DEFAULT_MANUAL_MODERATION_VISIBILITY)
   };
+}
+
+/** Global-only visibility flags, fetched without the (unused) templates -- for callers that only need the on/off state (update-handler.ts, appeal-notification-service.ts). */
+export async function getManualModerationVisibility(): Promise<ManualModerationVisibilitySettingsValue> {
+  const stored = await prisma.globalManualModerationSettings.findUnique({
+    where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
+    select: {
+      publicPunishmentMessagesEnabled: true,
+      privatePunishmentMessagesEnabled: true,
+      proactiveDmNotificationsEnabled: true
+    }
+  });
+  return serializeManualModerationVisibility(stored ?? DEFAULT_MANUAL_MODERATION_VISIBILITY);
 }
 
 export async function updateGlobalManualModerationProfile(input: {
   actingAdminId: string;
   settings: ManualModerationSettingsValue;
+  visibility: ManualModerationVisibilitySettingsValue;
 }) {
   const normalized = normalizeManualModerationSettings(input.settings);
+  const normalizedVisibility = normalizeManualModerationVisibility(input.visibility);
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.globalManualModerationSettings.upsert({
       where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
-      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...normalized },
-      update: normalized
+      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...normalized, ...normalizedVisibility },
+      update: { ...normalized, ...normalizedVisibility }
     });
     await tx.auditLog.create({
       data: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "GLOBAL_MANUAL_MODERATION_SETTINGS_UPDATED",
-        metadata: serializeManualModerationSettings(settings)
+        metadata: { ...serializeManualModerationSettings(settings), ...serializeManualModerationVisibility(settings) }
       }
     });
     return settings;
   });
-  return serializeManualModerationSettings(saved);
+  return {
+    ...serializeManualModerationSettings(saved),
+    ...serializeManualModerationVisibility(saved)
+  };
 }
 
 export async function getChatManualModerationProfile(chatId: string) {
@@ -171,7 +197,7 @@ export async function getChatManualModerationProfile(chatId: string) {
 
   const globalProfile = await getGlobalManualModerationProfile();
   const local = chat.manualModerationSettings;
-  // A chat that never made a choice follows the global profile — otherwise
+  // A chat that never made a choice follows the global profile -- otherwise
   // globally configured templates would silently apply to no chat at all.
   const useGlobalProfile = local?.useGlobalProfile ?? true;
   const effective = useGlobalProfile
@@ -193,7 +219,11 @@ export async function getChatManualModerationProfile(chatId: string) {
     },
     settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS),
     effectiveSettings: serializeManualModerationSettings(effective),
-    globalSettings: serializeManualModerationSettings(globalProfile.settings)
+    globalSettings: serializeManualModerationSettings(globalProfile.settings),
+    // Visibility is global-only (no per-chat override) -- exposed here so the
+    // chat-scope editor can show/hide template fields consistently with the
+    // Web Admin "Модерация" global settings.
+    globalVisibility: globalProfile.visibility
   };
 }
 

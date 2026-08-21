@@ -1,5 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
+import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -82,6 +82,12 @@ export async function notifyPunishmentAppealOption(input: {
   actionType: "WARNING" | "MUTE" | "BAN";
   reason: string | null;
 }) {
+  // Private punishment notices (ephemeral in-chat notice + this DM) are
+  // gated by their own global toggle, independent of the public group-chat
+  // announcement — see manual-moderation-settings-service.ts.
+  const { privatePunishmentMessagesEnabled } = await getManualModerationVisibility();
+  if (!privatePunishmentMessagesEnabled) return { delivered: false as const };
+
   const label = ACTION_LABELS[input.actionType] ?? input.actionType;
   const text = `В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЕсли вы не согласны, ответьте на это сообщение (Reply) командой /appeal и опишите причину одним сообщением, например:\n/appeal я не отправлял это сообщение`;
 
@@ -205,6 +211,13 @@ export async function notifyAppealDecision(input: {
   decision: "APPROVED" | "REJECTED";
   comment: string | null;
 }) {
+  // A bot-initiated DM that isn't a direct reply to a command the user just
+  // sent in that DM (the appeal was decided by an admin, possibly minutes or
+  // hours later) — gated by the proactive-DM toggle, independent of the
+  // punishment-message toggles above.
+  const { proactiveDmNotificationsEnabled } = await getManualModerationVisibility();
+  if (!proactiveDmNotificationsEnabled) return { delivered: false as const };
+
   const text = input.decision === "APPROVED"
     ? `Ваша апелляция по чату «${input.chatTitle}» одобрена, наказание отменено.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`
     : `Ваша апелляция по чату «${input.chatTitle}» отклонена.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`;

@@ -5,7 +5,7 @@ import { ShieldCheck, X } from "lucide-react";
 import { ModuleCard } from "@/components/module-card";
 import { ChatModerationSettings, type ModerationSettingsValue } from "@/components/chat-moderation-settings";
 import { CaptchaSettings, type CaptchaSettingsValue } from "@/components/captcha-settings";
-import { ManualModerationSettings, type ManualModerationSettingsValue } from "@/components/manual-moderation-settings";
+import { ManualModerationSettings, type ManualModerationSettingsValue, type ManualModerationVisibilitySettingsValue } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings, type AntiRaidSettingsValue } from "@/components/anti-raid-settings";
 import { ReportSettings, type ReportSettingsValue } from "@/components/report-settings";
 import { ContentSettings, type ContentSettingsValue } from "@/components/content-settings";
@@ -14,6 +14,7 @@ type Props = {
   automodInitial: ModerationSettingsValue;
   captchaInitial: CaptchaSettingsValue;
   manualModerationInitial: ManualModerationSettingsValue;
+  manualModerationVisibilityInitial: ManualModerationVisibilitySettingsValue;
   antiRaidInitial: AntiRaidSettingsValue;
   reportInitial: ReportSettingsValue;
   contentInitial: ContentSettingsValue;
@@ -36,10 +37,11 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
   ].filter(Boolean).length;
 }
 
-export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, antiRaidInitial, reportInitial, contentInitial, canEdit }: Props) {
+export function ModerationWorkspace({ automodInitial, captchaInitial, manualModerationInitial, manualModerationVisibilityInitial, antiRaidInitial, reportInitial, contentInitial, canEdit }: Props) {
   const [automod, setAutomod] = useState(automodInitial);
   const [captcha, setCaptcha] = useState(captchaInitial);
   const [manualModeration, setManualModeration] = useState(manualModerationInitial);
+  const [manualModerationVisibility, setManualModerationVisibility] = useState(manualModerationVisibilityInitial);
   const [antiRaid, setAntiRaid] = useState(antiRaidInitial);
   const [reportSettings, setReportSettings] = useState(reportInitial);
   const [content, setContent] = useState(contentInitial);
@@ -143,7 +145,16 @@ export function ModerationWorkspace({ automodInitial, captchaInitial, manualMode
             <div className="module-settings-dialog-body">
               {openModal === "automod" ? <ChatModerationSettings scope="global" initial={automod} canEdit={canEdit} onSaved={setAutomod} /> : null}
               {openModal === "captcha" ? <CaptchaSettings scope="global" initial={captcha} canEdit={canEdit} onSaved={setCaptcha} /> : null}
-              {openModal === "manual" ? <ManualModerationSettings scope="global" initial={manualModeration} canEdit={canEdit} onSaved={setManualModeration} /> : null}
+              {openModal === "manual" ? (
+                <ManualModerationSettings
+                  scope="global"
+                  initial={manualModeration}
+                  visibility={manualModerationVisibility}
+                  canEdit={canEdit}
+                  onSaved={setManualModeration}
+                  onVisibilitySaved={setManualModerationVisibility}
+                />
+              ) : null}
               {openModal === "antiRaid" ? <AntiRaidSettings scope="global" initial={antiRaid} canEdit={canEdit} onSaved={setAntiRaid} /> : null}
               {openModal === "reports" ? <ReportSettings scope="global" initial={reportSettings} canEdit={canEdit} onSaved={setReportSettings} /> : null}
               {openModal === "content" ? <ContentSettings scope="global" initial={content} canEdit={canEdit} onSaved={setContent} /> : null}

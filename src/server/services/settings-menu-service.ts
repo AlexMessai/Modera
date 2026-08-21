@@ -2,7 +2,6 @@ import { getChatModerationProfile, updateChatModerationSettings } from "@/server
 import { LINK_PROTECTION_MODES, type LinkProtectionMode, type ModerationSettingsValue } from "@/server/services/global-moderation-service";
 import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsValue } from "@/server/services/captcha-settings-service";
 import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
-import { getChatManualModerationProfile, updateChatManualModerationProfile, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValue } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, updateChatLogChannelSettings, type LogChannelSettingsValue } from "@/server/services/log-channel-service";
 import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type ChatPermission, type ChatRoleSummary } from "@/server/services/chat-role-service";
@@ -239,7 +238,6 @@ function renderModerationMenu(telegramChatId: number) {
       inline_keyboard: [
         [{ text: "⚠️ Предупреждения", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.warnings") }],
         [{ text: "🔨 Наказания", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.punishments") }],
-        [{ text: "📣 Уведомления", callback_data: buildSettingsCallbackData(telegramChatId, "moderation.notifications") }],
         backRow("root", telegramChatId)
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -287,29 +285,6 @@ function renderPunishmentsDetail(settings: ModerationSettingsValue, telegramChat
   };
 }
 
-type AnnounceField = "warnAnnounceInChat" | "unwarnAnnounceInChat" | "muteAnnounceInChat" | "unmuteAnnounceInChat" | "banAnnounceInChat" | "unbanAnnounceInChat" | "kickAnnounceInChat";
-
-const NOTIFICATION_COMMANDS: Array<{ key: string; label: string; field: AnnounceField }> = [
-  { key: "warn", label: "/warn", field: "warnAnnounceInChat" },
-  { key: "unwarn", label: "/unwarn", field: "unwarnAnnounceInChat" },
-  { key: "mute", label: "/mute", field: "muteAnnounceInChat" },
-  { key: "unmute", label: "/unmute", field: "unmuteAnnounceInChat" },
-  { key: "ban", label: "/ban", field: "banAnnounceInChat" },
-  { key: "unban", label: "/unban", field: "unbanAnnounceInChat" },
-  { key: "kick", label: "/kick", field: "kickAnnounceInChat" }
-];
-
-function renderNotificationsDetail(settings: ManualModerationSettingsValue, telegramChatId: number) {
-  const rows = NOTIFICATION_COMMANDS.map((command) =>
-    toggleRow(`${command.label}: ${settings[command.field] ? "✅ объявляется в чате" : "⬜ только приватно"}`, `moderation.notifications.${command.key}.toggle`, telegramChatId)
-  );
-  rows.push(backRow("moderation", telegramChatId));
-  return {
-    text: `📣 Уведомления\n\nДля каждой команды: объявлять ли результат публично в чате, или только приватно тому, кто выполнил команду (сами тексты сообщений редактируются в Web Admin).`,
-    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
-  };
-}
-
 async function renderModerationSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
   const { path } = input;
 
@@ -347,23 +322,6 @@ async function renderModerationSection(input: { chatId: string; chatTitle: strin
       settings = saved ?? merged;
     }
     return renderPunishmentsDetail(settings, input.telegramChatId);
-  }
-
-  if (path === "moderation.notifications" || path.startsWith("moderation.notifications.")) {
-    const profile = await getChatManualModerationProfile(input.chatId);
-    if (!profile) return null;
-    let settings = profile.effectiveSettings;
-
-    const toggleMatch = /^moderation\.notifications\.(\w+)\.toggle$/.exec(path);
-    if (toggleMatch) {
-      const command = NOTIFICATION_COMMANDS.find((item) => item.key === toggleMatch[1]);
-      if (command) {
-        const merged: ManualModerationSettingsValue = { ...settings, [command.field]: !settings[command.field] };
-        const saved = await updateChatManualModerationProfile({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, settings: merged });
-        settings = saved ?? merged;
-      }
-    }
-    return renderNotificationsDetail(settings, input.telegramChatId);
   }
 
   return null;

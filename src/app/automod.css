@@ -51,9 +51,31 @@
 .manual-mod-command-chip { padding: 3px 9px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .manual-mod-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .manual-mod-card-description { margin: 0; color: var(--muted); font-size: 12px; }
-.manual-mod-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+.manual-mod-group-label { display: block; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .02em; margin: 10px 0 2px; }
+.manual-mod-group-label:first-child { margin-top: 0; }
 .chat-cell-link { border-radius: 7px; }
 .chat-cell-link:hover strong { color: var(--accent); }
+
+/* Reusable settings-row pattern: label + description left, switch flush
+   right — every switch in a section lines up on the same right edge because
+   the row is always full width with space-between (see settings-row.tsx). */
+.settings-section { display: grid; gap: 2px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
+.settings-section-title { display: block; font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; margin: 10px 0 2px; }
+.settings-section-title:first-child { margin-top: 0; }
+
+.settings-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.settings-row:last-child { border-bottom: none; }
+.settings-row-text { display: grid; gap: 3px; }
+.settings-row-text strong { font-size: 13px; }
+.settings-row-text small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+.switch { flex: 0 0 auto; position: relative; width: 38px; height: 22px; margin-top: 1px; padding: 0; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-2); cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.switch:disabled { cursor: not-allowed; opacity: .55; }
+.switch-thumb { position: absolute; top: 1px; left: 1px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s ease; }
+.switch--on { background: var(--accent); border-color: var(--accent); }
+.switch--on .switch-thumb { transform: translateX(16px); }
+
+.conditional-settings-section { display: grid; gap: 12px; margin: 2px 0 6px 12px; padding: 12px 14px; border-left: 2px solid var(--line-strong); }
 
 @media (max-width: 900px) {
   .automod-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -63,7 +85,7 @@
 @media (max-width: 760px) {
   .chat-detail-header { align-items: stretch; flex-direction: column; }
   .chat-detail-status { justify-items: start; }
-  .automod-number-grid, .automod-media-grid, .manual-mod-toggle-grid, .role-permission-grid { grid-template-columns: 1fr; }
+  .automod-number-grid, .automod-media-grid, .role-permission-grid { grid-template-columns: 1fr; }
   .automod-field--short { max-width: none; }
   .automod-actions .button { width: 100%; }
 }
