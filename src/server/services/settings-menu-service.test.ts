@@ -126,3 +126,77 @@ test("renderSettingsMenu: link protection mode picker sets the mode and stays on
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: protection menu, CAPTCHA toggle persists to the chat's own profile", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const menu = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "protection"
+    });
+    assert.ok(menu?.text.includes("Защита"));
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("CAPTCHA"))));
+
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "protection.captcha.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включена"))));
+
+    const stored = await prisma.chatCaptchaSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.enabled, true);
+    assert.equal(stored?.useGlobalProfile, false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("renderSettingsMenu: Anti-Raid toggle and stepper persist to the chat's own profile", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const toggled = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "protection.antiraid.toggle"
+    });
+    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Порог"))));
+
+    const incremented = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "protection.antiraid.threshold.+5"
+    });
+    assert.ok(incremented?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Порог, участников: 35"))));
+
+    const stored = await prisma.chatAntiRaidSettings.findUnique({ where: { chatId: chat.id } });
+    assert.equal(stored?.enabled, true);
+    assert.equal(stored?.joinThreshold, 35);
+    assert.equal(stored?.useGlobalProfile, false);
+  } finally {
+    await cleanup();
+  }
+});
