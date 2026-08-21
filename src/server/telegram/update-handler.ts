@@ -38,6 +38,7 @@ import {
 } from "@/server/services/moderation-service";
 import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
+import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import { parseModerationCommandArguments } from "@/server/telegram/command-parser";
@@ -672,6 +673,73 @@ async function processReportCommand(input: {
   return true;
 }
 
+const SETTINGS_COMMAND_PATTERN = /^\/settings(?:@\w+)?\s*$/i;
+
+/**
+ * /settings — BOT_PRODUCT_SPEC §45 (Phase 8, v1: only the Automod section is
+ * wired so far; more sections land as follow-ups on top of
+ * settings-menu-service.ts's callback-driven navigation). Requires a linked
+ * AdminUser (same /link flow appeals/reports already rely on) rather than
+ * just live Telegram admin status -- settings changes need a real
+ * actingAdminId for the audit trail, the same requirement
+ * chat-moderation-settings-service.ts already has for the Web Admin path.
+ */
+async function processSettingsCommand(input: {
+  chatId: string;
+  chatTitle: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+  if (!SETTINGS_COMMAND_PATTERN.test(text)) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "automod.manage"
+  });
+  if (!allowed) {
+    await reply("❌ У вас нет прав изменять настройки этого чата.");
+    return true;
+  }
+
+  const admin = await prisma.adminUser.findFirst({ where: { telegramUserId: BigInt(from.id), isActive: true } });
+  if (!admin) {
+    await reply("Чтобы открыть настройки, привяжите Telegram к аккаунту администратора: напишите мне в личные сообщения /link <код> (код выдаётся в панели, Система → Аккаунты), затем повторите /settings.");
+    return true;
+  }
+
+  const view = await renderSettingsMenu({
+    chatId: input.chatId,
+    chatTitle: input.chatTitle,
+    telegramChatId: input.telegramChatId,
+    actingAdminId: admin.id,
+    path: "root"
+  });
+  if (!view) {
+    await reply("Не удалось открыть настройки этого чата.");
+    return true;
+  }
+
+  try {
+    await input.client.sendMessage({ chatId: from.id, text: view.text, replyMarkup: view.keyboard ?? undefined });
+    await reply("📬 Отправил настройки вам в личные сообщения.");
+  } catch {
+    await reply("Не удалось отправить настройки в личные сообщения — откройте диалог со мной (нажмите на моё имя → Start), затем повторите /settings.");
+  }
+
+  return true;
+}
+
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
@@ -915,6 +983,64 @@ async function processReportCallback(
   return { accepted: true, ignored: false };
 }
 
+async function processSettingsCallback(
+  callbackQuery: NonNullable<TelegramUpdate["callback_query"]>,
+  parsed: NonNullable<ReturnType<typeof parseSettingsCallbackData>>
+) {
+  const client = getTelegramClient();
+  const admin = await prisma.adminUser.findFirst({
+    where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
+  });
+  if (!admin) {
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: "Сессия недействительна.", showAlert: true }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  const chat = await prisma.chat.findUnique({
+    where: { telegramChatId: BigInt(parsed.telegramChatId) },
+    select: { id: true, title: true }
+  });
+  if (!chat) {
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: "Чат не найден.", showAlert: true }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  // Re-checked on every tap, not just at /settings time -- admin rights can
+  // change between opening the menu and pressing a button minutes later.
+  const allowed = await hasChatPermission({
+    chatId: chat.id,
+    chatTelegramId: parsed.telegramChatId,
+    telegramUserId: callbackQuery.from.id,
+    permission: "automod.manage"
+  });
+  if (!allowed) {
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: "У вас нет прав изменять настройки этого чата.", showAlert: true }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  const view = await renderSettingsMenu({
+    chatId: chat.id,
+    chatTitle: chat.title,
+    telegramChatId: parsed.telegramChatId,
+    actingAdminId: admin.id,
+    path: parsed.path
+  });
+  if (!view) {
+    await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: "Не удалось загрузить настройки.", showAlert: true }).catch(() => undefined);
+    return { accepted: true, ignored: false };
+  }
+
+  await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id }).catch(() => undefined);
+  await client.editMessageText({
+    chatId: callbackQuery.from.id,
+    messageId: callbackQuery.message!.message_id,
+    text: view.text,
+    replyMarkup: view.keyboard ?? undefined
+  }).catch(() => undefined);
+
+  return { accepted: true, ignored: false };
+}
+
 async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUpdate["callback_query"]>) {
   if (!callbackQuery.message || !callbackQuery.data) return { accepted: true, ignored: true };
 
@@ -923,6 +1049,9 @@ async function processPrivateCallbackQuery(callbackQuery: NonNullable<TelegramUp
 
   const report = parseReportCallbackData(callbackQuery.data);
   if (report) return processReportCallback(callbackQuery, report);
+
+  const settings = parseSettingsCallbackData(callbackQuery.data);
+  if (settings) return processSettingsCallback(callbackQuery, settings);
 
   return { accepted: true, ignored: true };
 }
@@ -1056,6 +1185,12 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             chatId: syncedChat.id,
             chatTitle: syncedChat.title,
             chatUsername: syncedChat.username,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processSettingsCommand({
+            chatId: syncedChat.id,
+            chatTitle: syncedChat.title,
             telegramChatId: chat.id,
             message: update.message,
             client

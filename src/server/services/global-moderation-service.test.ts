@@ -159,6 +159,15 @@ test("a chat with no ChatModerationSettings row at all follows the global profil
     assert.equal(resolved.settings.spamEnabled, true);
     assert.equal(resolved.settings.spamWindowSeconds, 12);
   } finally {
+    // GlobalModerationSettings is a shared singleton row -- other test files
+    // running in the same suite read the real default (spamEnabled: false)
+    // when nothing else has touched it, so leaving it enabled here would
+    // silently break any later test that assumes an untouched chat is quiet.
+    await prisma.globalModerationSettings.upsert({
+      where: { id: GLOBAL_MODERATION_PROFILE_ID },
+      create: { id: GLOBAL_MODERATION_PROFILE_ID },
+      update: { spamEnabled: false, spamWindowSeconds: 10, spamMaxMessages: 5 }
+    });
     await prisma.chat.delete({ where: { id: chat.id } });
   }
 });
