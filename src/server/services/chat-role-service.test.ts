@@ -5,8 +5,10 @@ import {
   DEFAULT_ROLE_DEFINITIONS,
   ensureDefaultRolesForChat,
   hasChatPermission,
+  listChatRoles,
   resolveChatPermissions,
-  syncAutoChatRole
+  syncAutoChatRole,
+  updateChatRolePermissions
 } from "./chat-role-service";
 
 async function fixtureChat(suffix: number) {
@@ -169,5 +171,61 @@ test("hasChatPermission with no role data falls back to a live check for moderat
     );
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
+  }
+});
+
+test("listChatRoles seeds and returns the 5 defaults in a fixed order; nonexistent chat returns empty", async () => {
+  const chat = await fixtureChat(6);
+  try {
+    const roles = await listChatRoles(chat.id);
+    assert.deepEqual(roles.map((role) => role.key), ["owner", "admin", "moderator", "trusted", "member"]);
+    assert.deepEqual([...roles[0].permissions].sort(), [...DEFAULT_ROLE_DEFINITIONS.owner.permissions].sort());
+
+    assert.deepEqual(await listChatRoles("00000000-0000-4000-8000-000000000000"), []);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+  }
+});
+
+test("updateChatRolePermissions persists a new permission set and is idempotent to duplicates, rejects a foreign role id", async () => {
+  const chat = await fixtureChat(7);
+  const other = await fixtureChat(8);
+  const admin = await prisma.adminUser.create({
+    data: { email: "chat-role-service-ci@example.com", displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  try {
+    const roles = await listChatRoles(chat.id);
+    const moderator = roles.find((role) => role.key === "moderator");
+    assert.ok(moderator);
+
+    const saved = await updateChatRolePermissions({
+      chatId: chat.id,
+      roleId: moderator.id,
+      actingAdminId: admin.id,
+      permissions: ["automod.manage", "automod.manage", "logs.view"]
+    });
+    assert.deepEqual([...(saved?.permissions ?? [])].sort(), ["automod.manage", "logs.view"]);
+
+    const reloaded = await listChatRoles(chat.id);
+    assert.deepEqual([...(reloaded.find((role) => role.key === "moderator")?.permissions ?? [])].sort(), ["automod.manage", "logs.view"]);
+
+    const log = await prisma.auditLog.findFirst({ where: { chatId: chat.id, action: "CHAT_ROLE_UPDATED" } });
+    assert.ok(log);
+
+    // A role id that belongs to a different chat must not be updatable via this chatId.
+    const otherRoles = await listChatRoles(other.id);
+    const otherModerator = otherRoles.find((role) => role.key === "moderator");
+    assert.ok(otherModerator);
+    const rejected = await updateChatRolePermissions({
+      chatId: chat.id,
+      roleId: otherModerator.id,
+      actingAdminId: admin.id,
+      permissions: ["roles.manage"]
+    });
+    assert.equal(rejected, null);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.chat.delete({ where: { id: other.id } });
+    await prisma.adminUser.delete({ where: { id: admin.id } });
   }
 });

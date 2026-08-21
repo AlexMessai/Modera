@@ -26,6 +26,20 @@ export function isChatPermission(value: string): value is ChatPermission {
   return (CHAT_PERMISSIONS as readonly string[]).includes(value);
 }
 
+export const CHAT_PERMISSION_LABELS: Record<ChatPermission, string> = {
+  "moderation.warn": "Выдавать предупреждения",
+  "moderation.mute": "Ограничивать (mute)",
+  "moderation.ban": "Блокировать (ban)",
+  "moderation.kick": "Исключать (kick)",
+  "moderation.delete": "Удалять сообщения",
+  "users.view": "Просматривать участников",
+  "history.view": "Просматривать историю",
+  "automod.manage": "Управлять автомодерацией",
+  "settings.manage": "Управлять настройками чата",
+  "roles.manage": "Управлять ролями",
+  "logs.view": "Просматривать журнал"
+};
+
 export type DefaultRoleKey = "owner" | "admin" | "moderator" | "trusted" | "member";
 
 const ALL_MODERATION_PERMISSIONS: ChatPermission[] = [
@@ -62,7 +76,7 @@ export const DEFAULT_ROLE_DEFINITIONS: Record<DefaultRoleKey, { label: string; p
   member: { label: "Участник", permissions: [] }
 };
 
-const DEFAULT_ROLE_KEYS = Object.keys(DEFAULT_ROLE_DEFINITIONS) as DefaultRoleKey[];
+export const DEFAULT_ROLE_KEYS = Object.keys(DEFAULT_ROLE_DEFINITIONS) as DefaultRoleKey[];
 
 /** Idempotent — safe to call on every membership sync; only writes when a default role row is actually missing. */
 export async function ensureDefaultRolesForChat(chatId: string) {
@@ -84,6 +98,82 @@ export async function ensureDefaultRolesForChat(chatId: string) {
     })),
     skipDuplicates: true
   });
+}
+
+export type ChatRoleSummary = {
+  id: string;
+  key: string;
+  label: string;
+  isCustom: boolean;
+  permissions: ChatPermission[];
+};
+
+const DEFAULT_ROLE_ORDER = new Map<string, number>(DEFAULT_ROLE_KEYS.map((key, index) => [key, index]));
+
+/** Ensures the 5 defaults exist, then returns every role for this chat (defaults first, in a fixed order; any future custom roles after). */
+export async function listChatRoles(chatId: string): Promise<ChatRoleSummary[]> {
+  // Guards against a bogus/nonexistent chatId, e.g. a page.tsx caller that
+  // hasn't yet checked its own profile lookup -- ensureDefaultRolesForChat's
+  // createMany would otherwise throw on the FK constraint instead of just
+  // returning nothing.
+  const chat = await prisma.chat.findUnique({ where: { id: chatId }, select: { id: true } });
+  if (!chat) return [];
+
+  await ensureDefaultRolesForChat(chatId);
+  const roles = await prisma.chatRole.findMany({ where: { chatId } });
+  return roles
+    .map((role) => ({
+      id: role.id,
+      key: role.key,
+      label: role.label,
+      isCustom: role.isCustom,
+      permissions: role.permissions.filter(isChatPermission)
+    }))
+    .sort((a, b) => (DEFAULT_ROLE_ORDER.get(a.key) ?? 99) - (DEFAULT_ROLE_ORDER.get(b.key) ?? 99));
+}
+
+/**
+ * Phase 9: the first write path for ChatRole.permissions since Phase 1 seeded
+ * it read-only. Not permission-gated by ChatPermission itself (that would be
+ * circular for the role editing its own "roles.manage") -- callers gate via
+ * the same admin-role/chat-permission check used for every other settings
+ * surface (canManageChatSettings for Web Admin, "automod.manage" for
+ * /settings, matching precedent).
+ */
+export async function updateChatRolePermissions(input: {
+  chatId: string;
+  roleId: string;
+  actingAdminId: string;
+  permissions: ChatPermission[];
+}): Promise<ChatRoleSummary | null> {
+  const role = await prisma.chatRole.findUnique({ where: { id: input.roleId } });
+  if (!role || role.chatId !== input.chatId) return null;
+
+  const permissions = Array.from(new Set(input.permissions.filter(isChatPermission)));
+  const saved = await prisma.$transaction(async (tx) => {
+    const updated = await tx.chatRole.update({
+      where: { id: input.roleId },
+      data: { permissions }
+    });
+    await tx.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        actingAdminId: input.actingAdminId,
+        source: "ADMIN",
+        action: "CHAT_ROLE_UPDATED",
+        metadata: { roleKey: role.key, roleLabel: role.label, permissions }
+      }
+    });
+    return updated;
+  });
+
+  return {
+    id: saved.id,
+    key: saved.key,
+    label: saved.label,
+    isCustom: saved.isCustom,
+    permissions: saved.permissions.filter(isChatPermission)
+  };
 }
 
 function autoRoleKeyForMember(status: string, isTrusted: boolean): DefaultRoleKey {
