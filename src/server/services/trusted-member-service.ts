@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { syncAutoChatRole } from "@/server/services/chat-role-service";
 
 export const TRUSTED_INTERNAL_ROLE = "TRUSTED";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -77,6 +78,13 @@ export async function setTrustedMember(input: {
 
     return updated;
   });
+
+  await syncAutoChatRole({
+    chatId: membership.chatId,
+    membershipId: membership.id,
+    status: membership.status,
+    isTrusted: result.internalRole === TRUSTED_INTERNAL_ROLE
+  }).catch(() => undefined);
 
   return {
     changed: true,
