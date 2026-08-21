@@ -28,6 +28,7 @@ export interface ParsedModerationCommandArguments {
 const USERNAME_TOKEN_PATTERN = /^@([a-zA-Z0-9_]{3,32})$/;
 const TELEGRAM_ID_TOKEN_PATTERN = /^\d{6,}$/;
 const DURATION_TOKEN_PATTERN = /^(\d+)(m|min|h|d)?$/i;
+const DURATION_TOKEN_WITH_UNIT_PATTERN = /^\d+(m|min|h|d)$/i;
 
 const MINUTES_PER_UNIT: Record<string, number> = {
   m: 1,
@@ -48,7 +49,15 @@ export function parseDurationToken(token: string): number | null {
 
 export function parseModerationCommandArguments(
   argsText: string,
-  options: { allowDuration: boolean }
+  options: {
+    allowDuration: boolean;
+    // MUTE keeps its long-standing "bare number = minutes" syntax (no prior
+    // duration existed to preserve for BAN), so BAN requires an explicit
+    // unit (30m/3h/7d) instead — otherwise a reason that happens to start
+    // with a digit (e.g. "/ban 5 нарушений подряд") would be misread as a
+    // duration.
+    requireDurationUnit?: boolean;
+  }
 ): ParsedModerationCommandArguments {
   const tokens = argsText.trim().split(/\s+/).filter(Boolean);
 
@@ -72,7 +81,9 @@ export function parseModerationCommandArguments(
 
   let durationMinutes: number | null = null;
   if (options.allowDuration && cursor < tokens.length) {
-    const parsed = parseDurationToken(tokens[cursor]);
+    const token = tokens[cursor];
+    const eligible = !options.requireDurationUnit || DURATION_TOKEN_WITH_UNIT_PATTERN.test(token);
+    const parsed = eligible ? parseDurationToken(token) : null;
     if (parsed !== null) {
       durationMinutes = parsed;
       cursor += 1;

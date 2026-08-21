@@ -75,6 +75,37 @@ export async function describeWarningStanding(input: { chatId: string; affectedU
   return { activeWarningCount, warnsLimit: resolved.settings.muteAfterWarnings };
 }
 
+/** Backs `/warns` — active-count + a short recent history for one member in one chat. */
+export async function listWarningsForMember(input: { chatId: string; telegramUserId: number }) {
+  const member = await prisma.chatMember.findFirst({
+    where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
+    select: { userId: true, warningCount: true }
+  });
+  if (!member) return null;
+
+  const resolved = await resolveEffectiveModerationSettings(input.chatId);
+  const [activeWarningCount, recent] = await Promise.all([
+    countActiveWarnings({
+      chatId: input.chatId,
+      affectedUserId: member.userId,
+      warningExpiryDays: resolved.settings.warningExpiryDays
+    }),
+    prisma.moderationAction.findMany({
+      where: { chatId: input.chatId, affectedUserId: member.userId, type: "WARNING" },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { reason: true, createdAt: true, source: true }
+    })
+  ]);
+
+  return {
+    activeWarningCount,
+    warnsLimit: resolved.settings.muteAfterWarnings,
+    totalWarningCount: member.warningCount,
+    recent
+  };
+}
+
 export async function countActiveWarnings(input: {
   chatId: string;
   affectedUserId: string;
