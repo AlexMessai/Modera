@@ -20,7 +20,7 @@ const AUTOMOD_RULE_COUNT = 7;
 
 function countAutomodRulesOn(settings: ModerationSettingsValue) {
   return [
-    settings.blockLinks,
+    settings.linkProtectionMode !== "ALLOW_ALL",
     settings.spamEnabled,
     settings.blockedTermsEnabled,
     settings.massMentionsEnabled,

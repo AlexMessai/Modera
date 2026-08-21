@@ -80,14 +80,14 @@ test("chat moderation stays local by default and inherits global rules only afte
       where: { id: GLOBAL_MODERATION_PROFILE_ID },
       create: {
         id: GLOBAL_MODERATION_PROFILE_ID,
-        blockLinks: true,
+        linkProtectionMode: "WHITELIST_ONLY",
         allowedDomains: ["example.com"],
         spamEnabled: true,
         spamWindowSeconds: 15,
         spamMaxMessages: 4
       },
       update: {
-        blockLinks: true,
+        linkProtectionMode: "WHITELIST_ONLY",
         allowedDomains: ["example.com"],
         spamEnabled: true,
         spamWindowSeconds: 15,
@@ -98,7 +98,7 @@ test("chat moderation stays local by default and inherits global rules only afte
     await prisma.chatModerationSettings.create({
       data: {
         chatId: chat.id,
-        blockLinks: false,
+        linkProtectionMode: "ALLOW_ALL",
         spamEnabled: false,
         useGlobalProfile: false
       }
@@ -107,7 +107,7 @@ test("chat moderation stays local by default and inherits global rules only afte
     const local = await resolveEffectiveModerationSettings(chat.id);
     assert.equal(local.source, "CHAT");
     assert.equal(local.useGlobalProfile, false);
-    assert.equal(local.settings.blockLinks, false);
+    assert.equal(local.settings.linkProtectionMode, "ALLOW_ALL");
     assert.equal(local.settings.spamEnabled, false);
 
     await prisma.chatModerationSettings.update({
@@ -118,7 +118,7 @@ test("chat moderation stays local by default and inherits global rules only afte
     const inherited = await resolveEffectiveModerationSettings(chat.id);
     assert.equal(inherited.source, "GLOBAL");
     assert.equal(inherited.useGlobalProfile, true);
-    assert.equal(inherited.settings.blockLinks, true);
+    assert.equal(inherited.settings.linkProtectionMode, "WHITELIST_ONLY");
     assert.equal(inherited.settings.allowedDomains[0], "example.com");
     assert.equal(inherited.settings.spamWindowSeconds, 15);
     assert.equal(inherited.settings.spamMaxMessages, 4);
@@ -126,7 +126,7 @@ test("chat moderation stays local by default and inherits global rules only afte
     const localStored = await prisma.chatModerationSettings.findUniqueOrThrow({
       where: { chatId: chat.id }
     });
-    assert.equal(localStored.blockLinks, false);
+    assert.equal(localStored.linkProtectionMode, "ALLOW_ALL");
     assert.equal(localStored.spamEnabled, false);
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });

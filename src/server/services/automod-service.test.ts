@@ -5,6 +5,7 @@ import type { TelegramMessage } from "@/server/telegram/types";
 import {
   countMentions,
   extractLinkDomains,
+  filterBlockedDomains,
   findBlockedTerms,
   isDomainAllowed,
   isDuplicateViolation,
@@ -47,6 +48,28 @@ test("domain allowlist includes subdomains but not lookalike domains", () => {
   assert.equal(isDomainAllowed("example.com", allowed), true);
   assert.equal(isDomainAllowed("badexample.com", allowed), false);
   assert.equal(isDomainAllowed("example.net", allowed), false);
+});
+
+test("filterBlockedDomains implements all four Link Protection modes", () => {
+  const domains = ["spam.example", "trusted.example"];
+  const allowedDomains = normalizeAllowedDomains(["trusted.example"]);
+  const blockedDomains = normalizeAllowedDomains(["spam.example"]);
+
+  assert.deepEqual(filterBlockedDomains({ mode: "ALLOW_ALL", domains, allowedDomains, blockedDomains }), []);
+  assert.deepEqual(filterBlockedDomains({ mode: "BLOCK_ALL", domains, allowedDomains, blockedDomains }), domains);
+  assert.deepEqual(
+    filterBlockedDomains({ mode: "WHITELIST_ONLY", domains, allowedDomains, blockedDomains }),
+    ["spam.example"]
+  );
+  assert.deepEqual(
+    filterBlockedDomains({ mode: "BLACKLIST_ONLY", domains, allowedDomains, blockedDomains }),
+    ["spam.example"]
+  );
+  // Blacklist mode with no matching entry lets everything through.
+  assert.deepEqual(
+    filterBlockedDomains({ mode: "BLACKLIST_ONLY", domains: ["neither.example"], allowedDomains, blockedDomains }),
+    []
+  );
 });
 
 test("blocked term matching is case insensitive and respects word boundaries", () => {

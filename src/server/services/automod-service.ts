@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
-import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
+import { resolveEffectiveModerationSettings, type LinkProtectionMode } from "@/server/services/global-moderation-service";
 import {
   getTelegramClient,
   TelegramApiError
@@ -93,6 +93,25 @@ export function isDomainAllowed(domain: string, allowedDomains: string[]) {
   return allowedDomains.some(
     (allowed) => normalized === allowed || normalized.endsWith(`.${allowed}`)
   );
+}
+
+/** Which of a message's domains should be treated as violations under the given Link Protection mode (spec §22). */
+export function filterBlockedDomains(input: {
+  mode: LinkProtectionMode;
+  domains: string[];
+  allowedDomains: string[];
+  blockedDomains: string[];
+}): string[] {
+  switch (input.mode) {
+    case "ALLOW_ALL":
+      return [];
+    case "BLOCK_ALL":
+      return input.domains;
+    case "WHITELIST_ONLY":
+      return input.domains.filter((domain) => !isDomainAllowed(domain, input.allowedDomains));
+    case "BLACKLIST_ONLY":
+      return input.domains.filter((domain) => isDomainAllowed(domain, input.blockedDomains));
+  }
 }
 
 function entityValue(text: string, entity: TelegramMessageEntity) {
@@ -368,7 +387,7 @@ export async function processAutomodMessage(input: {
   const resolvedPolicy = await resolveEffectiveModerationSettings(input.chatId);
   const settings = resolvedPolicy.settings;
   const rulesEnabled = Boolean(
-    settings.blockLinks ||
+    settings.linkProtectionMode !== "ALLOW_ALL" ||
       settings.spamEnabled ||
       settings.blockedTermsEnabled ||
       settings.massMentionsEnabled ||
@@ -398,11 +417,13 @@ export async function processAutomodMessage(input: {
     }
   }
 
-  const allowedDomains = normalizeAllowedDomains(settings.allowedDomains);
-  const domains = settings.blockLinks ? extractLinkDomains(input.message) : [];
-  const blockedDomains = domains.filter(
-    (domain) => !isDomainAllowed(domain, allowedDomains)
-  );
+  const domains = settings.linkProtectionMode !== "ALLOW_ALL" ? extractLinkDomains(input.message) : [];
+  const blockedDomains = filterBlockedDomains({
+    mode: settings.linkProtectionMode,
+    domains,
+    allowedDomains: normalizeAllowedDomains(settings.allowedDomains),
+    blockedDomains: normalizeAllowedDomains(settings.blockedDomains)
+  });
   const blockedTerms = settings.blockedTermsEnabled
     ? findBlockedTerms(input.message, settings.blockedTerms)
     : [];
