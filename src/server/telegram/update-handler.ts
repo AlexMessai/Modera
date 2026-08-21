@@ -40,7 +40,7 @@ import {
   ModerationError,
   type ModerationActionValue
 } from "@/server/services/moderation-service";
-import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
 import { completePendingLogChannelLink } from "@/server/services/log-channel-service";
@@ -145,15 +145,14 @@ type GroupModerationCommand = ModerationActionValue | "UNWARN";
 const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
   template: keyof ManualModerationSettingsValue;
   deleteTarget: keyof ManualModerationSettingsValue;
-  announceInChat: keyof ManualModerationSettingsValue;
 }> = {
-  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage", announceInChat: "warnAnnounceInChat" },
-  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage", announceInChat: "unwarnAnnounceInChat" },
-  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage", announceInChat: "muteAnnounceInChat" },
-  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage", announceInChat: "unmuteAnnounceInChat" },
-  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage", announceInChat: "banAnnounceInChat" },
-  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage", announceInChat: "unbanAnnounceInChat" },
-  KICK: { template: "kickMessageTemplate", deleteTarget: "kickDeleteTargetMessage", announceInChat: "kickAnnounceInChat" }
+  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage" },
+  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage" },
+  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage" },
+  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage" },
+  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage" },
+  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage" },
+  KICK: { template: "kickMessageTemplate", deleteTarget: "kickDeleteTargetMessage" }
 };
 
 const CHAT_PERMISSION_BY_ACTION: Record<GroupModerationCommand, ChatPermission> = {
@@ -179,8 +178,7 @@ function formatMinutes(minutes: number) {
   return `${minutes} мин.`;
 }
 
-/** One rendered outcome line — `announceInChat` says whether it also belongs in the public chat message, not just the admin's private summary. */
-type ModerationOutcomeLine = { text: string; announceInChat: boolean };
+type ModerationOutcomeLine = { text: string };
 
 /** Runs the moderation action against a single already-resolved target; used in a loop for multi-target commands. */
 async function applyModerationCommandToTarget(input: {
@@ -245,14 +243,11 @@ async function applyModerationCommandToTarget(input: {
   // chat announcements are switched off (silent moderation is the default;
   // "silent" means the chat stays quiet, not that the admin is left guessing).
   const lines: ModerationOutcomeLine[] = [{
-    text: renderManualModerationTemplate(input.settings[fields.template] as string, placeholders),
-    announceInChat: Boolean(input.settings[fields.announceInChat])
+    text: renderManualModerationTemplate(input.settings[fields.template] as string, placeholders)
   }];
 
   // The warning that crossed the threshold also triggered a punishment — say so
   // in the same summary rather than leaving the admin to guess why the mute landed.
-  // Visibility follows the escalated action's own toggle (mute/ban), not warn's --
-  // they're different actions and can be configured to show independently in chat.
   if (escalation?.escalated && escalation.action) {
     const escalationFields = TEMPLATE_FIELDS_BY_ACTION[escalation.action];
     lines.push({
@@ -264,8 +259,7 @@ async function applyModerationCommandToTarget(input: {
           reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         }
-      ),
-      announceInChat: Boolean(input.settings[escalationFields.announceInChat])
+      )
     });
   }
 
@@ -299,7 +293,7 @@ async function processGroupModerationCommand(input: {
   // (below) are for whoever ran the command, not the rest of the chat — sent
   // ephemeral (Bot API 10.2, visible only to `from`) rather than as a normal
   // chat message. Only the separately-sent public announcement (also below,
-  // gated by the *AnnounceInChat setting) is meant for the whole chat.
+  // gated by the global public-punishment-messages toggle) is meant for the whole chat.
   const privateReply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
@@ -359,10 +353,13 @@ async function processGroupModerationCommand(input: {
     await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
   }
 
-  // publicLines only holds lines whose *AnnounceInChat setting is on —
-  // adminSummaryLines holds every outcome regardless, so the admin who ran
-  // the command always gets private confirmation that it went through, even
-  // when the chat itself stays silent (the default).
+  // Single global source of truth for whether punishment notices go out to
+  // the chat at all — no per-command or per-chat override (see
+  // manual-moderation-settings-service.ts). adminSummaryLines holds every
+  // outcome regardless, so the admin who ran the command always gets private
+  // confirmation that it went through, even when the chat itself stays
+  // silent (the default).
+  const visibility = await getManualModerationVisibility();
   const publicLines: string[] = [];
   const adminSummaryLines: string[] = [];
   for (const target of targets) {
@@ -379,7 +376,7 @@ async function processGroupModerationCommand(input: {
       for (const outcome of outcomes) {
         const line = targets.length > 1 ? `${target.displayName}: ${outcome.text}` : outcome.text;
         adminSummaryLines.push(line);
-        if (outcome.announceInChat) publicLines.push(line);
+        if (visibility.publicPunishmentMessagesEnabled) publicLines.push(line);
       }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";

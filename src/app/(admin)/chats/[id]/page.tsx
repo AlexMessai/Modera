@@ -105,7 +105,7 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
       {manualModerationProfile ? (
         <section className="panel profile-section">
           <div className="panel-header"><div><h2>Ручная модерация</h2><p>Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в этом чате.</p></div></div>
-          <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} initialUseGlobalProfile={manualModerationProfile.policy.useGlobalProfile} globalSettings={manualModerationProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
+          <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} initialUseGlobalProfile={manualModerationProfile.policy.useGlobalProfile} globalSettings={manualModerationProfile.globalSettings} visibility={manualModerationProfile.globalVisibility} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
 

@@ -44,6 +44,7 @@ export default async function ModerationPage() {
         automodInitial={data.globalProfile.settings}
         captchaInitial={captchaProfile.settings}
         manualModerationInitial={manualModerationProfile.settings}
+        manualModerationVisibilityInitial={manualModerationProfile.visibility}
         antiRaidInitial={antiRaidProfile.settings}
         reportInitial={reportProfile.settings}
         contentInitial={contentProfile.settings}

@@ -3,6 +3,7 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
   DEFAULT_MANUAL_MODERATION_SETTINGS,
+  DEFAULT_MANUAL_MODERATION_VISIBILITY,
   normalizeManualModerationSettings,
   renderManualModerationTemplate,
   resolveEffectiveManualModerationSettings,
@@ -89,7 +90,8 @@ test("a chat that never chose follows the global profile; opting out uses its ow
 
     await updateGlobalManualModerationProfile({
       actingAdminId: admin.id,
-      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" }
+      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" },
+      visibility: DEFAULT_MANUAL_MODERATION_VISIBILITY
     });
 
     const stillFollowingGlobal = await resolveEffectiveManualModerationSettings(chat.id);
@@ -108,7 +110,7 @@ test("a chat that never chose follows the global profile; opting out uses its ow
     assert.equal(optedOut.source, "CHAT");
     assert.equal(optedOut.settings.banMessageTemplate, "CHAT BAN %target%");
   } finally {
-    await updateGlobalManualModerationProfile({ actingAdminId: admin.id, settings: DEFAULT_MANUAL_MODERATION_SETTINGS });
+    await updateGlobalManualModerationProfile({ actingAdminId: admin.id, settings: DEFAULT_MANUAL_MODERATION_SETTINGS, visibility: DEFAULT_MANUAL_MODERATION_VISIBILITY });
     await cleanup();
   }
 });
