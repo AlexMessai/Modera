@@ -59,6 +59,37 @@ function renumberEscalationRules(rules: EscalationRuleValue[]): EscalationRuleVa
   return rules.map((rule, index) => ({ ...rule, order: index + 1 }));
 }
 
+// Presets (spec §54) bundle the three "anti-spam cluster" rules (antiflood,
+// duplicates, mass mentions) into one choice — Low/Normal/Strict, or Custom
+// once any field stops matching a preset exactly. Purely a client-side
+// convenience over fields that already exist; no new settings are added.
+type AntiSpamPresetKey = "LOW" | "NORMAL" | "STRICT";
+const ANTI_SPAM_PRESETS: Record<AntiSpamPresetKey, {
+  spamWindowSeconds: number;
+  spamMaxMessages: number;
+  duplicateWindowSeconds: number;
+  duplicateMaxMessages: number;
+  maxMentions: number;
+}> = {
+  LOW: { spamWindowSeconds: 20, spamMaxMessages: 10, duplicateWindowSeconds: 120, duplicateMaxMessages: 5, maxMentions: 10 },
+  NORMAL: { spamWindowSeconds: 10, spamMaxMessages: 5, duplicateWindowSeconds: 60, duplicateMaxMessages: 2, maxMentions: 5 },
+  STRICT: { spamWindowSeconds: 5, spamMaxMessages: 3, duplicateWindowSeconds: 30, duplicateMaxMessages: 1, maxMentions: 3 }
+};
+const ANTI_SPAM_PRESET_LABELS: Record<AntiSpamPresetKey, string> = { LOW: "Мягкий", NORMAL: "Обычный", STRICT: "Строгий" };
+
+function matchingAntiSpamPreset(settings: ModerationSettingsValue): AntiSpamPresetKey | "CUSTOM" {
+  if (!settings.spamEnabled || !settings.duplicateEnabled || !settings.massMentionsEnabled) return "CUSTOM";
+  const match = (Object.keys(ANTI_SPAM_PRESETS) as AntiSpamPresetKey[]).find((key) => {
+    const preset = ANTI_SPAM_PRESETS[key];
+    return settings.spamWindowSeconds === preset.spamWindowSeconds
+      && settings.spamMaxMessages === preset.spamMaxMessages
+      && settings.duplicateWindowSeconds === preset.duplicateWindowSeconds
+      && settings.duplicateMaxMessages === preset.duplicateMaxMessages
+      && settings.maxMentions === preset.maxMentions;
+  });
+  return match ?? "CUSTOM";
+}
+
 type Props = {
   chatId?: string;
   initial: ModerationSettingsValue;
@@ -103,6 +134,12 @@ export function ChatModerationSettings({
   const visibleTerms = inherited && globalSettings ? globalSettings.blockedTerms.join("\n") : terms;
   const fieldsDisabled = !canEdit || saving || inherited;
   const anyRuleEnabled = visibleSettings.linkProtectionMode !== "ALLOW_ALL" || visibleSettings.spamEnabled || visibleSettings.blockedTermsEnabled || visibleSettings.massMentionsEnabled || visibleSettings.duplicateEnabled || visibleSettings.blockedMessageTypes.length > 0;
+  const activeAntiSpamPreset = matchingAntiSpamPreset(visibleSettings);
+
+  function applyAntiSpamPreset(key: AntiSpamPresetKey) {
+    const preset = ANTI_SPAM_PRESETS[key];
+    setSettings((current) => ({ ...current, spamEnabled: true, duplicateEnabled: true, massMentionsEnabled: true, ...preset }));
+  }
 
   async function save() {
     if (!isGlobalScope && !chatId) return;
@@ -216,6 +253,26 @@ export function ChatModerationSettings({
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.blockedTermsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockedTermsEnabled: event.target.checked }))} /><span><strong>Запрещённые слова и фразы</strong><small>Проверяет текст сообщения и подпись к медиа без учёта регистра.</small></span></label>
         {visibleSettings.blockedTermsEnabled ? <label className="automod-field"><span>Список выражений</span><textarea rows={3} value={visibleTerms} disabled={fieldsDisabled} onChange={(event) => setTerms(event.target.value)} placeholder={"рекламная фраза\nзапрещенное слово"} /><small>Одно слово или фраза на строку. До 200 выражений.</small></label> : null}
+      </div>
+
+      <div className="automod-rule">
+        <div className="automod-rule-heading"><strong>Антиспам-пресеты</strong><small>Быстрая настройка антифлуда, повторов и упоминаний разом. Ручное изменение любого поля ниже переключает на «Свой».</small></div>
+        <div className="preset-row">
+          {(Object.keys(ANTI_SPAM_PRESETS) as AntiSpamPresetKey[]).map((key) => (
+            <button
+              type="button"
+              key={key}
+              className={`preset-button ${activeAntiSpamPreset === key ? "preset-button--active" : ""}`}
+              disabled={fieldsDisabled}
+              onClick={() => applyAntiSpamPreset(key)}
+            >
+              {ANTI_SPAM_PRESET_LABELS[key]}
+            </button>
+          ))}
+          <span className={`preset-button preset-button--status ${activeAntiSpamPreset === "CUSTOM" ? "preset-button--active" : ""}`}>
+            {activeAntiSpamPreset === "CUSTOM" ? "Свой" : "✓ применён"}
+          </span>
+        </div>
       </div>
 
       <div className="automod-rule">
