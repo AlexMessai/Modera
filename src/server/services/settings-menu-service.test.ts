@@ -54,6 +54,12 @@ test("renderSettingsMenu: toggling flood persists to the chat's own profile and 
   const admin = await prisma.adminUser.create({
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
+  // Seeded explicitly, on the chat's own row -- GlobalModerationSettings is a
+  // shared singleton other test files also touch, so the "before" state here
+  // must not depend on whatever the global default happens to be right now.
+  await prisma.chatModerationSettings.create({
+    data: { chatId: chat.id, useGlobalProfile: false, spamEnabled: false, spamMaxMessages: 5, spamWindowSeconds: 10 }
+  });
 
   try {
     const before = await renderSettingsMenu({
