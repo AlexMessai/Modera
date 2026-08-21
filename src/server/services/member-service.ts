@@ -1,6 +1,8 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { syncAutoChatRole } from "@/server/services/chat-role-service";
 import { effectiveMembershipStatus, effectivePunishmentState } from "@/server/services/punishment-state";
+import { TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
 import type { ModerationTargetToken } from "@/server/telegram/command-parser";
 import type {
   TelegramChatMember,
@@ -300,7 +302,7 @@ export async function syncMemberStatus(input: {
   date: number;
   updateId: number;
 }) {
-  return prisma.$transaction((tx) =>
+  const result = await prisma.$transaction((tx) =>
     syncMembership(tx, {
       chatId: input.chatId,
       user: input.member.user,
@@ -318,6 +320,20 @@ export async function syncMemberStatus(input: {
       auditAction: "MEMBER_STATUS_CHANGED"
     })
   );
+
+  // Best-effort, outside the transaction above and never allowed to fail the
+  // sync itself — keeps ChatRole assignment current with live Telegram
+  // status (Phase 1, additive: nothing reads this for authorization yet).
+  if (!result.isStale) {
+    await syncAutoChatRole({
+      chatId: input.chatId,
+      membershipId: result.membership.id,
+      status: result.nextStatus,
+      isTrusted: result.membership.internalRole === TRUSTED_INTERNAL_ROLE
+    }).catch(() => undefined);
+  }
+
+  return result;
 }
 
 export async function syncChatMemberUpdate(input: {
