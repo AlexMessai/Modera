@@ -190,6 +190,9 @@ test("listChatRoles seeds and returns the 5 defaults in a fixed order; nonexiste
 test("updateChatRolePermissions persists a new permission set and is idempotent to duplicates, rejects a foreign role id", async () => {
   const chat = await fixtureChat(7);
   const other = await fixtureChat(8);
+  const admin = await prisma.adminUser.create({
+    data: { email: "chat-role-service-ci@example.com", displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
   try {
     const roles = await listChatRoles(chat.id);
     const moderator = roles.find((role) => role.key === "moderator");
@@ -198,7 +201,7 @@ test("updateChatRolePermissions persists a new permission set and is idempotent 
     const saved = await updateChatRolePermissions({
       chatId: chat.id,
       roleId: moderator.id,
-      actingAdminId: "00000000-0000-4000-8000-000000000000",
+      actingAdminId: admin.id,
       permissions: ["automod.manage", "automod.manage", "logs.view"]
     });
     assert.deepEqual([...(saved?.permissions ?? [])].sort(), ["automod.manage", "logs.view"]);
@@ -216,12 +219,13 @@ test("updateChatRolePermissions persists a new permission set and is idempotent 
     const rejected = await updateChatRolePermissions({
       chatId: chat.id,
       roleId: otherModerator.id,
-      actingAdminId: "00000000-0000-4000-8000-000000000000",
+      actingAdminId: admin.id,
       permissions: ["roles.manage"]
     });
     assert.equal(rejected, null);
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
     await prisma.chat.delete({ where: { id: other.id } });
+    await prisma.adminUser.delete({ where: { id: admin.id } });
   }
 });
