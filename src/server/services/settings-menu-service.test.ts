@@ -563,3 +563,40 @@ test("renderSettingsMenu: Chat section, welcome toggle persists and rules previe
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: Chat section, silence status reflects an active ChatSilenceState row", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const before = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "chat.silence"
+    });
+    assert.ok(before?.text.includes("выключен"));
+
+    await prisma.chatSilenceState.create({
+      data: { chatId: chat.id, expiresAt: new Date(Date.now() + 30 * 60_000), startedByDisplayName: "CI Admin" }
+    });
+
+    const after = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "chat.silence"
+    });
+    assert.ok(after?.text.includes("включён"));
+  } finally {
+    await prisma.chatSilenceState.deleteMany({ where: { chatId: chat.id } });
+    await cleanup();
+  }
+});

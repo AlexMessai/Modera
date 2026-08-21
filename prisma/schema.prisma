@@ -117,6 +117,7 @@ model Chat {
   reportSettings           ChatReportSettings?
   logChannelSettings       ChatLogChannelSettings?
   contentSettings          ChatContentSettings?
+  silenceState             ChatSilenceState?
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -641,6 +642,26 @@ model GlobalContentSettings {
   rulesText              String   @default("") @db.VarChar(4000)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// Silence Mode (§28): /silence [duration] locks the chat down for regular
+// members via Telegram's real setChatPermissions (chat-wide default member
+// permissions -- distinct from per-user restrictChatMember) while
+// moderators/admins keep posting on their own native rights. One row per
+// chat, present only while active. previousPermissions snapshots the chat's
+// actual permissions right before locking (via getChat) so unsilencing
+// restores exactly what was there, not just "everything allowed" -- a chat
+// that already had e.g. polls/media disabled shouldn't have that reset too.
+// Resolved by the same daily cron that sweeps mute/ban/captcha expiry.
+model ChatSilenceState {
+  id                      String    @id @default(uuid()) @db.Uuid
+  chatId                  String    @unique @db.Uuid
+  startedAt               DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt               DateTime? @db.Timestamptz(3)
+  previousPermissions     Json?
+  startedByTelegramUserId BigInt?
+  startedByDisplayName    String?
+  chat                    Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
 
 model AdminUser {

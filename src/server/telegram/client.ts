@@ -180,6 +180,11 @@ export class TelegramClient {
     return this.call<number>("getChatMemberCount", { chat_id: chatId });
   }
 
+  /** Only `permissions` is typed -- silence-service.ts is the sole caller, snapshotting a supergroup's default member permissions before locking it down so they can be restored exactly (not just reopened to "everything allowed") once silence lifts. */
+  getChat(chatId: number) {
+    return this.call<{ permissions?: TelegramChatPermissions }>("getChat", { chat_id: chatId });
+  }
+
   getChatAdministrators(chatId: number) {
     return this.call<TelegramChatMember[]>("getChatAdministrators", {
       chat_id: chatId
@@ -263,6 +268,15 @@ export class TelegramClient {
       permissions: input.permissions,
       use_independent_chat_permissions: true,
       ...(input.untilDate ? { until_date: input.untilDate } : {})
+    });
+  }
+
+  /** Chat-wide default member permissions -- distinct from restrictChatMember's per-user restriction, used by silence-service.ts's chat-wide lockdown. Moderators/admins keep their own explicit rights regardless. */
+  setChatPermissions(input: { chatId: number; permissions: TelegramChatPermissions }) {
+    return this.call<boolean>("setChatPermissions", {
+      chat_id: input.chatId,
+      permissions: input.permissions,
+      use_independent_chat_permissions: true
     });
   }
 

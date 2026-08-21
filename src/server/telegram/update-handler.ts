@@ -44,7 +44,8 @@ import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services
 import { completePendingLogChannelLink } from "@/server/services/log-channel-service";
 import { getSelfServiceStatusMessage, listActiveMutes, selfUnmute } from "@/server/services/self-unmute-service";
 import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/services/trusted-member-service";
-import { parseModerationCommandArguments } from "@/server/telegram/command-parser";
+import { parseDurationToken, parseModerationCommandArguments } from "@/server/telegram/command-parser";
+import { SILENCE_DEFAULT_MINUTES, SilenceError, startSilence, stopSilence } from "@/server/services/silence-service";
 import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
 
@@ -626,6 +627,111 @@ async function processRulesCommand(input: {
   const { settings } = await resolveEffectiveContentSettings(input.chatId);
   const reply = settings.rulesText.trim() || "Правила этого чата пока не заданы.";
   await input.client.sendMessage({ chatId: input.telegramChatId, text: `📜 Правила чата\n\n${reply}` }).catch(() => undefined);
+  return true;
+}
+
+const SILENCE_COMMAND_PATTERN = /^\/silence(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+const UNSILENCE_COMMAND_PATTERN = /^\/unsilence(?:@\w+)?\s*$/i;
+
+/**
+ * /silence [duration] — BOT_PRODUCT_SPEC §28. Chat-wide lockdown for regular
+ * members via a real setChatPermissions call (moderators/admins keep
+ * posting on their own native rights) -- unlike Slow Mode (confirmed
+ * unbuildable, no Bot API setter exists), this one is genuinely
+ * implementable. Announces publicly since the whole chat is affected and
+ * needs to know why it suddenly can't post, unlike the private-by-default
+ * admin commands above.
+ */
+async function processSilenceCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  const match = SILENCE_COMMAND_PATTERN.exec(text);
+  if (!match) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "moderation.mute"
+  });
+  if (!allowed) {
+    await reply("❌ У вас нет прав ограничивать участников в этом чате.");
+    return true;
+  }
+
+  const durationArg = (match[1] ?? "").trim().split(/\s+/)[0];
+  const durationMinutes = durationArg ? parseDurationToken(durationArg) : SILENCE_DEFAULT_MINUTES;
+  if (durationArg && durationMinutes === null) {
+    await reply("Укажите срок, например: /silence 30m");
+    return true;
+  }
+
+  try {
+    const { expiresAt } = await startSilence({
+      chatId: input.chatId,
+      telegramChatId: input.telegramChatId,
+      durationMinutes: durationMinutes ?? SILENCE_DEFAULT_MINUTES,
+      actorTelegramUserId: from.id,
+      actorDisplayName: telegramDisplayName(from)
+    });
+    await input.client.sendMessage({
+      chatId: input.telegramChatId,
+      text: `🔇 Режим тишины включён до ${formatDateTime(expiresAt)}. Обычные участники не могут писать — модераторы и администраторы продолжают работу. Снять раньше: /unsilence`
+    }).catch(() => undefined);
+  } catch (error) {
+    await reply(error instanceof SilenceError ? error.message : "Не удалось включить режим тишины.");
+  }
+  return true;
+}
+
+async function processUnsilenceCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+  if (!UNSILENCE_COMMAND_PATTERN.test(text)) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "moderation.mute"
+  });
+  if (!allowed) {
+    await reply("❌ У вас нет прав ограничивать участников в этом чате.");
+    return true;
+  }
+
+  try {
+    await stopSilence({
+      chatId: input.chatId,
+      telegramChatId: input.telegramChatId,
+      actorTelegramUserId: from.id,
+      actorDisplayName: telegramDisplayName(from)
+    });
+    await input.client.sendMessage({ chatId: input.telegramChatId, text: "🔊 Режим тишины снят — все участники снова могут писать." }).catch(() => undefined);
+  } catch (error) {
+    await reply(error instanceof SilenceError ? error.message : "Не удалось снять режим тишины.");
+  }
   return true;
 }
 
@@ -1241,6 +1347,16 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             message: update.message,
             client
           })) || (await processRulesCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processSilenceCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processUnsilenceCommand({
             chatId: syncedChat.id,
             telegramChatId: chat.id,
             message: update.message,

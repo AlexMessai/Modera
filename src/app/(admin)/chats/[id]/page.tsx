@@ -20,6 +20,7 @@ import { getChatReportProfile } from "@/server/services/report-settings-service"
 import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
 import { listChatRoles } from "@/server/services/chat-role-service";
 import { getChatContentProfile } from "@/server/services/content-settings-service";
+import { getActiveSilence } from "@/server/services/silence-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ function formatDate(value: string) {
 export default async function ChatModerationPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -64,6 +65,7 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
     getChatLogChannelProfile(id),
     listChatRoles(id),
     getChatContentProfile(id),
+    getActiveSilence(id),
     getChatStatistics(id, "7D")
   ]);
   if (!profile) notFound();
@@ -135,6 +137,15 @@ export default async function ChatModerationPage({ params }: { params: Promise<{
           <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} initialUseGlobalProfile={contentProfile.policy.useGlobalProfile} globalSettings={contentProfile.globalSettings} canEdit={canManageChatSettings(admin.role)} />
         </section>
       ) : null}
+
+      <section className="panel profile-section">
+        <div className="panel-header"><div><h2>Режим тишины</h2><p>Включается и снимается командами /silence и /unsilence прямо в чате.</p></div></div>
+        {silence ? (
+          <div className="moderation-readonly"><span className={`badge badge--danger`}>Включён</span><p>До {silence.expiresAt ? formatDate(silence.expiresAt.toISOString()) : "—"}{silence.startedByDisplayName ? ` · включил(а) ${silence.startedByDisplayName}` : ""}</p></div>
+        ) : (
+          <div className="moderation-readonly"><span className="badge">Выключен</span><p>Обычные участники пишут как обычно.</p></div>
+        )}
+      </section>
 
       <section className="panel profile-section">
         <div className="panel-header"><div><h2>Журнал автомодерации</h2><p>Удаления, предупреждения, автоматические наказания, ошибки Telegram и изменения правил.</p></div></div>
