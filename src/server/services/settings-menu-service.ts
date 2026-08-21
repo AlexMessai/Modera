@@ -3,6 +3,7 @@ import { LINK_PROTECTION_MODES, type LinkProtectionMode, type ModerationSettings
 import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsValue } from "@/server/services/captcha-settings-service";
 import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
 import { getChatManualModerationProfile, updateChatManualModerationProfile, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValue } from "@/server/services/report-settings-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -67,6 +68,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
         [{ text: "⚖️ Модерация", callback_data: buildSettingsCallbackData(telegramChatId, "moderation") }],
         [{ text: "🛡 Автомодерация", callback_data: buildSettingsCallbackData(telegramChatId, "automod") }],
         [{ text: "🔐 Защита", callback_data: buildSettingsCallbackData(telegramChatId, "protection") }],
+        [{ text: "🚩 Жалобы", callback_data: buildSettingsCallbackData(telegramChatId, "reports") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -357,6 +359,47 @@ async function renderModerationSection(input: { chatId: string; chatTitle: strin
   return null;
 }
 
+function renderReportsDetail(settings: ReportSettingsValue, telegramChatId: number) {
+  const rows = [toggleRow(`Статус: ${settings.enabled ? "✅ включены" : "⬜ выключены"}`, "reports.toggle", telegramChatId)];
+  if (settings.enabled) {
+    rows.push(stepperRow("Срок, мин", settings.muteDurationMinutes, "duration", "reports", telegramChatId, 15));
+  }
+  rows.push(backRow("root", telegramChatId));
+  return {
+    text: `🚩 Жалобы\n\nУчастник может ответить (Reply) на сообщение командой /report [причина]. Администраторы получают приватную карточку в Telegram с кнопками: Удалить / Предупредить / Ограничить / Забанить / Отклонить. Кнопка «Ограничить» всегда использует фиксированный срок mute («Срок» ниже) — для другого срока используйте /mute напрямую.`,
+    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
+  };
+}
+
+async function renderReportsSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  const profile = await getChatReportProfile(input.chatId);
+  if (!profile) return null;
+  let settings = profile.effectiveSettings;
+
+  let patch: Partial<ReportSettingsValue> | null = null;
+  if (input.path === "reports.toggle") {
+    patch = { enabled: !settings.enabled };
+  } else {
+    const stepperMatch = /^reports\.duration\.([+-]\d+)$/.exec(input.path);
+    if (stepperMatch) {
+      const nextValue = Math.min(10080, Math.max(1, settings.muteDurationMinutes + Number(stepperMatch[1])));
+      patch = { muteDurationMinutes: nextValue };
+    }
+  }
+
+  if (patch) {
+    const merged: ReportSettingsValue = { ...settings, ...patch };
+    const saved = await updateChatReportSettings({
+      chatId: input.chatId,
+      actingAdminId: input.actingAdminId,
+      useGlobalProfile: false,
+      settings: merged
+    });
+    settings = saved ?? merged;
+  }
+  return renderReportsDetail(settings, input.telegramChatId);
+}
+
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
 async function applyAutomodAction(chatId: string, actingAdminId: string, settings: ModerationSettingsValue, path: string): Promise<{ viewPath: string; settings: ModerationSettingsValue }> {
   let patch: Partial<ModerationSettingsValue> | null = null;
@@ -522,6 +565,9 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "moderation" || input.path.startsWith("moderation.")) {
     return (await renderModerationSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
+  if (input.path === "reports" || input.path.startsWith("reports.")) {
+    return (await renderReportsSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
 
   return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);

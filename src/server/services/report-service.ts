@@ -1,15 +1,11 @@
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
+import { resolveEffectiveReportSettings } from "@/server/services/report-settings-service";
 import { getTelegramClient } from "@/server/telegram/client";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REPORT_CALLBACK_PREFIX = "report:";
 const MAX_REASON_LENGTH = 500;
-
-// No inline button can collect a custom duration, so the "Ограничить" quick
-// action uses one fixed value rather than a picker -- an admin who wants a
-// different duration can still use /mute directly.
-export const REPORT_MUTE_DURATION_MINUTES = 60;
 
 export const REPORT_CALLBACK_ACTIONS = ["DELETE", "WARN", "MUTE", "BAN", "DISMISS"] as const;
 export type ReportCallbackAction = (typeof REPORT_CALLBACK_ACTIONS)[number];
@@ -47,6 +43,11 @@ export async function createReport(input: {
 }) {
   if (input.reporterTelegramUserId === input.reportedTelegramUserId) {
     return { outcome: "self_report" as const };
+  }
+
+  const { settings: reportSettings } = await resolveEffectiveReportSettings(input.chatId);
+  if (!reportSettings.enabled) {
+    return { outcome: "disabled" as const };
   }
 
   const [reporter, reportedMember] = await Promise.all([
@@ -243,13 +244,14 @@ export async function resolveReport(input: {
   if (!member) throw new ReportError("MEMBER_NOT_FOUND", "Участник не найден в этом чате.");
 
   const actionMap = { WARN: "WARNING", MUTE: "MUTE", BAN: "BAN" } as const;
+  const { settings: reportSettings } = await resolveEffectiveReportSettings(report.chatId);
   try {
     await executeModerationAction({
       membershipId: member.id,
       actingAdminId: input.actingAdminId,
       action: actionMap[input.action],
       reason: report.reason ?? "Жалоба от участника чата",
-      muteDurationMinutes: input.action === "MUTE" ? REPORT_MUTE_DURATION_MINUTES : undefined
+      muteDurationMinutes: input.action === "MUTE" ? reportSettings.muteDurationMinutes : undefined
     });
   } catch (error) {
     if (error instanceof ModerationError) throw new ReportError(error.code, error.message);

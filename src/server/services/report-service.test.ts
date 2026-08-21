@@ -8,6 +8,7 @@ import {
   ReportError,
   resolveReport
 } from "./report-service";
+import { DEFAULT_REPORT_SETTINGS, updateChatReportSettings } from "./report-settings-service";
 
 const CHAT_ID = -1009000015001n;
 const REPORTER_ID = 900001501n;
@@ -101,6 +102,34 @@ test("createReport rejects self-reports and unknown users, otherwise writes a PE
 
     const log = await prisma.auditLog.findFirst({ where: { chatId: chat.id, action: "REPORT_SUBMITTED" } });
     assert.ok(log);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("createReport respects the chat's report settings: disabled chats reject new reports", async () => {
+  await cleanup();
+  const { chat, admin } = await setup();
+
+  try {
+    await updateChatReportSettings({
+      chatId: chat.id,
+      actingAdminId: admin.id,
+      useGlobalProfile: false,
+      settings: { ...DEFAULT_REPORT_SETTINGS, enabled: false }
+    });
+
+    const result = await createReport({
+      chatId: chat.id,
+      reporterTelegramUserId: Number(REPORTER_ID),
+      reportedTelegramUserId: Number(REPORTED_ID),
+      messageTelegramId: MESSAGE_ID,
+      reason: null
+    });
+    assert.equal(result.outcome, "disabled");
+
+    const count = await prisma.report.count({ where: { chatId: chat.id } });
+    assert.equal(count, 0, "a disabled chat must not create a report row at all");
   } finally {
     await cleanup();
   }
