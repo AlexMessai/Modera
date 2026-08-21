@@ -702,6 +702,30 @@ function BigIntSafe(value: string) {
   return /^-?\d{1,20}$/.test(value);
 }
 
+/** Backs the /info command's card — basic profile fields moderation-context.ts's aggregate doesn't carry. */
+export async function getInfoCardBasics(chatId: string, telegramUserId: number) {
+  return prisma.chatMember.findFirst({
+    where: { chatId, user: { telegramUserId: BigInt(telegramUserId) } },
+    select: {
+      id: true,
+      joinedAt: true,
+      firstSeenAt: true,
+      lastSeenAt: true,
+      messageCount: true,
+      telegramCustomTitle: true,
+      chatRole: { select: { label: true } },
+      user: {
+        select: {
+          telegramUserId: true,
+          username: true,
+          displayName: true,
+          isPremium: true
+        }
+      }
+    }
+  });
+}
+
 export interface ResolvedModerationTarget {
   telegramUserId: number;
   displayName: string;
