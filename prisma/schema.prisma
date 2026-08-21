@@ -118,6 +118,7 @@ model Chat {
   logChannelSettings       ChatLogChannelSettings?
   contentSettings          ChatContentSettings?
   silenceState             ChatSilenceState?
+  autoResponseRules        AutoResponseRule[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -662,6 +663,32 @@ model ChatSilenceState {
   startedByTelegramUserId BigInt?
   startedByDisplayName    String?
   chat                    Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+// Auto Responses (§42, Phase 10): keyword/phrase-triggered automatic
+// replies, checked against every regular group message (not a /command).
+// Chat-only, like Log Channel/Silence -- a list of custom triggers is
+// inherently per-chat content, not a shared policy default. Full CRUD
+// (add/edit/delete a rule) is Web Admin-only -- Telegram inline buttons
+// can't collect the free-text trigger/response pair, same "no free-text
+// editing via buttons" line drawn everywhere else in the Settings Center.
+model AutoResponseRule {
+  id           String              @id @default(uuid()) @db.Uuid
+  chatId       String              @db.Uuid
+  trigger      String              @db.VarChar(200)
+  matchType    AutoResponseMatch   @default(CONTAINS)
+  responseText String              @db.VarChar(1000)
+  enabled      Boolean             @default(true)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(3)
+  chat         Chat                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, enabled])
+}
+
+enum AutoResponseMatch {
+  CONTAINS
+  EXACT
 }
 
 model AdminUser {

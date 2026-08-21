@@ -600,3 +600,34 @@ test("renderSettingsMenu: Chat section, silence status reflects an active ChatSi
     await cleanup();
   }
 });
+
+test("renderSettingsMenu: Automation section summarizes auto-response rules without touching them", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+  await prisma.autoResponseRule.create({
+    data: { chatId: chat.id, trigger: "где правила", matchType: "CONTAINS", responseText: "Смотрите /rules", enabled: true }
+  });
+
+  try {
+    const view = await renderSettingsMenu({
+      chatId: chat.id,
+      chatTitle: chat.title,
+      telegramChatId: Number(CHAT_ID),
+      actingAdminId: admin.id,
+      path: "automation"
+    });
+    assert.ok(view?.text.includes("1 из 1 включено"));
+    assert.ok(view?.text.includes("где правила"));
+
+    const stored = await prisma.autoResponseRule.findMany({ where: { chatId: chat.id } });
+    assert.equal(stored.length, 1, "the summary screen must be read-only");
+  } finally {
+    await prisma.autoResponseRule.deleteMany({ where: { chatId: chat.id } });
+    await cleanup();
+  }
+});

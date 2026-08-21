@@ -5,6 +5,7 @@ import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/se
 import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
+import { findMatchingAutoResponse } from "@/server/services/auto-response-service";
 import { sendWelcomeMessage } from "@/server/services/welcome-service";
 import { resolveEffectiveContentSettings } from "@/server/services/content-settings-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
@@ -1378,6 +1379,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         : false;
       if (!commandHandled) {
         await runAutomod({ chatId: syncedChat.id, message: update.message, isEdited: false });
+
+        const matchedRule = await findMatchingAutoResponse(syncedChat.id, groupMessageText).catch(() => null);
+        if (matchedRule) {
+          await client.sendMessage({ chatId: chat.id, text: matchedRule.responseText }).catch(() => undefined);
+        }
       }
     }
   }

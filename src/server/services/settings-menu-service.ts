@@ -8,6 +8,7 @@ import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, update
 import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type ChatPermission, type ChatRoleSummary } from "@/server/services/chat-role-service";
 import { getChatContentProfile, updateChatContentSettings, type ContentSettingsValue } from "@/server/services/content-settings-service";
 import { getActiveSilence } from "@/server/services/silence-service";
+import { listAutoResponseRules } from "@/server/services/auto-response-service";
 import type { TelegramInlineKeyboardMarkup } from "@/server/telegram/types";
 
 // Telegram callback_data is capped at 64 bytes, so the path is a compact
@@ -76,6 +77,7 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
         [{ text: "📋 Логи", callback_data: buildSettingsCallbackData(telegramChatId, "logs") }],
         [{ text: "👥 Пользователи", callback_data: buildSettingsCallbackData(telegramChatId, "users") }],
         [{ text: "💬 Чат", callback_data: buildSettingsCallbackData(telegramChatId, "chat") }],
+        [{ text: "🤖 Автоматизация", callback_data: buildSettingsCallbackData(telegramChatId, "automation") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -569,8 +571,8 @@ function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) 
 // full text is always visible in Web Admin, this is just a status preview.
 const CONTENT_PREVIEW_LIMIT = 1500;
 
-function previewText(value: string) {
-  return value.length > CONTENT_PREVIEW_LIMIT ? `${value.slice(0, CONTENT_PREVIEW_LIMIT)}…` : value;
+function previewText(value: string, limit: number = CONTENT_PREVIEW_LIMIT) {
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
 function renderWelcomeDetail(settings: ContentSettingsValue, telegramChatId: number) {
@@ -623,6 +625,28 @@ async function renderChatSection(input: { chatId: string; chatTitle: string; tel
   }
 
   return null;
+}
+
+async function renderAutomationSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
+  if (input.path !== "automation") return null;
+
+  const rules = await listAutoResponseRules(input.chatId);
+  const enabledCount = rules.filter((rule) => rule.enabled).length;
+  // Trigger/response are each admin-controlled free text (up to 200/1000
+  // chars, up to MAX_AUTO_RESPONSE_RULES_PER_CHAT rules) -- truncated per
+  // line and capped in count so this can't push past Telegram's 4096-char
+  // message limit the way an untruncated preview did in an earlier PR.
+  const MAX_LISTED_RULES = 10;
+  const shown = rules.slice(0, MAX_LISTED_RULES);
+  const lines = shown.length
+    ? shown.map((rule) => `${rule.enabled ? "✅" : "⬜"} «${previewText(rule.trigger, 40)}» → ${previewText(rule.responseText, 60)}`)
+    : ["Автоответов пока нет."];
+  if (rules.length > MAX_LISTED_RULES) lines.push(`…и ещё ${rules.length - MAX_LISTED_RULES}, см. Web Admin.`);
+
+  return {
+    text: `🤖 Автоматизация\n\nАвтоответы: ${enabledCount} из ${rules.length} включено. Добавление и редактирование правил — в Web Admin.\n\n${lines.join("\n")}`,
+    keyboard: { inline_keyboard: [backRow("root", input.telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
+  };
 }
 
 /** Applies a mutating automod path segment (toggle / stepper / mode-set), returning the view path to render afterward. Non-mutating paths pass through unchanged. */
@@ -802,6 +826,9 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "chat" || input.path.startsWith("chat.")) {
     return (await renderChatSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
+  }
+  if (input.path === "automation" || input.path.startsWith("automation.")) {
+    return (await renderAutomationSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
 
   return (await renderAutomodSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
