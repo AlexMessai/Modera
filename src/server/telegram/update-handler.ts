@@ -9,6 +9,7 @@ import { hasChatPermission, type ChatPermission } from "@/server/services/chat-r
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import {
+  getInfoCardBasics,
   observeMember,
   resolveTelegramTargets,
   syncChatMemberUpdate,
@@ -26,6 +27,7 @@ import {
   type ManualWarningEscalation
 } from "@/server/services/moderation-escalation-service";
 import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
+import { getModerationContext } from "@/server/services/moderation-context";
 import { reconcileTelegramMemberState } from "@/server/services/moderation-reconciliation-service";
 import {
   executeTelegramActorModerationAction,
@@ -469,6 +471,133 @@ async function processWarnsCommand(input: {
   return true;
 }
 
+const INFO_COMMAND_PATTERN = /^\/info(?:@\w+)?(?:\s+([\s\S]*))?$/i;
+
+const MEMBERSHIP_STATUS_LABELS: Record<string, string> = {
+  CREATOR: "владелец",
+  ADMINISTRATOR: "администратор",
+  MEMBER: "участник",
+  RESTRICTED: "ограничен",
+  PENDING: "заявка на вступление",
+  LEFT: "покинул чат",
+  BANNED: "заблокирован",
+  UNKNOWN: "неизвестно"
+};
+
+const MODERATION_ACTION_LABELS: Record<string, string> = {
+  WARNING: "Предупреждение",
+  UNMUTE: "Снятие mute",
+  MUTE: "Mute",
+  BAN: "Блокировка",
+  UNBAN: "Разблокировка",
+  KICK: "Исключение"
+};
+
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(value);
+}
+
+/**
+ * /info — a private profile card, so it replies ephemerally like /warns.
+ * Read-only in this first version: no action buttons yet, since those would
+ * need the generic Telegram UI/callback router this project doesn't have
+ * yet (deferred out of Phase 0 as premature — see project notes). Use the
+ * existing quick commands (e.g. "/mute @user 3h причина" as a reply to this
+ * card, or to the member's own message) to act on what's shown here.
+ */
+async function processInfoCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+
+  const match = INFO_COMMAND_PATTERN.exec(text);
+  if (!match) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "users.view"
+  });
+  if (!allowed) {
+    await reply("❌ У вас нет прав администратора в этом чате.");
+    return true;
+  }
+
+  const { targetTokens } = parseModerationCommandArguments(match[1] ?? "", { allowDuration: false });
+  let target: ResolvedModerationTarget | null = null;
+  let unresolvedUsername: string | null = null;
+  if (targetTokens.length > 0) {
+    const resolution = await resolveTelegramTargets({ chatId: input.chatId, tokens: [targetTokens[0]] });
+    target = resolution.resolved[0] ?? null;
+    unresolvedUsername = resolution.unresolvedUsernames[0] ?? null;
+  } else if (input.message.reply_to_message?.from) {
+    const replyFrom = input.message.reply_to_message.from;
+    target = { telegramUserId: replyFrom.id, displayName: telegramDisplayName(replyFrom), token: { type: "id", value: replyFrom.id } };
+  }
+
+  if (!target) {
+    await reply(unresolvedUsername
+      ? `Не удалось найти в этом чате: @${unresolvedUsername}.`
+      : "Укажите участника: ответьте (Reply) на его сообщение, либо укажите @username или Telegram ID после команды.");
+    return true;
+  }
+
+  const basics = await getInfoCardBasics(input.chatId, target.telegramUserId);
+  if (!basics) {
+    await reply(`${target.displayName}: участник не найден в этом чате.`);
+    return true;
+  }
+
+  const context = await getModerationContext(basics.id);
+  const lines: string[] = [];
+  const usernamePart = basics.user.username ? ` (@${basics.user.username})` : "";
+  lines.push(`👤 ${basics.user.displayName}${usernamePart}${basics.user.isPremium ? " ⭐" : ""}`);
+  lines.push(`ID: ${basics.user.telegramUserId}`);
+  if (context) {
+    lines.push(`Статус: ${MEMBERSHIP_STATUS_LABELS[context.status] ?? context.status}`);
+    if (basics.chatRole) lines.push(`Роль: ${basics.chatRole.label}`);
+    if (context.punishmentState === "MUTED") {
+      lines.push(`Наказание: mute${context.punishmentExpiresAt ? ` до ${formatDateTime(context.punishmentExpiresAt)}` : " (бессрочно)"}`);
+    } else if (context.punishmentState === "BANNED") {
+      lines.push(`Наказание: блокировка${context.punishmentExpiresAt ? ` до ${formatDateTime(context.punishmentExpiresAt)}` : " (постоянная)"}`);
+    }
+    lines.push(`Предупреждений: ${context.activeWarningCount} активных из ${context.warningCount} всего`);
+  }
+  if (basics.joinedAt) lines.push(`В чате с: ${formatDateTime(basics.joinedAt)}`);
+  lines.push(`Сообщений в чате: ${basics.messageCount}`);
+  lines.push(`Последняя активность: ${formatDateTime(basics.lastSeenAt)}`);
+
+  const recentActions = context?.actions.slice(0, 5) ?? [];
+  if (recentActions.length > 0) {
+    lines.push("", "Последние действия:");
+    for (const action of recentActions) {
+      const label = MODERATION_ACTION_LABELS[action.type] ?? action.type;
+      // actingAdmin is only populated for actions taken from the web panel;
+      // a Telegram admin's in-chat /warn etc. (source TELEGRAM) stores their
+      // name in metadata instead (getModerationContext doesn't expose it),
+      // and a fully automated automod/expiry action (source SYSTEM) has
+      // neither — distinguish by source rather than guessing at metadata.
+      const actor = action.actingAdmin?.displayName
+        ?? (action.source === "SYSTEM" ? "Автомодерация" : action.source === "TELEGRAM" ? "Администратор чата" : "Modera");
+      lines.push(`· ${formatDateTime(action.createdAt)} — ${label} (${actor})${action.reason ? `: ${action.reason}` : ""}`);
+    }
+  }
+
+  await reply(lines.join("\n"));
+  return true;
+}
+
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
@@ -785,6 +914,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             message: update.message,
             client
           })) || (await processWarnsCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
+          })) || (await processInfoCommand({
             chatId: syncedChat.id,
             telegramChatId: chat.id,
             message: update.message,

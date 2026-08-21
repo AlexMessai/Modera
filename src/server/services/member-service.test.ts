@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  getInfoCardBasics,
   getMemberProfile,
   isMembershipStatus,
   mapTelegramMembershipStatus,
@@ -262,5 +263,39 @@ test("resolveTelegramTargets resolves @username/ID only within the given chat an
     await prisma.telegramUser.deleteMany({
       where: { telegramUserId: { in: [BigInt(knownUserId), BigInt(otherChatUserId)] } }
     });
+  }
+});
+
+test("getInfoCardBasics returns the /info card's profile fields, including the assigned ChatRole label", async () => {
+  const telegramChatId = -1009000000020n;
+  const telegramUserId = 900000020;
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "CI info-card chat", type: "supergroup" }
+  });
+
+  try {
+    await syncMemberStatus({
+      chatId: chat.id,
+      member: { status: "member", user: { id: telegramUserId, is_bot: false, first_name: "Info", username: "info_target" } },
+      date: 1_700_000_500,
+      updateId: 600
+    });
+
+    const role = await prisma.chatRole.findFirstOrThrow({
+      where: { chatId: chat.id, key: "member" }
+    });
+
+    const basics = await getInfoCardBasics(chat.id, telegramUserId);
+    assert.ok(basics);
+    assert.equal(basics?.user.username, "info_target");
+    assert.equal(basics?.user.displayName, "Info");
+    assert.equal(basics?.user.telegramUserId, BigInt(telegramUserId));
+    assert.equal(basics?.chatRole?.label, role.label);
+    assert.equal(basics?.messageCount, 0);
+
+    assert.equal(await getInfoCardBasics(chat.id, 999999999), null);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.deleteMany({ where: { telegramUserId: BigInt(telegramUserId) } });
   }
 });
