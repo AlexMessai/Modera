@@ -17,7 +17,7 @@ const AUTOMOD_ACTIONS = [
 ];
 
 function enabledRules(settings: {
-  blockLinks: boolean;
+  linkProtectionMode: string;
   spamEnabled: boolean;
   blockedTermsEnabled: boolean;
   massMentionsEnabled: boolean;
@@ -27,7 +27,7 @@ function enabledRules(settings: {
 } | null) {
   if (!settings) return [];
   const rules: string[] = [];
-  if (settings.blockLinks) rules.push("LINKS");
+  if (settings.linkProtectionMode !== "ALLOW_ALL") rules.push("LINKS");
   if (settings.blockedTermsEnabled) rules.push("TERMS");
   if (settings.spamEnabled) rules.push("FLOOD");
   if (settings.duplicateEnabled) rules.push("DUPLICATES");

@@ -5,6 +5,7 @@ import { isSameOrigin } from "@/server/http/origin";
 import { RESTRICTABLE_MESSAGE_TYPES } from "@/server/services/automod-service";
 import {
   getGlobalModerationProfile,
+  LINK_PROTECTION_MODES,
   updateGlobalModerationProfile
 } from "@/server/services/global-moderation-service";
 
@@ -18,8 +19,9 @@ const escalationRuleSchema = z.object({
 });
 
 const settingsSchema = z.object({
-  blockLinks: z.boolean(),
+  linkProtectionMode: z.enum(LINK_PROTECTION_MODES),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
+  blockedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
   spamEnabled: z.boolean(),
   spamWindowSeconds: z.number().int().min(3).max(120),
   spamMaxMessages: z.number().int().min(2).max(50),

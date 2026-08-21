@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_MODERATION_SETTINGS,
   getGlobalModerationProfile,
+  isLinkProtectionMode,
   normalizeEscalationRules,
   resolveEffectiveModerationSettings,
   serializeModerationSettings
@@ -138,8 +139,9 @@ export async function updateChatModerationSettings(input: {
   chatId: string;
   actingAdminId: string;
   useGlobalProfile: boolean;
-  blockLinks: boolean;
+  linkProtectionMode: string;
   allowedDomains: string[];
+  blockedDomains: string[];
   spamEnabled: boolean;
   spamWindowSeconds: number;
   spamMaxMessages: number;
@@ -168,6 +170,8 @@ export async function updateChatModerationSettings(input: {
   if (!chat) return null;
 
   const allowedDomains = normalizeAllowedDomains(input.allowedDomains);
+  const blockedDomains = normalizeAllowedDomains(input.blockedDomains);
+  const linkProtectionMode = isLinkProtectionMode(input.linkProtectionMode) ? input.linkProtectionMode : "ALLOW_ALL";
   const blockedTerms = normalizeBlockedTerms(input.blockedTerms);
   const blockedMessageTypes = normalizeBlockedMessageTypes(input.blockedMessageTypes);
   const warningExpiryDays = Math.min(3650, Math.max(0, Math.trunc(input.warningExpiryDays)));
@@ -175,8 +179,9 @@ export async function updateChatModerationSettings(input: {
   const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
   const values = {
     useGlobalProfile: input.useGlobalProfile,
-    blockLinks: input.blockLinks,
+    linkProtectionMode,
     allowedDomains,
+    blockedDomains,
     spamEnabled: input.spamEnabled,
     spamWindowSeconds: input.spamWindowSeconds,
     spamMaxMessages: input.spamMaxMessages,

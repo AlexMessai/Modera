@@ -16,9 +16,20 @@ export type EscalationRuleValue = {
   durationMinutes: number | null;
 };
 
+export const LINK_PROTECTION_MODES = ["ALLOW_ALL", "BLOCK_ALL", "WHITELIST_ONLY", "BLACKLIST_ONLY"] as const;
+export type LinkProtectionMode = (typeof LINK_PROTECTION_MODES)[number];
+
+const LINK_PROTECTION_MODE_LABELS: Record<LinkProtectionMode, string> = {
+  ALLOW_ALL: "Разрешить все ссылки",
+  BLOCK_ALL: "Заблокировать все ссылки",
+  WHITELIST_ONLY: "Разрешить только из списка",
+  BLACKLIST_ONLY: "Заблокировать только из списка"
+};
+
 export type ModerationSettingsValue = {
-  blockLinks: boolean;
+  linkProtectionMode: LinkProtectionMode;
   allowedDomains: string[];
+  blockedDomains: string[];
   spamEnabled: boolean;
   spamWindowSeconds: number;
   spamMaxMessages: number;
@@ -78,6 +89,7 @@ export function ChatModerationSettings({
   const [settings, setSettings] = useState(initial);
   const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
   const [domains, setDomains] = useState(initial.allowedDomains.join("\n"));
+  const [blockedDomainsText, setBlockedDomainsText] = useState(initial.blockedDomains.join("\n"));
   const [terms, setTerms] = useState(initial.blockedTerms.join("\n"));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +99,10 @@ export function ChatModerationSettings({
   const inherited = !isGlobalScope && useGlobalProfile && Boolean(globalSettings);
   const visibleSettings = inherited && globalSettings ? globalSettings : settings;
   const visibleDomains = inherited && globalSettings ? globalSettings.allowedDomains.join("\n") : domains;
+  const visibleBlockedDomains = inherited && globalSettings ? globalSettings.blockedDomains.join("\n") : blockedDomainsText;
   const visibleTerms = inherited && globalSettings ? globalSettings.blockedTerms.join("\n") : terms;
   const fieldsDisabled = !canEdit || saving || inherited;
-  const anyRuleEnabled = visibleSettings.blockLinks || visibleSettings.spamEnabled || visibleSettings.blockedTermsEnabled || visibleSettings.massMentionsEnabled || visibleSettings.duplicateEnabled || visibleSettings.blockedMessageTypes.length > 0;
+  const anyRuleEnabled = visibleSettings.linkProtectionMode !== "ALLOW_ALL" || visibleSettings.spamEnabled || visibleSettings.blockedTermsEnabled || visibleSettings.massMentionsEnabled || visibleSettings.duplicateEnabled || visibleSettings.blockedMessageTypes.length > 0;
 
   async function save() {
     if (!isGlobalScope && !chatId) return;
@@ -98,20 +111,26 @@ export function ChatModerationSettings({
       const response = await fetch(isGlobalScope ? "/api/moderation/global" : `/api/chats/${chatId}/moderation`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...settings, ...(isGlobalScope ? {} : { useGlobalProfile }), allowedDomains: splitList(domains), blockedTerms: splitList(terms) })
+        body: JSON.stringify({
+          ...settings,
+          ...(isGlobalScope ? {} : { useGlobalProfile }),
+          allowedDomains: splitList(domains),
+          blockedDomains: splitList(blockedDomainsText),
+          blockedTerms: splitList(terms)
+        })
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки.");
 
       if (isGlobalScope) {
         const saved = payload.data as ModerationSettingsValue;
-        setSettings(saved); setDomains(saved.allowedDomains.join("\n")); setTerms(saved.blockedTerms.join("\n"));
+        setSettings(saved); setDomains(saved.allowedDomains.join("\n")); setBlockedDomainsText(saved.blockedDomains.join("\n")); setTerms(saved.blockedTerms.join("\n"));
         setSuccess("Глобальная политика сохранена. Чаты с наследованием применят её к новым Telegram-событиям.");
         onSaved?.(saved);
       } else {
         const saved = payload.data as ModerationSettingsValue & { useGlobalProfile: boolean };
         const { useGlobalProfile: savedMode, ...savedSettings } = saved;
-        setUseGlobalProfile(savedMode); setSettings(savedSettings); setDomains(savedSettings.allowedDomains.join("\n")); setTerms(savedSettings.blockedTerms.join("\n"));
+        setUseGlobalProfile(savedMode); setSettings(savedSettings); setDomains(savedSettings.allowedDomains.join("\n")); setBlockedDomainsText(savedSettings.blockedDomains.join("\n")); setTerms(savedSettings.blockedTerms.join("\n"));
         setSuccess(savedMode ? "Чат переключён на глобальную политику модерации." : "Индивидуальные правила сохранены и применяются к новым Telegram-событиям.");
         onSaved?.(savedSettings);
       }
@@ -175,8 +194,23 @@ export function ChatModerationSettings({
       {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>{isGlobalScope ? "Изменять глобальную политику могут OWNER и ADMIN." : "Изменять правила чата могут OWNER и ADMIN."}</p></div></div> : null}
 
       <div className="automod-rule">
-        <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.blockLinks} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, blockLinks: event.target.checked }))} /><span><strong>Запрещённые ссылки</strong><small>Удаляет ссылки, которых нет в allowlist доменов.</small></span></label>
-        {visibleSettings.blockLinks ? <label className="automod-field"><span>Разрешённые домены</span><textarea rows={3} value={visibleDomains} disabled={fieldsDisabled} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} /><small>По одному домену на строку. Поддомены разрешённого домена тоже пропускаются.</small></label> : null}
+        <div className="automod-rule-heading"><strong>Защита от ссылок</strong><small>Режим определяет, какие ссылки удаляются автоматически.</small></div>
+        <label className="automod-field automod-field--short">
+          <span>Режим</span>
+          <select
+            value={visibleSettings.linkProtectionMode}
+            disabled={fieldsDisabled}
+            onChange={(event) => setSettings((current) => ({ ...current, linkProtectionMode: event.target.value as LinkProtectionMode }))}
+          >
+            {LINK_PROTECTION_MODES.map((mode) => <option key={mode} value={mode}>{LINK_PROTECTION_MODE_LABELS[mode]}</option>)}
+          </select>
+        </label>
+        {visibleSettings.linkProtectionMode === "WHITELIST_ONLY" ? (
+          <label className="automod-field"><span>Разрешённые домены</span><textarea rows={3} value={visibleDomains} disabled={fieldsDisabled} onChange={(event) => setDomains(event.target.value)} placeholder={"example.com\nsubdomain.ru"} /><small>По одному домену на строку. Поддомены разрешённого домена тоже пропускаются. Ссылки не из списка удаляются.</small></label>
+        ) : null}
+        {visibleSettings.linkProtectionMode === "BLACKLIST_ONLY" ? (
+          <label className="automod-field"><span>Запрещённые домены</span><textarea rows={3} value={visibleBlockedDomains} disabled={fieldsDisabled} onChange={(event) => setBlockedDomainsText(event.target.value)} placeholder={"spam.example\nbad-domain.ru"} /><small>По одному домену на строку. Поддомены запрещённого домена тоже удаляются. Остальные ссылки разрешены.</small></label>
+        ) : null}
       </div>
 
       <div className="automod-rule">

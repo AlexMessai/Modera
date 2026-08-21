@@ -2,6 +2,13 @@ import { prisma } from "@/server/db/prisma";
 
 export const GLOBAL_MODERATION_PROFILE_ID = "global";
 
+export const LINK_PROTECTION_MODES = ["ALLOW_ALL", "BLOCK_ALL", "WHITELIST_ONLY", "BLACKLIST_ONLY"] as const;
+export type LinkProtectionMode = (typeof LINK_PROTECTION_MODES)[number];
+
+export function isLinkProtectionMode(value: string): value is LinkProtectionMode {
+  return (LINK_PROTECTION_MODES as readonly string[]).includes(value);
+}
+
 export type EscalationRuleAction = "MUTE" | "BAN";
 
 export type EscalationRuleValue = {
@@ -23,8 +30,9 @@ const ESCALATION_DURATION_MAX_BY_ACTION: Record<EscalationRuleAction, number> = 
 const MAX_ESCALATION_RULES = 20;
 
 export const DEFAULT_MODERATION_SETTINGS = {
-  blockLinks: false,
+  linkProtectionMode: "ALLOW_ALL" as LinkProtectionMode,
   allowedDomains: [] as string[],
+  blockedDomains: [] as string[],
   spamEnabled: false,
   spamWindowSeconds: 10,
   spamMaxMessages: 5,
@@ -56,7 +64,10 @@ export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
  * raw `Prisma.JsonValue` (a DB row read straight from `ChatModerationSettings`/
  * `GlobalModerationSettings`) — normalizeEscalationRules validates either.
  */
-type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules"> & { escalationRules: unknown };
+type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" | "linkProtectionMode"> & {
+  escalationRules: unknown;
+  linkProtectionMode: string;
+};
 
 /** The lowest configured threshold — the closest analog to the old single "warns_limit" number for chat-reply placeholders. */
 export function lowestEscalationThreshold(rules: EscalationRuleValue[]): number | null {
@@ -159,8 +170,9 @@ function normalizeEscalationTemplate(value: string, fallback: string) {
 
 export function normalizeModerationSettings(input: ModerationSettingsInput): ModerationSettingsValue {
   return {
-    blockLinks: input.blockLinks,
+    linkProtectionMode: isLinkProtectionMode(input.linkProtectionMode) ? input.linkProtectionMode : "ALLOW_ALL",
     allowedDomains: normalizeDomains(input.allowedDomains),
+    blockedDomains: normalizeDomains(input.blockedDomains),
     spamEnabled: input.spamEnabled,
     spamWindowSeconds: input.spamWindowSeconds,
     spamMaxMessages: input.spamMaxMessages,
@@ -184,8 +196,9 @@ export function normalizeModerationSettings(input: ModerationSettingsInput): Mod
 
 export function serializeModerationSettings(settings: ModerationSettingsInput): ModerationSettingsValue {
   return {
-    blockLinks: settings.blockLinks,
+    linkProtectionMode: isLinkProtectionMode(settings.linkProtectionMode) ? settings.linkProtectionMode : "ALLOW_ALL",
     allowedDomains: [...settings.allowedDomains],
+    blockedDomains: [...settings.blockedDomains],
     spamEnabled: settings.spamEnabled,
     spamWindowSeconds: settings.spamWindowSeconds,
     spamMaxMessages: settings.spamMaxMessages,
