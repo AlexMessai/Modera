@@ -292,6 +292,8 @@ export async function recordAutomodViolationAndEscalate(input: {
 
   return applyWarningEscalation({
     membershipId: warning.id,
+    chatId: input.chatId,
+    affectedUserId: member.userId,
     policy,
     reason,
     triggerRule: input.rule,
@@ -362,6 +364,8 @@ export async function escalateAfterManualWarning(input: {
 
   const escalation = await applyWarningEscalation({
     membershipId: member.id,
+    chatId: input.chatId,
+    affectedUserId: member.user.id,
     policy,
     reason: input.reason,
     triggerRule: "MANUAL_WARN",
@@ -392,6 +396,8 @@ export async function escalateAfterManualWarning(input: {
  */
 export async function applyWarningEscalation(input: {
   membershipId: string;
+  chatId: string;
+  affectedUserId: string;
   policy: EscalationPolicy;
   reason: string;
   triggerRule: string;
@@ -403,6 +409,35 @@ export async function applyWarningEscalation(input: {
   const triggered = findTriggeredEscalationRule(policy.escalationRules, input.activeWarningCount, input.escalationMarker);
 
   if (!triggered) {
+    // Diagnostic trail for "warnings pile up but nothing ever fires" support
+    // questions -- only logged when the count *should* have crossed a rule
+    // by itself (so this stays quiet for the common "still below every
+    // threshold" case) but didn't fire, meaning either no rules are
+    // configured or the escalation marker is already at/above the threshold
+    // that would otherwise match (e.g. a prior attempt claimed it and was
+    // never rolled back cleanly).
+    const suspicious = policy.escalationRules.length === 0 ||
+      policy.escalationRules.some((rule) => input.activeWarningCount >= rule.thresholdWarnings);
+    if (suspicious) {
+      await prisma.auditLog.create({
+        data: {
+          chatId: input.chatId,
+          affectedUserId: input.affectedUserId,
+          source: "SYSTEM",
+          action: "AUTOMOD_ESCALATION_NOT_TRIGGERED",
+          reason: policy.escalationRules.length === 0
+            ? "Нет настроенных правил порога."
+            : "Порог достигнут по счётчику, но уже отмечен как обработанный (escalationMarker).",
+          metadata: {
+            triggerRule: input.triggerRule,
+            activeWarningCount: input.activeWarningCount,
+            escalationMarker: input.escalationMarker,
+            rules: policy.escalationRules
+          }
+        }
+      }).catch(() => undefined);
+    }
+
     return {
       enabled: true,
       escalated: false,

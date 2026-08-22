@@ -283,6 +283,51 @@ test("manual /warn shares automod's threshold: below it nothing is attempted, th
   }
 });
 
+test("a warning with no escalation rules configured logs a diagnostic entry instead of failing silently", async () => {
+  const telegramChatId = -1009000000403n;
+  const telegramUserId = 900000403n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({
+    data: {
+      telegramChatId,
+      title: "Escalation CI no-rules",
+      type: "supergroup",
+      moderationSettings: { create: { useGlobalProfile: false, autoEscalationEnabled: true, escalationRules: [] } }
+    }
+  });
+  const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "CI", displayName: "CI No Rules" } });
+  await prisma.chatMember.create({ data: { chatId: chat.id, userId: user.id, status: "MEMBER" } });
+
+  try {
+    await executeTelegramActorModerationAction({
+      chatId: chat.id,
+      targetTelegramUserId: Number(telegramUserId),
+      action: "WARNING",
+      reason: "Test",
+      telegramActor: { telegramUserId: 555, username: "chat_admin" }
+    });
+    const escalation = await escalateAfterManualWarning({
+      chatId: chat.id,
+      targetTelegramUserId: Number(telegramUserId),
+      reason: "Test"
+    });
+    assert.equal(escalation.escalated, false);
+    assert.equal(escalation.warnsLimit, null);
+
+    const diagnostic = await prisma.auditLog.findFirst({
+      where: { chatId: chat.id, affectedUserId: user.id, action: "AUTOMOD_ESCALATION_NOT_TRIGGERED" }
+    });
+    assert.ok(diagnostic);
+    assert.equal(diagnostic!.reason, "Нет настроенных правил порога.");
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
 test("warning cutoff is disabled at zero and stable for positive days", () => {
   const now = new Date("2026-08-18T12:00:00.000Z");
   assert.equal(warningCutoff(now, 0), null);
