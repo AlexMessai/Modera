@@ -68,14 +68,17 @@ export function Sidebar({
   const chatMatch = pathname.match(/^\/chats\/([^/]+)/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
   const activeTab = activeChatId ? (searchParams.get("tab") ?? "overview") : null;
-  const [openChats, setOpenChats] = useState<Set<string>>(() => new Set(activeChatId ? [activeChatId] : []));
+  // undefined = "not yet touched, follow the URL"; once the admin clicks a row, this always wins over the URL.
+  const [manualOpenChatId, setManualOpenChatId] = useState<string | null | undefined>(undefined);
+  const openChatId = manualOpenChatId === undefined ? activeChatId : manualOpenChatId;
 
-  function toggleChat(id: string) {
-    setOpenChats((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  function selectChat(id: string) {
+    if (openChatId === id) {
+      setManualOpenChatId(null);
+      return;
+    }
+    setManualOpenChatId(id);
+    router.push(`/chats/${id}?tab=overview`);
   }
 
   const isSystem = admin.role === "OWNER" || admin.role === "ADMIN";
@@ -108,13 +111,13 @@ export function Sidebar({
         <div className="section-label"><span>Чаты</span><span className="count">{chats.length}</span></div>
         <div className="groups-list">
           {chats.map((chat) => {
-            const open = openChats.has(chat.id) || activeChatId === chat.id;
+            const open = openChatId === chat.id;
             return (
               <div className="group-node" key={chat.id}>
                 <button
                   type="button"
                   className={`group-row ${open ? "is-open" : ""} ${activeChatId === chat.id ? "is-active-parent" : ""}`}
-                  onClick={() => toggleChat(chat.id)}
+                  onClick={() => selectChat(chat.id)}
                 >
                   <span className="group-avatar">{chat.title.slice(0, 1).toUpperCase()}</span>
                   <span className="group-name">{chat.title}</span>
