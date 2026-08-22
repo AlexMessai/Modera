@@ -1,6 +1,11 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
-import { resolveEffectiveModerationSettings, type LinkProtectionMode } from "@/server/services/global-moderation-service";
+import {
+  findEnabledMediaFilterRule,
+  MEDIA_FILTER_TYPES,
+  resolveEffectiveModerationSettings,
+  type LinkProtectionMode
+} from "@/server/services/global-moderation-service";
 import {
   getTelegramClient,
   TelegramApiError
@@ -30,6 +35,8 @@ export const RESTRICTABLE_MESSAGE_TYPES = [
 ] as const;
 
 export type RestrictableMessageType = (typeof RESTRICTABLE_MESSAGE_TYPES)[number];
+
+const MEDIA_FILTER_MANAGED_TYPES = new Set<string>(MEDIA_FILTER_TYPES);
 export type AutomodRule =
   | "LINK"
   | "TERM"
@@ -335,7 +342,7 @@ export async function processAutomodMessage(input: {
   isEdited: boolean;
 }) {
   if (!input.message.from || input.message.from.is_bot) {
-    return { processed: false, result: "IGNORED_SENDER" as const };
+    return { processed: false, result: "IGNORED_SENDER" as const, mediaFilterRule: null };
   }
 
   const stored = await prisma.message.findUnique({
@@ -354,7 +361,7 @@ export async function processAutomodMessage(input: {
   });
 
   if (!stored?.senderUserId) {
-    return { processed: false, result: "MESSAGE_NOT_READY" as const };
+    return { processed: false, result: "MESSAGE_NOT_READY" as const, mediaFilterRule: null };
   }
 
   const revisionAt = revisionDate(input.message);
@@ -381,7 +388,7 @@ export async function processAutomodMessage(input: {
   });
 
   if (claim.count === 0) {
-    return { processed: false, result: "DUPLICATE_REVISION" as const };
+    return { processed: false, result: "DUPLICATE_REVISION" as const, mediaFilterRule: null };
   }
 
   const resolvedPolicy = await resolveEffectiveModerationSettings(input.chatId);
@@ -392,12 +399,13 @@ export async function processAutomodMessage(input: {
       settings.blockedTermsEnabled ||
       settings.massMentionsEnabled ||
       settings.duplicateEnabled ||
-      settings.blockedMessageTypes.length > 0
+      settings.blockedMessageTypes.length > 0 ||
+      settings.mediaFilters.some((filterRule) => filterRule.enabled)
   );
 
   if (!rulesEnabled) {
     await finishWithoutDeletion(stored.id, "DISABLED");
-    return { processed: true, result: "DISABLED" as const };
+    return { processed: true, result: "DISABLED" as const, mediaFilterRule: null };
   }
 
   if (settings.ignoreAdmins) {
@@ -413,7 +421,7 @@ export async function processAutomodMessage(input: {
 
     if (membership && PROTECTED_STATUSES.has(membership.status)) {
       await finishWithoutDeletion(stored.id, "EXEMPT_ADMIN");
-      return { processed: true, result: "EXEMPT_ADMIN" as const };
+      return { processed: true, result: "EXEMPT_ADMIN" as const, mediaFilterRule: null };
     }
   }
 
@@ -430,9 +438,17 @@ export async function processAutomodMessage(input: {
   const mentionCount = settings.massMentionsEnabled
     ? countMentions(input.message)
     : 0;
-  const blockedMessageType = settings.blockedMessageTypes.includes(stored.messageType)
-    ? stored.messageType
+  // The 7 Filters-managed types (MEDIA_FILTER_TYPES) are read exclusively
+  // from mediaFilters -- blockedMessageTypes only still applies to the
+  // remaining types (DOCUMENT, STICKER, POLL, LOCATION, CONTACT).
+  const mediaFilterRule = MEDIA_FILTER_MANAGED_TYPES.has(stored.messageType)
+    ? findEnabledMediaFilterRule(settings.mediaFilters, stored.messageType)
     : null;
+  const blockedMessageType = mediaFilterRule
+    ? stored.messageType
+    : (!MEDIA_FILTER_MANAGED_TYPES.has(stored.messageType) && settings.blockedMessageTypes.includes(stored.messageType))
+      ? stored.messageType
+      : null;
 
   let rule: AutomodRule | null = null;
   if (blockedDomains.length > 0) rule = "LINK";
@@ -483,7 +499,7 @@ export async function processAutomodMessage(input: {
 
   if (!rule) {
     await finishWithoutDeletion(stored.id, "CLEAN");
-    return { processed: true, result: "CLEAN" as const };
+    return { processed: true, result: "CLEAN" as const, mediaFilterRule: null };
   }
 
   const metadata = {
@@ -493,6 +509,7 @@ export async function processAutomodMessage(input: {
     blockedDomains,
     blockedTerms,
     blockedMessageType,
+    mediaFilterType: mediaFilterRule?.type ?? null,
     mentionCount,
     maxMentions: settings.maxMentions,
     duplicateCount,
@@ -520,7 +537,7 @@ export async function processAutomodMessage(input: {
         error: message,
         metadata
       });
-      return { processed: true, result: "DELETE_FAILED" as const };
+      return { processed: true, result: "DELETE_FAILED" as const, mediaFilterRule: null };
     }
   }
 
@@ -534,6 +551,12 @@ export async function processAutomodMessage(input: {
 
   return {
     processed: true,
-    result: RESULT_BY_RULE[rule]
+    result: RESULT_BY_RULE[rule],
+    // Only meaningful when rule === "MEDIA" and the match came from the
+    // Filters module (not the legacy blockedMessageTypes list) -- lets the
+    // caller (update-handler.ts) decide whether to escalate/announce per the
+    // matched type's own warnOnTrigger/notifyEnabled, instead of the
+    // chat-wide default every other rule uses.
+    mediaFilterRule
   };
 }

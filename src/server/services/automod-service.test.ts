@@ -232,3 +232,88 @@ test("same Telegram message revision is processed once and a later edit is a new
     await prisma.telegramUser.delete({ where: { id: user.id } });
   }
 });
+
+// No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md), so getTelegramClient() always
+// throws and every would-be deletion ends up DELETE_FAILED rather than the
+// RESULT_BY_RULE success value -- these tests exercise rule *detection*
+// (rulesEnabled, the mediaFilters/blockedMessageTypes split), which is fully
+// decided before the Telegram call, not the success branch itself.
+test("mediaFilters (Filters module) enables automod for a type blockedMessageTypes never mentioned", async () => {
+  const telegramChatId = -1009000000401n;
+  const telegramUserId = 900000401n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({ data: { telegramChatId, title: "Automod Filters CI", type: "supergroup" } });
+  await prisma.chatModerationSettings.create({
+    data: {
+      chatId: chat.id,
+      useGlobalProfile: false,
+      mediaFilters: [{ type: "PHOTO", enabled: true, warnOnTrigger: true, notifyEnabled: true, notifyText: "🚫" }]
+    }
+  });
+  const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "Automod", displayName: "Automod Target" } });
+  await prisma.chatMember.create({ data: { chatId: chat.id, userId: user.id, status: "MEMBER" } });
+  await prisma.message.create({
+    data: { chatId: chat.id, senderUserId: user.id, telegramMessageId: 601n, telegramDate: new Date(1_700_000_000_000), messageType: "PHOTO" }
+  });
+
+  const message: TelegramMessage = {
+    message_id: 601,
+    date: 1_700_000_000,
+    chat: { id: Number(telegramChatId), type: "supergroup", title: "Automod Filters CI" },
+    from: { id: Number(telegramUserId), is_bot: false, first_name: "Automod" }
+  };
+
+  try {
+    const result = await processAutomodMessage({ chatId: chat.id, message, isEdited: false });
+    // DELETE_FAILED (not DISABLED/CLEAN) proves the PHOTO rule was matched
+    // and deletion was attempted -- blockedMessageTypes is empty on this
+    // chat, so only the new mediaFilters entry could have enabled it.
+    assert.equal(result.result, "DELETE_FAILED");
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
+test("a Filters-managed type is read exclusively from mediaFilters, ignoring a stale blockedMessageTypes entry", async () => {
+  const telegramChatId = -1009000000402n;
+  const telegramUserId = 900000402n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({ data: { telegramChatId, title: "Automod Filters CI 2", type: "supergroup" } });
+  await prisma.chatModerationSettings.create({
+    data: {
+      chatId: chat.id,
+      useGlobalProfile: false,
+      // Legacy list still names PHOTO, but PHOTO is now a Filters-managed
+      // type and its own rule (disabled) below must be the one that decides.
+      blockedMessageTypes: ["PHOTO"],
+      mediaFilters: [{ type: "PHOTO", enabled: false, warnOnTrigger: false, notifyEnabled: false, notifyText: "🚫" }]
+    }
+  });
+  const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "Automod", displayName: "Automod Target" } });
+  await prisma.chatMember.create({ data: { chatId: chat.id, userId: user.id, status: "MEMBER" } });
+  await prisma.message.create({
+    data: { chatId: chat.id, senderUserId: user.id, telegramMessageId: 602n, telegramDate: new Date(1_700_000_000_000), messageType: "PHOTO" }
+  });
+
+  const message: TelegramMessage = {
+    message_id: 602,
+    date: 1_700_000_000,
+    chat: { id: Number(telegramChatId), type: "supergroup", title: "Automod Filters CI 2" },
+    from: { id: Number(telegramUserId), is_bot: false, first_name: "Automod" }
+  };
+
+  try {
+    const result = await processAutomodMessage({ chatId: chat.id, message, isEdited: false });
+    assert.equal(result.result, "CLEAN");
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});

@@ -6,6 +6,7 @@ import { RESTRICTABLE_MESSAGE_TYPES } from "@/server/services/automod-service";
 import {
   getGlobalModerationProfile,
   LINK_PROTECTION_MODES,
+  MEDIA_FILTER_TYPES,
   updateGlobalModerationProfile
 } from "@/server/services/global-moderation-service";
 
@@ -16,6 +17,14 @@ const escalationRuleSchema = z.object({
   thresholdWarnings: z.number().int().min(1).max(999),
   action: z.enum(["MUTE", "BAN"]),
   durationMinutes: z.number().int().min(1).max(527040).nullable()
+});
+
+const mediaFilterRuleSchema = z.object({
+  type: z.enum(MEDIA_FILTER_TYPES),
+  enabled: z.boolean(),
+  warnOnTrigger: z.boolean(),
+  notifyEnabled: z.boolean(),
+  notifyText: z.string().min(1).max(1000)
 });
 
 const settingsSchema = z.object({
@@ -39,7 +48,8 @@ const settingsSchema = z.object({
   warningExpiryDays: z.number().int().min(0).max(3650),
   announceEscalationEnabled: z.boolean(),
   escalationMuteMessageTemplate: z.string().min(1).max(1000),
-  escalationBanMessageTemplate: z.string().min(1).max(1000)
+  escalationBanMessageTemplate: z.string().min(1).max(1000),
+  mediaFilters: z.array(mediaFilterRuleSchema).max(MEDIA_FILTER_TYPES.length)
 });
 
 export async function GET() {
