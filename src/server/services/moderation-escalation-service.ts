@@ -24,6 +24,9 @@ export type ManualWarningEscalation = {
   /** The threshold of the rule that actually fired (not necessarily `warnsLimit`, when multiple rules are configured). */
   threshold?: number;
   muteDurationMinutes?: number;
+  /** Set when a threshold *was* crossed but the mute/ban itself failed (e.g. the bot lacks "restrict members") — without this, the admin sees a plain warning confirmation with no sign that a punishment was attempted and silently failed. */
+  attemptedAction?: "MUTE" | "BAN";
+  error?: string;
 };
 
 /**
@@ -373,7 +376,12 @@ export async function escalateAfterManualWarning(input: {
     escalated: escalation.escalated,
     action: escalation.escalated ? escalation.action : undefined,
     threshold: escalation.escalated ? escalation.threshold : undefined,
-    muteDurationMinutes: escalation.escalated ? escalation.muteDurationMinutes : undefined
+    muteDurationMinutes: escalation.escalated ? escalation.muteDurationMinutes : undefined,
+    // Forwarded even though escalation.escalated is false here -- this is
+    // exactly the "threshold crossed but the punishment itself failed" case
+    // the caller needs to tell apart from "no threshold crossed yet".
+    attemptedAction: escalation.attemptedAction,
+    error: escalation.error
   };
 }
 
@@ -464,6 +472,16 @@ export async function applyWarningEscalation(input: {
     const message = error instanceof ModerationError
       ? error.message
       : "Не удалось применить автоматическое наказание.";
+
+    // No separate AuditLog write here -- executeTelegramBackedAction's own
+    // failAction() already records an AUTOMOD_ESCALATION_FAILED entry for
+    // this same failure (source: "SYSTEM"), since executeAutomatedModerationAction
+    // routes through it. A second write here would just duplicate the
+    // Журнал entry. What *was* missing is surfacing attemptedAction/error to
+    // the caller (see ManualWarningEscalation below) -- previously
+    // escalateAfterManualWarning discarded them, so the admin's chat reply
+    // had no sign the mute/ban was attempted and failed, and the next
+    // /warn silently repeated the same failing attempt.
     return {
       enabled: true,
       escalated: false,

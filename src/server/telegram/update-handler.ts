@@ -194,7 +194,8 @@ function formatMinutes(minutes: number) {
   return `${minutes} мин.`;
 }
 
-type ModerationOutcomeLine = { text: string };
+/** `adminOnly` keeps internal diagnostics (e.g. a failed auto-punishment) out of the public chat announcement — only the admin who ran the command needs to see them. */
+type ModerationOutcomeLine = { text: string; adminOnly?: boolean };
 
 /** Runs the moderation action against a single already-resolved target; used in a loop for multi-target commands. */
 async function applyModerationCommandToTarget(input: {
@@ -276,6 +277,15 @@ async function applyModerationCommandToTarget(input: {
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         }
       )
+    });
+  } else if (escalation?.attemptedAction && escalation.error) {
+    // Threshold was crossed but the mute/ban itself failed (e.g. the bot
+    // lacks "Ограничивать участников") — without this line the admin sees a
+    // plain warning confirmation with no sign anything went wrong, and the
+    // same failing attempt silently repeats on every subsequent warning.
+    lines.push({
+      text: `⚠️ Порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений достигнут, но автонаказание (${escalation.attemptedAction === "MUTE" ? "mute" : "ban"}) не применилось: ${escalation.error}`,
+      adminOnly: true
     });
   }
 
@@ -392,7 +402,7 @@ async function processGroupModerationCommand(input: {
       for (const outcome of outcomes) {
         const line = targets.length > 1 ? `${target.displayName}: ${outcome.text}` : outcome.text;
         adminSummaryLines.push(line);
-        if (visibility.publicPunishmentMessagesEnabled) publicLines.push(line);
+        if (visibility.publicPunishmentMessagesEnabled && !outcome.adminOnly) publicLines.push(line);
       }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";

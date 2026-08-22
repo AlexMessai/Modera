@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
-  applyWarningEscalation,
   countActiveWarnings,
   describeWarningStanding,
   escalateAfterManualWarning,
@@ -243,26 +242,17 @@ test("manual /warn shares automod's threshold: below it nothing is attempted, th
     assert.equal(thirdWarning.warningCount, 3);
 
     // No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md), so the mute this threshold
-    // triggers can't actually reach Telegram. Assert at the applyWarningEscalation
-    // level instead, where attemptedAction/error distinguish "threshold reached but
-    // Telegram failed" from "threshold not reached" — escalateAfterManualWarning's
-    // own return shape can't tell those two apart from the outside.
-    const escalation = await applyWarningEscalation({
-      membershipId: data.member.id,
-      policy: {
-        escalationRules: [
-          { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 4320 },
-          { order: 2, thresholdWarnings: 8, action: "BAN", durationMinutes: null }
-        ]
-      },
-      reason: "Нарушение 3",
-      triggerRule: "MANUAL_WARN",
-      warningCount: thirdWarning.warningCount,
-      activeWarningCount: thirdWarning.warningCount,
-      escalationMarker: 0
+    // triggers can't actually reach Telegram — attemptedAction/error surface
+    // that as "threshold reached but the punishment itself failed", distinct
+    // from "threshold not reached" (escalated: false in both cases, so this
+    // is the only way the admin's chat reply can tell them apart).
+    const escalation = await escalateAfterManualWarning({
+      chatId: data.chat.id,
+      targetTelegramUserId: Number(data.user.telegramUserId),
+      reason: "Нарушение 3"
     });
-    assert.equal(escalation.enabled, true);
     assert.equal(escalation.escalated, false);
+    assert.equal(escalation.action, undefined);
     assert.equal(escalation.attemptedAction, "MUTE");
     assert.ok(escalation.error);
 
@@ -275,6 +265,16 @@ test("manual /warn shares automod's threshold: below it nothing is attempted, th
     const standing = await describeWarningStanding({ chatId: data.chat.id, affectedUserId: data.user.id });
     assert.equal(standing.activeWarningCount, 3);
     assert.equal(standing.warnsLimit, 3);
+
+    // The failure was already recorded to AuditLog (Журнал) by
+    // executeTelegramBackedAction's own failAction() -- escalateAfterManualWarning
+    // just needed to stop discarding attemptedAction/error on the way out.
+    const failureLog = await prisma.auditLog.findFirst({
+      where: { chatId: data.chat.id, affectedUserId: data.user.id, action: "AUTOMOD_ESCALATION_FAILED" },
+      orderBy: { createdAt: "desc" }
+    });
+    assert.ok(failureLog);
+    assert.equal((failureLog!.metadata as { type?: string })?.type, "MUTE");
   } finally {
     await prisma.moderationAction.deleteMany({ where: { chatId: data.chat.id } });
     await prisma.auditLog.deleteMany({ where: { chatId: data.chat.id } });
