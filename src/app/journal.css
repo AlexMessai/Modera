@@ -4,6 +4,8 @@
 .journal-filters { display: flex; align-items: center; gap: 8px; }
 .journal-table { min-width: 1180px; }
 .journal-event-cell { min-width: 260px; }
+.journal-row--expandable:hover { background: var(--surface-2); }
+.journal-metadata { margin: 0; padding: 12px 14px; background: var(--surface-2); border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
 .pending-panel { border-color: #ecdcae; background: #fffdf8; }
 .pending-list { margin-top: 14px; border-top: 1px solid #eadfbe; }
 .pending-row { min-height: 62px; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border-bottom: 1px solid #eee3c7; color: var(--warning); }
