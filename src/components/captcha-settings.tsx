@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Globe2, ShieldCheck } from "lucide-react";
+import { Check, ShieldCheck } from "lucide-react";
 
 export type CaptchaSettingsValue = {
   enabled: boolean;
@@ -9,13 +9,10 @@ export type CaptchaSettingsValue = {
 };
 
 type Props = {
-  chatId?: string;
+  chatId: string;
   initial: CaptchaSettingsValue;
   canEdit: boolean;
   botCanRestrictMembers?: boolean;
-  scope?: "chat" | "global";
-  initialUseGlobalProfile?: boolean;
-  globalSettings?: CaptchaSettingsValue;
   onSaved?: (saved: CaptchaSettingsValue) => void;
 };
 
@@ -24,49 +21,32 @@ export function CaptchaSettings({
   initial,
   canEdit,
   botCanRestrictMembers = true,
-  scope = "chat",
-  initialUseGlobalProfile = false,
-  globalSettings,
   onSaved
 }: Props) {
   const [settings, setSettings] = useState(initial);
-  const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const isGlobalScope = scope === "global";
-  const inherited = !isGlobalScope && useGlobalProfile && Boolean(globalSettings);
-  const visibleSettings = inherited && globalSettings ? globalSettings : settings;
-  const fieldsDisabled = !canEdit || saving || inherited;
+  const fieldsDisabled = !canEdit || saving;
 
   async function save() {
-    if (!isGlobalScope && !chatId) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch(isGlobalScope ? "/api/captcha/global" : `/api/chats/${chatId}/captcha`, {
+      const response = await fetch(`/api/chats/${chatId}/captcha`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...settings, ...(isGlobalScope ? {} : { useGlobalProfile }) })
+        body: JSON.stringify(settings)
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки капчи.");
 
-      if (isGlobalScope) {
-        const savedSettings = payload.data as CaptchaSettingsValue;
-        setSettings(savedSettings);
-        setSuccess("Глобальная политика капчи сохранена.");
-        onSaved?.(savedSettings);
-      } else {
-        const saved = payload.data as CaptchaSettingsValue & { useGlobalProfile: boolean };
-        const { useGlobalProfile: savedMode, ...savedSettings } = saved;
-        setUseGlobalProfile(savedMode);
-        setSettings(savedSettings);
-        setSuccess(savedMode ? "Чат переключён на глобальную политику капчи." : "Настройки капчи чата сохранены.");
-        onSaved?.(savedSettings);
-      }
+      const savedSettings = payload.data as CaptchaSettingsValue;
+      setSettings(savedSettings);
+      setSuccess("Настройки капчи чата сохранены.");
+      onSaved?.(savedSettings);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки капчи.");
     } finally {
@@ -76,33 +56,13 @@ export function CaptchaSettings({
 
   return (
     <div className="automod-settings">
-      {!isGlobalScope ? (
-        <div className="automod-rule">
-          <label className="automod-toggle-row">
-            <input
-              type="checkbox"
-              checked={useGlobalProfile}
-              disabled={!canEdit || saving}
-              onChange={(event) => setUseGlobalProfile(event.target.checked)}
-            />
-            <span><strong>Использовать глобальную политику капчи</strong><small>Настройки этого чата будут автоматически следовать глобальным значениям из раздела «Модерация».</small></span>
-          </label>
-          {useGlobalProfile ? (
-            <div className="moderation-readonly">
-              <Globe2 size={18} />
-              <div><strong>Глобальное наследование включено</strong><p>Индивидуальные значения сохранены, но пока не применяются. Отключите наследование, чтобы вернуться к ним.</p></div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {!isGlobalScope && visibleSettings.enabled && !botCanRestrictMembers ? (
+      {settings.enabled && !botCanRestrictMembers ? (
         <div className="moderation-notice"><ShieldCheck size={16} /><span>Капча включена, но у бота нет права ограничивать участников — ограничение при вступлении будет завершаться ошибкой до выдачи права.</span></div>
       ) : null}
       {!canEdit ? (
         <div className="moderation-readonly">
           <ShieldCheck size={18} />
-          <div><strong>Только просмотр</strong><p>{isGlobalScope ? "Изменять глобальную политику могут OWNER и ADMIN." : "Изменять настройки чата могут OWNER и ADMIN."}</p></div>
+          <div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div>
         </div>
       ) : null}
 
@@ -110,7 +70,7 @@ export function CaptchaSettings({
         <label className="automod-toggle-row">
           <input
             type="checkbox"
-            checked={visibleSettings.enabled}
+            checked={settings.enabled}
             disabled={fieldsDisabled}
             onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
           />
@@ -120,7 +80,7 @@ export function CaptchaSettings({
           <span>Текст сообщения с капчой</span>
           <textarea
             rows={3}
-            value={visibleSettings.challengeMessageTemplate}
+            value={settings.challengeMessageTemplate}
             disabled={fieldsDisabled}
             onChange={(event) => setSettings((current) => ({ ...current, challengeMessageTemplate: event.target.value }))}
           />
@@ -134,7 +94,7 @@ export function CaptchaSettings({
       {canEdit ? (
         <div className="automod-actions">
           <button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}>
-            <Check size={16} />{saving ? "Сохраняю…" : isGlobalScope ? "Сохранить глобальную политику" : "Сохранить настройки"}
+            <Check size={16} />{saving ? "Сохраняю…" : "Сохранить настройки"}
           </button>
         </div>
       ) : null}

@@ -2,16 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SystemClient } from "@/components/system-client";
 import { AdminSettingsClient } from "@/components/admin-settings-client";
-import { ModerationWorkspace } from "@/components/moderation-workspace-client";
+import { ManualModerationVisibilitySettings } from "@/components/manual-moderation-visibility-settings";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageAdmins, canManageChatSettings, canViewSystem } from "@/server/auth/permissions";
 import { getTelegramBotProfile } from "@/server/telegram/client";
-import { getModerationDashboard } from "@/server/services/moderation-dashboard-service";
-import { getGlobalCaptchaProfile } from "@/server/services/captcha-settings-service";
-import { getGlobalManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
-import { getGlobalAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
-import { getGlobalReportProfile } from "@/server/services/report-settings-service";
-import { getGlobalContentProfile } from "@/server/services/content-settings-service";
+import { getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
 
 export const dynamic = "force-dynamic";
 
@@ -33,23 +28,14 @@ export default async function SystemPage({
   if (!canViewSystem(admin.role)) redirect("/overview");
 
   const canSeeAccounts = canManageAdmins(admin.role);
-  const canEditDefaults = canManageChatSettings(admin.role);
+  const canEditNotifications = canManageChatSettings(admin.role);
   const tab = query.tab === "accounts" && canSeeAccounts
     ? "accounts"
-    : query.tab === "moderation" && canEditDefaults
-      ? "moderation"
+    : query.tab === "notifications" && canEditNotifications
+      ? "notifications"
       : "diagnostics";
   const telegramBotUsername = tab === "accounts" ? await getTelegramBotUsername() : null;
-  const moderationDefaults = tab === "moderation"
-    ? await Promise.all([
-        getModerationDashboard(),
-        getGlobalCaptchaProfile(),
-        getGlobalManualModerationProfile(),
-        getGlobalAntiRaidProfile(),
-        getGlobalReportProfile(),
-        getGlobalContentProfile()
-      ])
-    : null;
+  const visibility = tab === "notifications" ? await getManualModerationVisibility() : null;
 
   return (
     <main className="page">
@@ -57,27 +43,18 @@ export default async function SystemPage({
         <div>
           <span className="eyebrow">Production · Диагностика и доступ</span>
           <h1>Система</h1>
-          <p>PostgreSQL, Telegram Bot API, webhook, очереди, ошибки, администраторы панели и глобальные значения по умолчанию в одном месте.</p>
+          <p>PostgreSQL, Telegram Bot API, webhook, очереди, ошибки, администраторы панели и общие уведомления в одном месте.</p>
         </div>
       </header>
       <nav className="page-tabs" aria-label="Вкладки системы">
         <Link href="/system" className={`page-tab ${tab === "diagnostics" ? "page-tab--active" : ""}`}>Диагностика</Link>
         {canSeeAccounts ? <Link href="/system?tab=accounts" className={`page-tab ${tab === "accounts" ? "page-tab--active" : ""}`}>Аккаунты</Link> : null}
-        {canEditDefaults ? <Link href="/system?tab=moderation" className={`page-tab ${tab === "moderation" ? "page-tab--active" : ""}`}>Модерация по умолчанию</Link> : null}
+        {canEditNotifications ? <Link href="/system?tab=notifications" className={`page-tab ${tab === "notifications" ? "page-tab--active" : ""}`}>Уведомления</Link> : null}
       </nav>
       {tab === "accounts" ? (
         <AdminSettingsClient currentAdminId={admin.id} telegramBotUsername={telegramBotUsername} />
-      ) : tab === "moderation" && moderationDefaults ? (
-        <ModerationWorkspace
-          automodInitial={moderationDefaults[0].globalProfile.settings}
-          captchaInitial={moderationDefaults[1].settings}
-          manualModerationInitial={moderationDefaults[2].settings}
-          manualModerationVisibilityInitial={moderationDefaults[2].visibility}
-          antiRaidInitial={moderationDefaults[3].settings}
-          reportInitial={moderationDefaults[4].settings}
-          contentInitial={moderationDefaults[5].settings}
-          canEdit={canEditDefaults}
-        />
+      ) : tab === "notifications" && visibility ? (
+        <ManualModerationVisibilitySettings initial={visibility} canEdit={canEditNotifications} />
       ) : (
         <SystemClient />
       )}

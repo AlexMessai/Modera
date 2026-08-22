@@ -27,7 +27,6 @@ const mediaFilterRuleSchema = z.object({
 });
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   linkProtectionMode: z.enum(LINK_PROTECTION_MODES),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
   blockedDomains: z.array(z.string().trim().min(1).max(255)).max(100),

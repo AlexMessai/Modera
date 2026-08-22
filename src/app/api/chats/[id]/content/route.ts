@@ -10,7 +10,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   welcomeEnabled: z.boolean(),
   welcomeMessageTemplate: z.string().min(1).max(2000),
   rulesText: z.string().max(4000)
@@ -50,7 +49,6 @@ export async function PATCH(
   const saved = await updateChatContentSettings({
     chatId: id,
     actingAdminId: auth.admin.id,
-    useGlobalProfile: parsed.data.useGlobalProfile,
     settings: parsed.data
   });
   if (!saved) {

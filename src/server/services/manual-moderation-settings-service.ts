@@ -1,6 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 
-export const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
+const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
 
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
@@ -134,18 +134,7 @@ function serializeManualModerationVisibility(settings: ManualModerationVisibilit
   };
 }
 
-export async function getGlobalManualModerationProfile() {
-  const stored = await prisma.globalManualModerationSettings.findUnique({
-    where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID }
-  });
-  return {
-    persisted: Boolean(stored),
-    settings: serializeManualModerationSettings(stored ?? DEFAULT_MANUAL_MODERATION_SETTINGS),
-    visibility: serializeManualModerationVisibility(stored ?? DEFAULT_MANUAL_MODERATION_VISIBILITY)
-  };
-}
-
-/** Global-only visibility flags, fetched without the (unused) templates -- for callers that only need the on/off state (update-handler.ts, appeal-notification-service.ts). */
+/** Global-only visibility flags, fetched without the (unused) templates -- for callers that only need the on/off state (update-handler.ts, appeal-notification-service.ts, the Система "Уведомления" panel). */
 export async function getManualModerationVisibility(): Promise<ManualModerationVisibilitySettingsValue> {
   const stored = await prisma.globalManualModerationSettings.findUnique({
     where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
@@ -158,33 +147,29 @@ export async function getManualModerationVisibility(): Promise<ManualModerationV
   return serializeManualModerationVisibility(stored ?? DEFAULT_MANUAL_MODERATION_VISIBILITY);
 }
 
-export async function updateGlobalManualModerationProfile(input: {
+/** Narrow write path for the Система "Уведомления" panel -- templates have no global editor anymore, only visibility does. */
+export async function updateManualModerationVisibility(input: {
   actingAdminId: string;
-  settings: ManualModerationSettingsValue;
   visibility: ManualModerationVisibilitySettingsValue;
 }) {
-  const normalized = normalizeManualModerationSettings(input.settings);
   const normalizedVisibility = normalizeManualModerationVisibility(input.visibility);
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.globalManualModerationSettings.upsert({
       where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
-      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...normalized, ...normalizedVisibility },
-      update: { ...normalized, ...normalizedVisibility }
+      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...DEFAULT_MANUAL_MODERATION_SETTINGS, ...normalizedVisibility },
+      update: normalizedVisibility
     });
     await tx.auditLog.create({
       data: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "GLOBAL_MANUAL_MODERATION_SETTINGS_UPDATED",
-        metadata: { ...serializeManualModerationSettings(settings), ...serializeManualModerationVisibility(settings) }
+        metadata: serializeManualModerationVisibility(settings)
       }
     });
     return settings;
   });
-  return {
-    ...serializeManualModerationSettings(saved),
-    ...serializeManualModerationVisibility(saved)
-  };
+  return serializeManualModerationVisibility(saved);
 }
 
 export async function getChatManualModerationProfile(chatId: string) {
@@ -195,14 +180,7 @@ export async function getChatManualModerationProfile(chatId: string) {
   });
   if (!chat) return null;
 
-  const globalProfile = await getGlobalManualModerationProfile();
   const local = chat.manualModerationSettings;
-  // A chat that never made a choice follows the global profile -- otherwise
-  // globally configured templates would silently apply to no chat at all.
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  const effective = useGlobalProfile
-    ? globalProfile.settings
-    : serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS);
 
   return {
     chat: {
@@ -212,25 +190,13 @@ export async function getChatManualModerationProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    policy: {
-      useGlobalProfile,
-      effectiveSource: useGlobalProfile ? ("GLOBAL" as const) : ("CHAT" as const),
-      globalProfilePersisted: globalProfile.persisted
-    },
-    settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS),
-    effectiveSettings: serializeManualModerationSettings(effective),
-    globalSettings: serializeManualModerationSettings(globalProfile.settings),
-    // Visibility is global-only (no per-chat override) -- exposed here so the
-    // chat-scope editor can show/hide template fields consistently with the
-    // Web Admin "Модерация" global settings.
-    globalVisibility: globalProfile.visibility
+    settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
   };
 }
 
 export async function updateChatManualModerationProfile(input: {
   chatId: string;
   actingAdminId: string;
-  useGlobalProfile: boolean;
   settings: ManualModerationSettingsValue;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
@@ -240,8 +206,8 @@ export async function updateChatManualModerationProfile(input: {
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatManualModerationSettings.upsert({
       where: { chatId: input.chatId },
-      create: { chatId: input.chatId, useGlobalProfile: input.useGlobalProfile, ...normalized },
-      update: { useGlobalProfile: input.useGlobalProfile, ...normalized }
+      create: { chatId: input.chatId, ...normalized },
+      update: normalized
     });
     await tx.auditLog.create({
       data: {
@@ -249,36 +215,20 @@ export async function updateChatManualModerationProfile(input: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "MANUAL_MODERATION_SETTINGS_UPDATED",
-        metadata: {
-          useGlobalProfile: settings.useGlobalProfile,
-          ...serializeManualModerationSettings(settings)
-        }
+        metadata: serializeManualModerationSettings(settings)
       }
     });
     return settings;
   });
-  return {
-    useGlobalProfile: saved.useGlobalProfile,
-    ...serializeManualModerationSettings(saved)
-  };
+  return serializeManualModerationSettings(saved);
 }
 
 export async function resolveEffectiveManualModerationSettings(chatId: string) {
   const local = await prisma.chatManualModerationSettings.findUnique({ where: { chatId } });
-  if (local && !local.useGlobalProfile) {
-    return {
-      source: "CHAT" as const,
-      useGlobalProfile: false,
-      settings: serializeManualModerationSettings(local)
-    };
-  }
-  const global = await prisma.globalManualModerationSettings.findUnique({
-    where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID }
-  });
   return {
-    source: "GLOBAL" as const,
-    useGlobalProfile: true,
-    settings: serializeManualModerationSettings(global ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
+    source: "CHAT" as const,
+    useGlobalProfile: false,
+    settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
   };
 }
 

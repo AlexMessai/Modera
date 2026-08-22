@@ -5,8 +5,7 @@ import {
   DEFAULT_CAPTCHA_SETTINGS,
   normalizeCaptchaSettings,
   resolveEffectiveCaptchaSettings,
-  updateChatCaptchaProfile,
-  updateGlobalCaptchaProfile
+  updateChatCaptchaProfile
 } from "./captcha-settings-service";
 
 const CHAT_ID = -1009000012001n;
@@ -29,7 +28,7 @@ test("captcha settings are normalized: enabled coerced to boolean, blank templat
   assert.equal(normalizeCaptchaSettings({ ...DEFAULT_CAPTCHA_SETTINGS, enabled: false }).enabled, false);
 });
 
-test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
+test("a chat with no settings row falls back to app defaults; saved settings are read back from the chat's own row", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Captcha Settings CI", type: "supergroup" }
@@ -39,31 +38,21 @@ test("a chat that never chose follows the global profile; opting out uses its ow
   });
 
   try {
-    // No ChatCaptchaSettings row yet — a chat that never made a choice must
-    // follow the global profile, otherwise a protective global policy would
-    // silently apply to no chat at all.
-    await updateGlobalCaptchaProfile({
-      actingAdminId: admin.id,
-      settings: { ...DEFAULT_CAPTCHA_SETTINGS, enabled: true }
-    });
-
     const beforeAnyChatEdit = await resolveEffectiveCaptchaSettings(chat.id);
-    assert.equal(beforeAnyChatEdit.source, "GLOBAL");
-    assert.equal(beforeAnyChatEdit.settings.enabled, true);
+    assert.equal(beforeAnyChatEdit.source, "CHAT");
+    assert.equal(beforeAnyChatEdit.settings.enabled, DEFAULT_CAPTCHA_SETTINGS.enabled);
 
     const saved = await updateChatCaptchaProfile({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
-      settings: { ...DEFAULT_CAPTCHA_SETTINGS, enabled: false }
+      settings: { ...DEFAULT_CAPTCHA_SETTINGS, enabled: true }
     });
-    assert.equal(saved?.useGlobalProfile, false);
+    assert.equal(saved?.enabled, true);
 
-    const optedOut = await resolveEffectiveCaptchaSettings(chat.id);
-    assert.equal(optedOut.source, "CHAT");
-    assert.equal(optedOut.settings.enabled, false);
+    const resolved = await resolveEffectiveCaptchaSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.settings.enabled, true);
   } finally {
-    await updateGlobalCaptchaProfile({ actingAdminId: admin.id, settings: DEFAULT_CAPTCHA_SETTINGS });
     await cleanup();
   }
 });

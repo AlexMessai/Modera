@@ -5,7 +5,6 @@ import {
   DEFAULT_MEDIA_FILTERS,
   findEnabledMediaFilterRule,
   findTriggeredEscalationRule,
-  GLOBAL_MODERATION_PROFILE_ID,
   lowestEscalationThreshold,
   MEDIA_FILTER_TYPES,
   normalizeEscalationRules,
@@ -99,7 +98,7 @@ test("findEnabledMediaFilterRule returns the rule only when its type is enabled"
   assert.equal(findEnabledMediaFilterRule(rules, "DOCUMENT"), null);
 });
 
-test("chat moderation stays local by default and inherits global rules only after explicit opt-in", async () => {
+test("chat moderation always reads the chat's own settings, ignoring any GlobalModerationSettings row", async () => {
   const telegramChatId = -1009000000701n;
 
   await prisma.chat.deleteMany({ where: { telegramChatId } });
@@ -113,10 +112,13 @@ test("chat moderation stays local by default and inherits global rules only afte
   });
 
   try {
+    // A GlobalModerationSettings row exists but must have zero effect now
+    // that inheritance is removed -- everything below asserts against the
+    // chat's own row only.
     await prisma.globalModerationSettings.upsert({
-      where: { id: GLOBAL_MODERATION_PROFILE_ID },
+      where: { id: "global" },
       create: {
-        id: GLOBAL_MODERATION_PROFILE_ID,
+        id: "global",
         linkProtectionMode: "WHITELIST_ONLY",
         allowedDomains: ["example.com"],
         spamEnabled: true,
@@ -136,41 +138,21 @@ test("chat moderation stays local by default and inherits global rules only afte
       data: {
         chatId: chat.id,
         linkProtectionMode: "ALLOW_ALL",
-        spamEnabled: false,
-        useGlobalProfile: false
+        spamEnabled: false
       }
     });
 
-    const local = await resolveEffectiveModerationSettings(chat.id);
-    assert.equal(local.source, "CHAT");
-    assert.equal(local.useGlobalProfile, false);
-    assert.equal(local.settings.linkProtectionMode, "ALLOW_ALL");
-    assert.equal(local.settings.spamEnabled, false);
-
-    await prisma.chatModerationSettings.update({
-      where: { chatId: chat.id },
-      data: { useGlobalProfile: true }
-    });
-
-    const inherited = await resolveEffectiveModerationSettings(chat.id);
-    assert.equal(inherited.source, "GLOBAL");
-    assert.equal(inherited.useGlobalProfile, true);
-    assert.equal(inherited.settings.linkProtectionMode, "WHITELIST_ONLY");
-    assert.equal(inherited.settings.allowedDomains[0], "example.com");
-    assert.equal(inherited.settings.spamWindowSeconds, 15);
-    assert.equal(inherited.settings.spamMaxMessages, 4);
-
-    const localStored = await prisma.chatModerationSettings.findUniqueOrThrow({
-      where: { chatId: chat.id }
-    });
-    assert.equal(localStored.linkProtectionMode, "ALLOW_ALL");
-    assert.equal(localStored.spamEnabled, false);
+    const resolved = await resolveEffectiveModerationSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.useGlobalProfile, false);
+    assert.equal(resolved.settings.linkProtectionMode, "ALLOW_ALL");
+    assert.equal(resolved.settings.spamEnabled, false);
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
   }
 });
 
-test("a chat with no ChatModerationSettings row at all follows the global profile", async () => {
+test("a chat with no ChatModerationSettings row at all falls back to app defaults, not the global profile", async () => {
   const telegramChatId = -1009000000702n;
 
   await prisma.chat.deleteMany({ where: { telegramChatId } });
@@ -181,30 +163,18 @@ test("a chat with no ChatModerationSettings row at all follows the global profil
 
   try {
     await prisma.globalModerationSettings.upsert({
-      where: { id: GLOBAL_MODERATION_PROFILE_ID },
-      create: { id: GLOBAL_MODERATION_PROFILE_ID, spamEnabled: true, spamWindowSeconds: 12, spamMaxMessages: 3 },
+      where: { id: "global" },
+      create: { id: "global", spamEnabled: true, spamWindowSeconds: 12, spamMaxMessages: 3 },
       update: { spamEnabled: true, spamWindowSeconds: 12, spamMaxMessages: 3 }
     });
 
-    // No ChatModerationSettings row was ever created for this chat — it must
-    // still inherit the global profile, otherwise a protective global policy
-    // would silently apply to no chat at all until every chat is opened and
-    // switched on by hand.
+    // No ChatModerationSettings row was ever created for this chat -- it must
+    // fall back to DEFAULT_MODERATION_SETTINGS, never the global profile.
     const resolved = await resolveEffectiveModerationSettings(chat.id);
-    assert.equal(resolved.source, "GLOBAL");
-    assert.equal(resolved.useGlobalProfile, true);
-    assert.equal(resolved.settings.spamEnabled, true);
-    assert.equal(resolved.settings.spamWindowSeconds, 12);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.useGlobalProfile, false);
+    assert.equal(resolved.settings.spamEnabled, false);
   } finally {
-    // GlobalModerationSettings is a shared singleton row -- other test files
-    // running in the same suite read the real default (spamEnabled: false)
-    // when nothing else has touched it, so leaving it enabled here would
-    // silently break any later test that assumes an untouched chat is quiet.
-    await prisma.globalModerationSettings.upsert({
-      where: { id: GLOBAL_MODERATION_PROFILE_ID },
-      create: { id: GLOBAL_MODERATION_PROFILE_ID },
-      update: { spamEnabled: false, spamWindowSeconds: 10, spamMaxMessages: 5 }
-    });
     await prisma.chat.delete({ where: { id: chat.id } });
   }
 });

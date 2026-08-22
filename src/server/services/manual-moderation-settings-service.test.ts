@@ -8,7 +8,7 @@ import {
   renderManualModerationTemplate,
   resolveEffectiveManualModerationSettings,
   updateChatManualModerationProfile,
-  updateGlobalManualModerationProfile
+  updateManualModerationVisibility
 } from "./manual-moderation-settings-service";
 
 const CHAT_ID = -1009000013001n;
@@ -71,7 +71,7 @@ test("%warns_limit% is replaced before %warns% so it isn't eaten as a prefix", (
   assert.equal(text, "@user: 3 из 3");
 });
 
-test("a chat that never chose follows the global profile; opting out uses its own templates", async () => {
+test("a chat with no settings row falls back to app defaults; saved templates are read back from the chat's own row", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Manual Moderation Settings CI", type: "supergroup" }
@@ -81,36 +81,40 @@ test("a chat that never chose follows the global profile; opting out uses its ow
   });
 
   try {
-    // No ChatManualModerationSettings row yet — a chat that never made a choice
-    // must follow the global profile, otherwise globally configured templates
-    // would silently apply to no chat at all.
-    const beforeAnyGlobalEdit = await resolveEffectiveManualModerationSettings(chat.id);
-    assert.equal(beforeAnyGlobalEdit.source, "GLOBAL");
-    assert.deepEqual(beforeAnyGlobalEdit.settings, DEFAULT_MANUAL_MODERATION_SETTINGS);
-
-    await updateGlobalManualModerationProfile({
-      actingAdminId: admin.id,
-      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" },
-      visibility: DEFAULT_MANUAL_MODERATION_VISIBILITY
-    });
-
-    const stillFollowingGlobal = await resolveEffectiveManualModerationSettings(chat.id);
-    assert.equal(stillFollowingGlobal.source, "GLOBAL");
-    assert.equal(stillFollowingGlobal.settings.banMessageTemplate, "GLOBAL BAN %target%");
+    const beforeAnyEdit = await resolveEffectiveManualModerationSettings(chat.id);
+    assert.equal(beforeAnyEdit.source, "CHAT");
+    assert.deepEqual(beforeAnyEdit.settings, DEFAULT_MANUAL_MODERATION_SETTINGS);
 
     const saved = await updateChatManualModerationProfile({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
       settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "CHAT BAN %target%" }
     });
-    assert.equal(saved?.useGlobalProfile, false);
+    assert.equal(saved?.banMessageTemplate, "CHAT BAN %target%");
 
-    const optedOut = await resolveEffectiveManualModerationSettings(chat.id);
-    assert.equal(optedOut.source, "CHAT");
-    assert.equal(optedOut.settings.banMessageTemplate, "CHAT BAN %target%");
+    const resolved = await resolveEffectiveManualModerationSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.settings.banMessageTemplate, "CHAT BAN %target%");
   } finally {
-    await updateGlobalManualModerationProfile({ actingAdminId: admin.id, settings: DEFAULT_MANUAL_MODERATION_SETTINGS, visibility: DEFAULT_MANUAL_MODERATION_VISIBILITY });
+    await cleanup();
+  }
+});
+
+test("updateManualModerationVisibility only touches the visibility flags on the global row", async () => {
+  await cleanup();
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    const saved = await updateManualModerationVisibility({
+      actingAdminId: admin.id,
+      visibility: { ...DEFAULT_MANUAL_MODERATION_VISIBILITY, publicPunishmentMessagesEnabled: false }
+    });
+    assert.equal(saved.publicPunishmentMessagesEnabled, false);
+    assert.equal(saved.privatePunishmentMessagesEnabled, DEFAULT_MANUAL_MODERATION_VISIBILITY.privatePunishmentMessagesEnabled);
+  } finally {
+    await updateManualModerationVisibility({ actingAdminId: admin.id, visibility: DEFAULT_MANUAL_MODERATION_VISIBILITY });
     await cleanup();
   }
 });

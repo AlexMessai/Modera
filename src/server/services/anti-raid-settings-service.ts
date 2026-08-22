@@ -1,7 +1,5 @@
 import { prisma } from "@/server/db/prisma";
 
-export const GLOBAL_ANTI_RAID_PROFILE_ID = "global";
-
 export type AntiRaidSettingsValue = {
   enabled: boolean;
   /** How many joins within `windowSeconds` counts as a raid — spec's example: "30 joins за 20 секунд". */
@@ -48,40 +46,6 @@ export function serializeAntiRaidSettings(settings: AntiRaidSettingsValue): Anti
   };
 }
 
-export async function getGlobalAntiRaidProfile() {
-  const stored = await prisma.globalAntiRaidSettings.findUnique({
-    where: { id: GLOBAL_ANTI_RAID_PROFILE_ID }
-  });
-  return {
-    persisted: Boolean(stored),
-    settings: serializeAntiRaidSettings(stored ?? DEFAULT_ANTI_RAID_SETTINGS)
-  };
-}
-
-export async function updateGlobalAntiRaidProfile(input: {
-  actingAdminId: string;
-  settings: AntiRaidSettingsValue;
-}) {
-  const normalized = normalizeAntiRaidSettings(input.settings);
-  const saved = await prisma.$transaction(async (tx) => {
-    const settings = await tx.globalAntiRaidSettings.upsert({
-      where: { id: GLOBAL_ANTI_RAID_PROFILE_ID },
-      create: { id: GLOBAL_ANTI_RAID_PROFILE_ID, ...normalized },
-      update: normalized
-    });
-    await tx.auditLog.create({
-      data: {
-        actingAdminId: input.actingAdminId,
-        source: "ADMIN",
-        action: "GLOBAL_ANTI_RAID_SETTINGS_UPDATED",
-        metadata: serializeAntiRaidSettings(settings)
-      }
-    });
-    return settings;
-  });
-  return serializeAntiRaidSettings(saved);
-}
-
 export async function getChatAntiRaidProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
   const chat = await prisma.chat.findUnique({
@@ -90,12 +54,7 @@ export async function getChatAntiRaidProfile(chatId: string) {
   });
   if (!chat) return null;
 
-  const globalProfile = await getGlobalAntiRaidProfile();
   const local = chat.antiRaidSettings;
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  const effective = useGlobalProfile
-    ? globalProfile.settings
-    : serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS);
 
   return {
     chat: {
@@ -105,21 +64,13 @@ export async function getChatAntiRaidProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    policy: {
-      useGlobalProfile,
-      effectiveSource: useGlobalProfile ? ("GLOBAL" as const) : ("CHAT" as const),
-      globalProfilePersisted: globalProfile.persisted
-    },
-    settings: serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS),
-    effectiveSettings: serializeAntiRaidSettings(effective),
-    globalSettings: serializeAntiRaidSettings(globalProfile.settings)
+    settings: serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS)
   };
 }
 
 export async function updateChatAntiRaidSettings(input: {
   chatId: string;
   actingAdminId: string;
-  useGlobalProfile: boolean;
   settings: AntiRaidSettingsValue;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
@@ -129,8 +80,8 @@ export async function updateChatAntiRaidSettings(input: {
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatAntiRaidSettings.upsert({
       where: { chatId: input.chatId },
-      create: { chatId: input.chatId, useGlobalProfile: input.useGlobalProfile, ...normalized },
-      update: { useGlobalProfile: input.useGlobalProfile, ...normalized }
+      create: { chatId: input.chatId, ...normalized },
+      update: normalized
     });
     await tx.auditLog.create({
       data: {
@@ -138,36 +89,19 @@ export async function updateChatAntiRaidSettings(input: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "ANTI_RAID_SETTINGS_UPDATED",
-        metadata: {
-          useGlobalProfile: settings.useGlobalProfile,
-          ...serializeAntiRaidSettings(settings)
-        }
+        metadata: serializeAntiRaidSettings(settings)
       }
     });
     return settings;
   });
-  return {
-    useGlobalProfile: saved.useGlobalProfile,
-    ...serializeAntiRaidSettings(saved)
-  };
+  return serializeAntiRaidSettings(saved);
 }
 
 export async function resolveEffectiveAntiRaidSettings(chatId: string) {
   const local = await prisma.chatAntiRaidSettings.findUnique({ where: { chatId } });
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  if (!useGlobalProfile) {
-    return {
-      source: "CHAT" as const,
-      useGlobalProfile: false,
-      settings: serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS)
-    };
-  }
-  const global = await prisma.globalAntiRaidSettings.findUnique({
-    where: { id: GLOBAL_ANTI_RAID_PROFILE_ID }
-  });
   return {
-    source: "GLOBAL" as const,
-    useGlobalProfile: true,
-    settings: serializeAntiRaidSettings(global ?? DEFAULT_ANTI_RAID_SETTINGS)
+    source: "CHAT" as const,
+    useGlobalProfile: false,
+    settings: serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS)
   };
 }

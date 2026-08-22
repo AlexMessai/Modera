@@ -7,11 +7,9 @@ import {
 } from "@/server/services/automod-service";
 import {
   DEFAULT_MODERATION_SETTINGS,
-  getGlobalModerationProfile,
   isLinkProtectionMode,
   normalizeEscalationRules,
   normalizeMediaFilters,
-  resolveEffectiveModerationSettings,
   serializeModerationSettings
 } from "@/server/services/global-moderation-service";
 
@@ -46,7 +44,7 @@ export async function getChatModerationProfile(chatId: string) {
 
   if (!chat) return null;
 
-  const [events, effective, globalProfile] = await Promise.all([
+  const [events] = await Promise.all([
     prisma.auditLog.findMany({
       where: {
         chatId,
@@ -87,9 +85,7 @@ export async function getChatModerationProfile(chatId: string) {
           }
         }
       }
-    }),
-    resolveEffectiveModerationSettings(chatId),
-    getGlobalModerationProfile()
+    })
   ]);
 
   const link = chat.botLinks[0];
@@ -116,14 +112,7 @@ export async function getChatModerationProfile(chatId: string) {
       lastError: link?.lastError ?? null,
       checkedAt: link?.lastSeenAt?.toISOString() ?? null
     },
-    policy: {
-      useGlobalProfile: chat.moderationSettings?.useGlobalProfile ?? true,
-      effectiveSource: effective.source,
-      globalProfilePersisted: globalProfile.persisted
-    },
     settings: serializeModerationSettings(localSettings),
-    effectiveSettings: serializeModerationSettings(effective.settings),
-    globalSettings: serializeModerationSettings(globalProfile.settings),
     events: events.map((event) => ({
       id: event.id,
       action: event.action,
@@ -139,7 +128,6 @@ export async function getChatModerationProfile(chatId: string) {
 export async function updateChatModerationSettings(input: {
   chatId: string;
   actingAdminId: string;
-  useGlobalProfile: boolean;
   linkProtectionMode: string;
   allowedDomains: string[];
   blockedDomains: string[];
@@ -180,7 +168,6 @@ export async function updateChatModerationSettings(input: {
   const escalationMuteMessageTemplate = input.escalationMuteMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate;
   const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
   const values = {
-    useGlobalProfile: input.useGlobalProfile,
     linkProtectionMode,
     allowedDomains,
     blockedDomains,
@@ -221,18 +208,12 @@ export async function updateChatModerationSettings(input: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "AUTOMOD_SETTINGS_UPDATED",
-        metadata: {
-          useGlobalProfile: settings.useGlobalProfile,
-          ...serializeModerationSettings(settings)
-        }
+        metadata: serializeModerationSettings(settings)
       }
     });
 
     return settings;
   });
 
-  return {
-    useGlobalProfile: saved.useGlobalProfile,
-    ...serializeModerationSettings(saved)
-  };
+  return serializeModerationSettings(saved);
 }

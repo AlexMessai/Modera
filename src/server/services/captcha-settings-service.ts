@@ -1,7 +1,5 @@
 import { prisma } from "@/server/db/prisma";
 
-export const GLOBAL_CAPTCHA_PROFILE_ID = "global";
-
 // Fixed rule, not configurable: mute on join, kick (never ban) whoever is
 // still unverified at the next daily sweep -- no per-chat/global timeout or
 // kick-vs-ban choice anymore. challengeMessageTemplate is the ephemeral
@@ -38,40 +36,6 @@ export function serializeCaptchaSettings(settings: CaptchaSettingsValue): Captch
   };
 }
 
-export async function getGlobalCaptchaProfile() {
-  const stored = await prisma.globalCaptchaSettings.findUnique({
-    where: { id: GLOBAL_CAPTCHA_PROFILE_ID }
-  });
-  return {
-    persisted: Boolean(stored),
-    settings: serializeCaptchaSettings(stored ?? DEFAULT_CAPTCHA_SETTINGS)
-  };
-}
-
-export async function updateGlobalCaptchaProfile(input: {
-  actingAdminId: string;
-  settings: CaptchaSettingsValue;
-}) {
-  const normalized = normalizeCaptchaSettings(input.settings);
-  const saved = await prisma.$transaction(async (tx) => {
-    const settings = await tx.globalCaptchaSettings.upsert({
-      where: { id: GLOBAL_CAPTCHA_PROFILE_ID },
-      create: { id: GLOBAL_CAPTCHA_PROFILE_ID, ...normalized },
-      update: normalized
-    });
-    await tx.auditLog.create({
-      data: {
-        actingAdminId: input.actingAdminId,
-        source: "ADMIN",
-        action: "GLOBAL_CAPTCHA_SETTINGS_UPDATED",
-        metadata: serializeCaptchaSettings(settings)
-      }
-    });
-    return settings;
-  });
-  return serializeCaptchaSettings(saved);
-}
-
 export async function getChatCaptchaProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
   const chat = await prisma.chat.findUnique({
@@ -87,14 +51,7 @@ export async function getChatCaptchaProfile(chatId: string) {
   });
   if (!chat) return null;
 
-  const globalProfile = await getGlobalCaptchaProfile();
   const local = chat.captchaSettings;
-  // A chat that never made an explicit choice follows the global profile —
-  // see the matching fix in resolveEffectiveCaptchaSettings below.
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  const effective = useGlobalProfile
-    ? globalProfile.settings
-    : serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS);
   const permissions = chat.botLinks[0]?.permissions as
     | { canRestrictMembers?: boolean }
     | null
@@ -108,14 +65,7 @@ export async function getChatCaptchaProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    policy: {
-      useGlobalProfile,
-      effectiveSource: useGlobalProfile ? ("GLOBAL" as const) : ("CHAT" as const),
-      globalProfilePersisted: globalProfile.persisted
-    },
     settings: serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS),
-    effectiveSettings: serializeCaptchaSettings(effective),
-    globalSettings: serializeCaptchaSettings(globalProfile.settings),
     bot: {
       status: chat.botLinks[0]?.status ?? "DISABLED",
       canRestrictMembers: Boolean(permissions?.canRestrictMembers),
@@ -128,7 +78,6 @@ export async function getChatCaptchaProfile(chatId: string) {
 export async function updateChatCaptchaProfile(input: {
   chatId: string;
   actingAdminId: string;
-  useGlobalProfile: boolean;
   settings: CaptchaSettingsValue;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
@@ -138,8 +87,8 @@ export async function updateChatCaptchaProfile(input: {
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatCaptchaSettings.upsert({
       where: { chatId: input.chatId },
-      create: { chatId: input.chatId, useGlobalProfile: input.useGlobalProfile, ...normalized },
-      update: { useGlobalProfile: input.useGlobalProfile, ...normalized }
+      create: { chatId: input.chatId, ...normalized },
+      update: normalized
     });
     await tx.auditLog.create({
       data: {
@@ -147,39 +96,19 @@ export async function updateChatCaptchaProfile(input: {
         actingAdminId: input.actingAdminId,
         source: "ADMIN",
         action: "CAPTCHA_SETTINGS_UPDATED",
-        metadata: {
-          useGlobalProfile: settings.useGlobalProfile,
-          ...serializeCaptchaSettings(settings)
-        }
+        metadata: serializeCaptchaSettings(settings)
       }
     });
     return settings;
   });
-  return {
-    useGlobalProfile: saved.useGlobalProfile,
-    ...serializeCaptchaSettings(saved)
-  };
+  return serializeCaptchaSettings(saved);
 }
 
 export async function resolveEffectiveCaptchaSettings(chatId: string) {
   const local = await prisma.chatCaptchaSettings.findUnique({ where: { chatId } });
-  // A chat that never made an explicit choice follows the global profile —
-  // otherwise a protective global policy would silently apply to no chat at
-  // all until an admin opens every single chat and flips the toggle by hand.
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  if (!useGlobalProfile) {
-    return {
-      source: "CHAT" as const,
-      useGlobalProfile: false,
-      settings: serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS)
-    };
-  }
-  const global = await prisma.globalCaptchaSettings.findUnique({
-    where: { id: GLOBAL_CAPTCHA_PROFILE_ID }
-  });
   return {
-    source: "GLOBAL" as const,
-    useGlobalProfile: true,
-    settings: serializeCaptchaSettings(global ?? DEFAULT_CAPTCHA_SETTINGS)
+    source: "CHAT" as const,
+    useGlobalProfile: false,
+    settings: serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS)
   };
 }

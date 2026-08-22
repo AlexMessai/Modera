@@ -10,7 +10,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   enabled: z.boolean(),
   muteDurationMinutes: z.number().int().min(1).max(10080)
 });
@@ -49,7 +48,6 @@ export async function PATCH(
   const saved = await updateChatReportSettings({
     chatId: id,
     actingAdminId: auth.admin.id,
-    useGlobalProfile: parsed.data.useGlobalProfile,
     settings: parsed.data
   });
   if (!saved) {

@@ -6,8 +6,7 @@ import {
   normalizeContentSettings,
   renderWelcomeTemplate,
   resolveEffectiveContentSettings,
-  updateChatContentSettings,
-  updateGlobalContentProfile
+  updateChatContentSettings
 } from "./content-settings-service";
 
 const CHAT_ID = -1009000018001n;
@@ -40,7 +39,7 @@ test("renderWelcomeTemplate substitutes all four documented placeholders", () =>
   assert.equal(rendered, "Привет, Аня (@anya)! Чат «Тестовый чат», участников: 42.");
 });
 
-test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
+test("a chat with no settings row falls back to app defaults; saved settings are read back from the chat's own row", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Content Settings CI", type: "supergroup" }
@@ -50,30 +49,23 @@ test("a chat that never chose follows the global profile; opting out uses its ow
   });
 
   try {
-    await updateGlobalContentProfile({
-      actingAdminId: admin.id,
-      settings: { ...DEFAULT_CONTENT_SETTINGS, welcomeEnabled: true, rulesText: "Global rules" }
-    });
-
     const beforeAnyChatEdit = await resolveEffectiveContentSettings(chat.id);
-    assert.equal(beforeAnyChatEdit.source, "GLOBAL");
-    assert.equal(beforeAnyChatEdit.settings.welcomeEnabled, true);
-    assert.equal(beforeAnyChatEdit.settings.rulesText, "Global rules");
+    assert.equal(beforeAnyChatEdit.source, "CHAT");
+    assert.equal(beforeAnyChatEdit.settings.welcomeEnabled, DEFAULT_CONTENT_SETTINGS.welcomeEnabled);
 
     const saved = await updateChatContentSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
-      settings: { ...DEFAULT_CONTENT_SETTINGS, welcomeEnabled: false, rulesText: "Chat-only rules" }
+      settings: { ...DEFAULT_CONTENT_SETTINGS, welcomeEnabled: true, rulesText: "Chat-only rules" }
     });
-    assert.equal(saved?.useGlobalProfile, false);
+    assert.equal(saved?.welcomeEnabled, true);
+    assert.equal(saved?.rulesText, "Chat-only rules");
 
-    const optedOut = await resolveEffectiveContentSettings(chat.id);
-    assert.equal(optedOut.source, "CHAT");
-    assert.equal(optedOut.settings.welcomeEnabled, false);
-    assert.equal(optedOut.settings.rulesText, "Chat-only rules");
+    const resolved = await resolveEffectiveContentSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.settings.welcomeEnabled, true);
+    assert.equal(resolved.settings.rulesText, "Chat-only rules");
   } finally {
-    await updateGlobalContentProfile({ actingAdminId: admin.id, settings: DEFAULT_CONTENT_SETTINGS });
     await cleanup();
   }
 });

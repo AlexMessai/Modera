@@ -1,7 +1,5 @@
 import { prisma } from "@/server/db/prisma";
 
-export const GLOBAL_MODERATION_PROFILE_ID = "global";
-
 export const LINK_PROTECTION_MODES = ["ALLOW_ALL", "BLOCK_ALL", "WHITELIST_ONLY", "BLACKLIST_ONLY"] as const;
 export type LinkProtectionMode = (typeof LINK_PROTECTION_MODES)[number];
 
@@ -290,72 +288,14 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
   };
 }
 
-export async function getGlobalModerationProfile() {
-  const stored = await prisma.globalModerationSettings.findUnique({
-    where: { id: GLOBAL_MODERATION_PROFILE_ID }
-  });
-
-  return {
-    persisted: Boolean(stored),
-    settings: serializeModerationSettings(stored ?? DEFAULT_MODERATION_SETTINGS)
-  };
-}
-
-export async function updateGlobalModerationProfile(input: {
-  actingAdminId: string;
-  settings: ModerationSettingsValue;
-}) {
-  const normalized = normalizeModerationSettings(input.settings);
-
-  const saved = await prisma.$transaction(async (tx) => {
-    const settings = await tx.globalModerationSettings.upsert({
-      where: { id: GLOBAL_MODERATION_PROFILE_ID },
-      create: {
-        id: GLOBAL_MODERATION_PROFILE_ID,
-        ...normalized
-      },
-      update: normalized
-    });
-
-    await tx.auditLog.create({
-      data: {
-        actingAdminId: input.actingAdminId,
-        source: "ADMIN",
-        action: "GLOBAL_AUTOMOD_SETTINGS_UPDATED",
-        metadata: serializeModerationSettings(settings)
-      }
-    });
-
-    return settings;
-  });
-
-  return serializeModerationSettings(saved);
-}
-
 export async function resolveEffectiveModerationSettings(chatId: string) {
   const local = await prisma.chatModerationSettings.findUnique({
     where: { chatId }
   });
 
-  // A chat that never made an explicit choice follows the global profile —
-  // otherwise a protective global policy would silently apply to no chat at
-  // all until an admin opens every single chat and flips the toggle by hand.
-  const useGlobalProfile = local?.useGlobalProfile ?? true;
-  if (!useGlobalProfile) {
-    return {
-      source: "CHAT" as const,
-      useGlobalProfile: false,
-      settings: serializeModerationSettings(local ?? DEFAULT_MODERATION_SETTINGS)
-    };
-  }
-
-  const global = await prisma.globalModerationSettings.findUnique({
-    where: { id: GLOBAL_MODERATION_PROFILE_ID }
-  });
-
   return {
-    source: "GLOBAL" as const,
-    useGlobalProfile: true,
-    settings: serializeModerationSettings(global ?? DEFAULT_MODERATION_SETTINGS)
+    source: "CHAT" as const,
+    useGlobalProfile: false,
+    settings: serializeModerationSettings(local ?? DEFAULT_MODERATION_SETTINGS)
   };
 }

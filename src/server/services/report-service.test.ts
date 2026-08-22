@@ -123,7 +123,6 @@ test("createReport respects the chat's report settings: disabled chats reject ne
     await updateChatReportSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
       settings: { ...DEFAULT_REPORT_SETTINGS, enabled: false }
     });
 
