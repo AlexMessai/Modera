@@ -10,12 +10,11 @@ import {
   isLinkProtectionMode,
   normalizeEscalationRules,
   normalizeMediaFilters,
+  resolveEffectiveModerationSettings,
   serializeModerationSettings
 } from "@/server/services/global-moderation-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export const DEFAULT_CHAT_MODERATION_SETTINGS = DEFAULT_MODERATION_SETTINGS;
 
 function normalizeBlockedMessageTypes(values: string[]) {
   const allowed = new Set<string>(RESTRICTABLE_MESSAGE_TYPES);
@@ -28,7 +27,6 @@ export async function getChatModerationProfile(chatId: string) {
   const chat = await prisma.chat.findUnique({
     where: { id: chatId },
     include: {
-      moderationSettings: true,
       botLinks: {
         orderBy: { lastSeenAt: "desc" },
         take: 1,
@@ -44,7 +42,7 @@ export async function getChatModerationProfile(chatId: string) {
 
   if (!chat) return null;
 
-  const [events] = await Promise.all([
+  const [events, effective] = await Promise.all([
     prisma.auditLog.findMany({
       where: {
         chatId,
@@ -85,7 +83,8 @@ export async function getChatModerationProfile(chatId: string) {
           }
         }
       }
-    })
+    }),
+    resolveEffectiveModerationSettings(chatId)
   ]);
 
   const link = chat.botLinks[0];
@@ -93,7 +92,6 @@ export async function getChatModerationProfile(chatId: string) {
     | { canDeleteMessages?: boolean; canRestrictMembers?: boolean }
     | null
     | undefined;
-  const localSettings = chat.moderationSettings ?? DEFAULT_CHAT_MODERATION_SETTINGS;
 
   return {
     chat: {
@@ -112,7 +110,7 @@ export async function getChatModerationProfile(chatId: string) {
       lastError: link?.lastError ?? null,
       checkedAt: link?.lastSeenAt?.toISOString() ?? null
     },
-    settings: serializeModerationSettings(localSettings),
+    settings: effective.settings,
     events: events.map((event) => ({
       id: event.id,
       action: event.action,

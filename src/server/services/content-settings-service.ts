@@ -46,13 +46,10 @@ export function renderWelcomeTemplate(template: string, values: { name: string; 
 
 export async function getChatContentProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
-  const chat = await prisma.chat.findUnique({
-    where: { id: chatId },
-    include: { contentSettings: true }
-  });
+  const chat = await prisma.chat.findUnique({ where: { id: chatId } });
   if (!chat) return null;
 
-  const local = chat.contentSettings;
+  const effective = await resolveEffectiveContentSettings(chatId);
 
   return {
     chat: {
@@ -62,7 +59,7 @@ export async function getChatContentProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    settings: serializeContentSettings(local ?? DEFAULT_CONTENT_SETTINGS)
+    settings: effective.settings
   };
 }
 
@@ -95,11 +92,32 @@ export async function updateChatContentSettings(input: {
   return serializeContentSettings(saved);
 }
 
+const GLOBAL_CONTENT_MESSAGES_ID = "global";
+
+/**
+ * The welcome text is edited in one place -- Система → Уведомления, see
+ * system-messages-service.ts -- not per chat; `welcomeEnabled`/`rulesText` stay chat-owned
+ * (rulesText is each chat's own /rules content, not a system notification). Overlaying instead of
+ * a hard split keeps this function's return shape unchanged, so every runtime caller
+ * (welcome-service.ts) needed no changes.
+ */
+async function overlayGlobalContentText(settings: ContentSettingsValue): Promise<ContentSettingsValue> {
+  const global = await prisma.globalContentSettings.findUnique({
+    where: { id: GLOBAL_CONTENT_MESSAGES_ID },
+    select: { welcomeMessageTemplate: true }
+  });
+  return {
+    ...settings,
+    welcomeMessageTemplate: global?.welcomeMessageTemplate ?? DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate
+  };
+}
+
 export async function resolveEffectiveContentSettings(chatId: string) {
   const local = await prisma.chatContentSettings.findUnique({ where: { chatId } });
+  const settings = await overlayGlobalContentText(serializeContentSettings(local ?? DEFAULT_CONTENT_SETTINGS));
   return {
     source: "CHAT" as const,
     useGlobalProfile: false,
-    settings: serializeContentSettings(local ?? DEFAULT_CONTENT_SETTINGS)
+    settings
   };
 }

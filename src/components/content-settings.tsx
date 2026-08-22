@@ -70,19 +70,8 @@ export function ContentSettings({
             disabled={fieldsDisabled}
             onChange={(event) => setSettings((current) => ({ ...current, welcomeEnabled: event.target.checked }))}
           />
-          <span><strong>Приветствие новых участников</strong><small>Отправляется в чат сразу после вступления. Переменные: {"{name}"}, {"{username}"}, {"{group}"}, {"{member_count}"}.</small></span>
+          <span><strong>Приветствие новых участников</strong><small>Отправляется в чат сразу после вступления. Текст редактируется в «Система» → «Уведомления».</small></span>
         </label>
-        {settings.welcomeEnabled ? (
-          <label className="automod-field">
-            <span>Текст приветствия</span>
-            <textarea
-              value={settings.welcomeMessageTemplate}
-              disabled={fieldsDisabled}
-              maxLength={2000}
-              onChange={(event) => setSettings((current) => ({ ...current, welcomeMessageTemplate: event.target.value }))}
-            />
-          </label>
-        ) : null}
       </div>
 
       <div className="automod-rule">

@@ -329,18 +329,7 @@ export function ChatModerationSettings({
                 disabled={fieldsDisabled}
                 onChange={(checked) => updateMediaFilter(type, { notifyEnabled: checked })}
               />
-              {rule.notifyEnabled ? (
-                <label className="automod-field">
-                  <span>Текст сообщения</span>
-                  <textarea
-                    rows={2}
-                    value={rule.notifyText}
-                    disabled={fieldsDisabled}
-                    onChange={(event) => updateMediaFilter(type, { notifyText: event.target.value })}
-                  />
-                  <small>Доступны %target%, %chat%.</small>
-                </label>
-              ) : null}
+              {rule.notifyEnabled ? <small className="hint-note">Текст сообщения редактируется в Система → Уведомления.</small> : null}
             </ConditionalSettingsSection>
           </div>
         );
@@ -406,12 +395,7 @@ export function ChatModerationSettings({
           <label className="automod-field automod-field--short"><span>Срок предупреждений, дней</span><input type="number" min={0} max={3650} value={settings.warningExpiryDays} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, warningExpiryDays: Number(event.target.value) }))} /></label>
           <small className="hint-note">0 — предупреждения не сгорают, иначе старые перестают учитываться в порогах по истечении срока. Пустой срок = бессрочно (до ручного unmute/unban). Если несколько порогов пройдены за раз, применяется правило с самым высоким порогом.</small>
 
-          <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={settings.announceEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, announceEscalationEnabled: event.target.checked }))} /><span><strong>Объявлять в чате</strong><small>Когда automod доводит участника до mute/ban по порогу предупреждений, бот пишет об этом в чат (по умолчанию выключено — automod иначе наказывает молча).</small></span></label>
-          {settings.announceEscalationEnabled ? <>
-            <label className="automod-field"><span>Текст при mute</span><textarea rows={2} value={settings.escalationMuteMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, escalationMuteMessageTemplate: event.target.value }))} /></label>
-            <label className="automod-field"><span>Текст при ban</span><textarea rows={2} value={settings.escalationBanMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, escalationBanMessageTemplate: event.target.value }))} /></label>
-            <small className="hint-note">Доступны %target%, %duration%, %warns%, %warns_limit%.</small>
-          </> : null}
+          <label className="automod-toggle-row automod-toggle-row--compact"><input type="checkbox" checked={settings.announceEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, announceEscalationEnabled: event.target.checked }))} /><span><strong>Объявлять в чате</strong><small>Когда automod доводит участника до mute/ban по порогу предупреждений, бот пишет об этом в чат (по умолчанию выключено — automod иначе наказывает молча). Текст сообщений редактируется в Система → Уведомления.</small></span></label>
         </> : null}
       </div>
 

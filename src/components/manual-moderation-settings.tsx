@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, ShieldCheck } from "lucide-react";
-import { SettingsRow, ConditionalSettingsSection } from "@/components/settings-row";
+import { SettingsRow } from "@/components/settings-row";
 
 export type ManualModerationSettingsValue = {
   warnMessageTemplate: string;
@@ -41,70 +41,45 @@ type Props = {
 };
 
 type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
-type EphemeralCommandKey = "warn" | "mute" | "ban";
 
 type CommandInfo = {
   key: CommandKey;
   command: string;
-  /** Plain-language label used in the aggregated template/independent-setting lists (e.g. "Предупреждение"), as opposed to the raw /command chip. */
   label: string;
-  description: string;
-  hasReason: boolean;
-  /** Badge text when this command's %duration% placeholder is meaningful; omitted when it isn't. */
-  durationLabel?: string;
-  hasWarnCount: boolean;
 };
-
-function isEphemeralCommand(key: CommandKey): key is EphemeralCommandKey {
-  return key === "warn" || key === "mute" || key === "ban";
-}
 
 const COMMAND_SECTIONS: Array<{ title: string; commands: CommandInfo[] }> = [
   {
     title: "Предупреждения",
     commands: [
-      { key: "warn", command: "/warn", label: "Предупреждение", description: "Выдаёт предупреждение участнику. Учитывается в общем счётчике вместе с автомодерацией.", hasReason: true, hasWarnCount: true },
-      { key: "unwarn", command: "/unwarn", label: "Снятие предупреждения", description: "Снимает одно предупреждение с участника.", hasReason: false, hasWarnCount: true }
+      { key: "warn", command: "/warn", label: "Предупреждение" },
+      { key: "unwarn", command: "/unwarn", label: "Снятие предупреждения" }
     ]
   },
   {
     title: "Mute",
     commands: [
-      { key: "mute", command: "/mute", label: "Mute", description: "Запрещает участнику писать сообщения на указанный срок.", hasReason: true, durationLabel: "Срок mute", hasWarnCount: false },
-      { key: "unmute", command: "/unmute", label: "Снятие mute", description: "Досрочно снимает mute с участника.", hasReason: false, hasWarnCount: false }
+      { key: "mute", command: "/mute", label: "Mute" },
+      { key: "unmute", command: "/unmute", label: "Снятие mute" }
     ]
   },
   {
     title: "Блокировка",
     commands: [
-      { key: "ban", command: "/ban", label: "Блокировка", description: "Блокирует участника в чате. Можно указать срок (например, 7d) — иначе блокировка постоянная.", hasReason: true, durationLabel: "Срок блокировки", hasWarnCount: false },
-      { key: "unban", command: "/unban", label: "Разблокировка", description: "Снимает блокировку — участник сможет вернуться в чат.", hasReason: false, hasWarnCount: false }
+      { key: "ban", command: "/ban", label: "Блокировка" },
+      { key: "unban", command: "/unban", label: "Разблокировка" }
     ]
   },
   {
     title: "Кик",
     commands: [
-      { key: "kick", command: "/kick", label: "Кик", description: "Удаляет участника из чата без блокировки — он сможет вернуться по ссылке-приглашению. Личное уведомление недоступно: участник уже покидает чат в момент действия.", hasReason: true, hasWarnCount: false }
+      { key: "kick", command: "/kick", label: "Кик" }
     ]
   }
 ];
 
-function placeholderHint(command: { hasReason: boolean; durationLabel?: string; hasWarnCount: boolean }) {
-  const list = ["%admin%", "%target%"];
-  if (command.hasReason) list.push("%reason%");
-  if (command.durationLabel) list.push("%duration%");
-  if (command.hasWarnCount) list.push("%warns%", "%warns_limit%");
-  return `Доступны ${list.join(", ")}.`;
-}
-
-function templateKey(key: CommandKey) {
-  return `${key}MessageTemplate` as const;
-}
 function deleteTargetKey(key: CommandKey) {
   return `${key}DeleteTargetMessage` as const;
-}
-function ephemeralTemplateKey(key: EphemeralCommandKey) {
-  return `${key}EphemeralMessageTemplate` as const;
 }
 
 export function ManualModerationSettings({
@@ -140,7 +115,7 @@ export function ManualModerationSettings({
 
       const savedSettings = payload.data as ManualModerationSettingsValue;
       setSettings(savedSettings);
-      setSuccess("Шаблоны этого чата сохранены.");
+      setSuccess("Настройки этого чата сохранены.");
       onSaved?.(savedSettings);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки ручной модерации.");
@@ -159,6 +134,7 @@ export function ManualModerationSettings({
       ) : null}
 
       <div className="settings-section">
+        <span className="settings-section-title">Видимость (общая для всех чатов)</span>
         <SettingsRow
           title="Публичные сообщения о наказаниях"
           description="Показывать сообщения о действиях модераторов в общем чате. Единая настройка для /warn, /unwarn, /mute, /unmute, /ban, /unban и /kick."
@@ -166,30 +142,6 @@ export function ManualModerationSettings({
           disabled
           onChange={() => undefined}
         />
-        <small className="hint-note">Управляется глобально, в разделе «Система» → «Уведомления».</small>
-        <ConditionalSettingsSection visible={visibility.publicPunishmentMessagesEnabled}>
-          <span className="settings-section-title">Шаблоны публичных сообщений</span>
-          {COMMAND_SECTIONS.map((section) => (
-            <div key={section.title}>
-              <span className="manual-mod-group-label">{section.title}</span>
-              {section.commands.map((commandInfo) => (
-                <label className="automod-field" key={commandInfo.key}>
-                  <span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>{commandInfo.label}</span>
-                  <textarea
-                    rows={2}
-                    value={settings[templateKey(commandInfo.key)]}
-                    disabled={fieldsDisabled}
-                    onChange={(event) => setField(templateKey(commandInfo.key), event.target.value)}
-                  />
-                  <small>{placeholderHint(commandInfo)}</small>
-                </label>
-              ))}
-            </div>
-          ))}
-        </ConditionalSettingsSection>
-      </div>
-
-      <div className="settings-section">
         <SettingsRow
           title="Приватные сообщения о наказаниях"
           description="Личное уведомление наказанному участнику: в чате, видимое только ему, и в личные сообщения. Не зависит от публичных сообщений выше."
@@ -197,24 +149,7 @@ export function ManualModerationSettings({
           disabled
           onChange={() => undefined}
         />
-        <small className="hint-note">Управляется глобально, в разделе «Система» → «Уведомления».</small>
-        <ConditionalSettingsSection visible={visibility.privatePunishmentMessagesEnabled}>
-          <span className="settings-section-title">Шаблоны приватных сообщений</span>
-          {COMMAND_SECTIONS.flatMap((section) => section.commands)
-            .filter((commandInfo): commandInfo is CommandInfo & { key: EphemeralCommandKey } => isEphemeralCommand(commandInfo.key))
-            .map((commandInfo) => (
-              <label className="automod-field" key={commandInfo.key}>
-                <span>{commandInfo.label} ({commandInfo.command})</span>
-                <textarea
-                  rows={2}
-                  value={settings[ephemeralTemplateKey(commandInfo.key)]}
-                  disabled={fieldsDisabled}
-                  onChange={(event) => setField(ephemeralTemplateKey(commandInfo.key), event.target.value)}
-                />
-                <small>Видит только сам наказанный участник. Доступны %chat%, %reason%, %contact% (ссылка на ЛС бота).</small>
-              </label>
-            ))}
-        </ConditionalSettingsSection>
+        <small className="hint-note">Тексты и видимость этих сообщений редактируются в «Система» → «Уведомления».</small>
       </div>
 
       <div className="settings-section">

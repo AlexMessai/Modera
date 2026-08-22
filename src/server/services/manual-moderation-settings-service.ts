@@ -172,6 +172,48 @@ export async function updateManualModerationVisibility(input: {
   return serializeManualModerationVisibility(saved);
 }
 
+const TEMPLATE_FIELD_NAMES = [
+  "warnMessageTemplate",
+  "warnEphemeralMessageTemplate",
+  "unwarnMessageTemplate",
+  "muteMessageTemplate",
+  "muteEphemeralMessageTemplate",
+  "unmuteMessageTemplate",
+  "banMessageTemplate",
+  "banEphemeralMessageTemplate",
+  "unbanMessageTemplate",
+  "kickMessageTemplate"
+] as const satisfies readonly (keyof ManualModerationSettingsValue)[];
+
+/**
+ * The 10 message templates are edited in one place -- Система → Уведомления, see
+ * system-messages-service.ts -- not per chat. The 7 *DeleteTargetMessage toggles stay chat-owned.
+ * Overlaying instead of a hard split keeps this function's return shape unchanged, so every
+ * runtime caller (update-handler.ts, appeal-notification-service.ts) needed no changes.
+ */
+async function overlayGlobalManualModerationText(settings: ManualModerationSettingsValue): Promise<ManualModerationSettingsValue> {
+  const global = await prisma.globalManualModerationSettings.findUnique({
+    where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
+    select: {
+      warnMessageTemplate: true,
+      warnEphemeralMessageTemplate: true,
+      unwarnMessageTemplate: true,
+      muteMessageTemplate: true,
+      muteEphemeralMessageTemplate: true,
+      unmuteMessageTemplate: true,
+      banMessageTemplate: true,
+      banEphemeralMessageTemplate: true,
+      unbanMessageTemplate: true,
+      kickMessageTemplate: true
+    }
+  });
+  const merged = { ...settings };
+  for (const field of TEMPLATE_FIELD_NAMES) {
+    merged[field] = global?.[field] ?? DEFAULT_MANUAL_MODERATION_SETTINGS[field];
+  }
+  return merged;
+}
+
 export async function getChatManualModerationProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
   const chat = await prisma.chat.findUnique({
@@ -190,7 +232,7 @@ export async function getChatManualModerationProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
+    settings: await overlayGlobalManualModerationText(serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS))
   };
 }
 
@@ -225,10 +267,11 @@ export async function updateChatManualModerationProfile(input: {
 
 export async function resolveEffectiveManualModerationSettings(chatId: string) {
   const local = await prisma.chatManualModerationSettings.findUnique({ where: { chatId } });
+  const settings = await overlayGlobalManualModerationText(serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS));
   return {
     source: "CHAT" as const,
     useGlobalProfile: false,
-    settings: serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS)
+    settings
   };
 }
 
