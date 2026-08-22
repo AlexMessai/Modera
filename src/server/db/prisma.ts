@@ -17,7 +17,11 @@ function createPrismaClient() {
     return new PrismaClient({ adapter });
   }
 
-  const adapter = new PrismaPg({ connectionString });
+  // Neon's direct (non-pooled) connection has a low concurrent-connection ceiling, and
+  // node-postgres's default Pool max (10) per serverless instance blows past it once
+  // several instances are warm at once -- capped low here to stay well under that limit
+  // rather than the app failing outright with "too many database connections opened".
+  const adapter = new PrismaPg({ connectionString, max: 3 });
   return new PrismaClient({ adapter });
 }
 
