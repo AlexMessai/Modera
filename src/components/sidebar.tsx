@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  ArrowLeft,
   LayoutDashboard,
   LogOut,
   MessageCircleQuestion,
@@ -82,9 +81,24 @@ export function Sidebar({
       <div className="sidebar-top">
         <div className="brand"><span className="brand-mark">M</span><span>Modera</span></div>
 
+        <nav className="nav-list" aria-label="Основная навигация">
+          {topNavigation.map((item) => {
+            const Icon = item.icon;
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link key={item.href} className={`nav-item ${active ? "nav-item--active" : ""}`} href={item.href}>
+                <Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>
+              </Link>
+            );
+          })}
+          <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
+            <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
+          </a>
+        </nav>
+
         {activeChat ? (
           <>
-            <Link className="back-link sidebar-back-link" href="/chats"><ArrowLeft size={15} /> Группы</Link>
+            <hr className="sidebar-divider" />
             <div className="group-header">
               <span className="group-avatar">{activeChat.title.slice(0, 1).toUpperCase()}</span>
               <span className="group-name">{activeChat.title}</span>
@@ -106,22 +120,7 @@ export function Sidebar({
               })}
             </nav>
           </>
-        ) : (
-          <nav className="nav-list" aria-label="Основная навигация">
-            {topNavigation.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link key={item.href} className={`nav-item ${active ? "nav-item--active" : ""}`} href={item.href}>
-                  <Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>
-                </Link>
-              );
-            })}
-            <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
-              <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
-            </a>
-          </nav>
-        )}
+        ) : null}
       </div>
 
       <div className="sidebar-footer">
