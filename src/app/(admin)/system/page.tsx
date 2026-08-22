@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { SystemClient } from "@/components/system-client";
 import { AdminSettingsClient } from "@/components/admin-settings-client";
 import { ManualModerationVisibilitySettings } from "@/components/manual-moderation-visibility-settings";
+import { SystemMessagesSettings } from "@/components/system-messages-settings";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageAdmins, canManageChatSettings, canViewSystem } from "@/server/auth/permissions";
 import { getTelegramBotProfile } from "@/server/telegram/client";
 import { getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
+import { getSystemMessages } from "@/server/services/system-messages-service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +37,9 @@ export default async function SystemPage({
       ? "notifications"
       : "diagnostics";
   const telegramBotUsername = tab === "accounts" ? await getTelegramBotUsername() : null;
-  const visibility = tab === "notifications" ? await getManualModerationVisibility() : null;
+  const [visibility, systemMessages] = tab === "notifications"
+    ? await Promise.all([getManualModerationVisibility(), getSystemMessages()])
+    : [null, null];
 
   return (
     <main className="page">
@@ -53,8 +57,11 @@ export default async function SystemPage({
       </nav>
       {tab === "accounts" ? (
         <AdminSettingsClient currentAdminId={admin.id} telegramBotUsername={telegramBotUsername} />
-      ) : tab === "notifications" && visibility ? (
-        <ManualModerationVisibilitySettings initial={visibility} canEdit={canEditNotifications} />
+      ) : tab === "notifications" && visibility && systemMessages ? (
+        <>
+          <ManualModerationVisibilitySettings initial={visibility} canEdit={canEditNotifications} />
+          <SystemMessagesSettings initial={systemMessages} canEdit={canEditNotifications} />
+        </>
       ) : (
         <SystemClient />
       )}

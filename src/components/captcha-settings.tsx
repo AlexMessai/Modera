@@ -74,17 +74,7 @@ export function CaptchaSettings({
             disabled={fieldsDisabled}
             onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
           />
-          <span><strong>Капча при вступлении</strong><small>Новый участник супергруппы ограничивается в правах сразу и не может писать в чат, пока не нажмёт кнопку «Я не бот» под сообщением бота.</small></span>
-        </label>
-        <label className="automod-field">
-          <span>Текст сообщения с капчой</span>
-          <textarea
-            rows={3}
-            value={settings.challengeMessageTemplate}
-            disabled={fieldsDisabled}
-            onChange={(event) => setSettings((current) => ({ ...current, challengeMessageTemplate: event.target.value }))}
-          />
-          <small>Видит только сам новый участник (ephemeral) — не весь чат. Без плейсхолдеров, текст статичный.</small>
+          <span><strong>Капча при вступлении</strong><small>Новый участник супергруппы ограничивается в правах сразу и не может писать в чат, пока не нажмёт кнопку «Я не бот» под сообщением бота. Текст сообщения редактируется в «Система» → «Уведомления».</small></span>
         </label>
         <small className="hint-note">Кто не пройдёт проверку — будет исключён (не заблокирован, сможет зайти снова) при следующей ежедневной проверке; это может занять до суток.</small>
       </div>

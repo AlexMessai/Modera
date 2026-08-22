@@ -288,14 +288,42 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
   };
 }
 
+const GLOBAL_MODERATION_MESSAGES_ID = "global";
+
+/**
+ * Action-texts (escalation announcements, media-filter notify text) are edited in one place --
+ * Система → Уведомления, see system-messages-service.ts -- not per chat. Every other field
+ * (thresholds, toggles, escalation rules, allow/block lists) stays chat-owned. Overlaying instead
+ * of a hard split keeps this function's return shape unchanged, so every runtime caller
+ * (automod-service.ts, update-handler.ts, moderation-escalation-service.ts, ...) needed no changes.
+ */
+async function overlayGlobalModerationText(settings: ModerationSettingsValue): Promise<ModerationSettingsValue> {
+  const global = await prisma.globalModerationSettings.findUnique({
+    where: { id: GLOBAL_MODERATION_MESSAGES_ID },
+    select: { escalationMuteMessageTemplate: true, escalationBanMessageTemplate: true, mediaFilters: true }
+  });
+  const globalMediaFilters = normalizeMediaFilters(global?.mediaFilters ?? DEFAULT_MEDIA_FILTERS);
+  return {
+    ...settings,
+    escalationMuteMessageTemplate: global?.escalationMuteMessageTemplate ?? DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate,
+    escalationBanMessageTemplate: global?.escalationBanMessageTemplate ?? DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate,
+    mediaFilters: settings.mediaFilters.map((rule) => ({
+      ...rule,
+      notifyText: globalMediaFilters.find((globalRule) => globalRule.type === rule.type)?.notifyText ?? rule.notifyText
+    }))
+  };
+}
+
 export async function resolveEffectiveModerationSettings(chatId: string) {
   const local = await prisma.chatModerationSettings.findUnique({
     where: { chatId }
   });
 
+  const settings = await overlayGlobalModerationText(serializeModerationSettings(local ?? DEFAULT_MODERATION_SETTINGS));
+
   return {
     source: "CHAT" as const,
     useGlobalProfile: false,
-    settings: serializeModerationSettings(local ?? DEFAULT_MODERATION_SETTINGS)
+    settings
   };
 }

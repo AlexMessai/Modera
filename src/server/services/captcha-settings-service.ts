@@ -41,7 +41,6 @@ export async function getChatCaptchaProfile(chatId: string) {
   const chat = await prisma.chat.findUnique({
     where: { id: chatId },
     include: {
-      captchaSettings: true,
       botLinks: {
         orderBy: { lastSeenAt: "desc" },
         take: 1,
@@ -51,11 +50,11 @@ export async function getChatCaptchaProfile(chatId: string) {
   });
   if (!chat) return null;
 
-  const local = chat.captchaSettings;
   const permissions = chat.botLinks[0]?.permissions as
     | { canRestrictMembers?: boolean }
     | null
     | undefined;
+  const effective = await resolveEffectiveCaptchaSettings(chatId);
 
   return {
     chat: {
@@ -65,7 +64,7 @@ export async function getChatCaptchaProfile(chatId: string) {
       username: chat.username,
       type: chat.type
     },
-    settings: serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS),
+    settings: effective.settings,
     bot: {
       status: chat.botLinks[0]?.status ?? "DISABLED",
       canRestrictMembers: Boolean(permissions?.canRestrictMembers),
@@ -104,11 +103,31 @@ export async function updateChatCaptchaProfile(input: {
   return serializeCaptchaSettings(saved);
 }
 
+const GLOBAL_CAPTCHA_MESSAGES_ID = "global";
+
+/**
+ * The challenge text is edited in one place -- Система → Уведомления, see
+ * system-messages-service.ts -- not per chat; `enabled` stays chat-owned. Overlaying instead of a
+ * hard split keeps this function's return shape unchanged, so every runtime caller
+ * (captcha-service.ts) needed no changes.
+ */
+async function overlayGlobalCaptchaText(settings: CaptchaSettingsValue): Promise<CaptchaSettingsValue> {
+  const global = await prisma.globalCaptchaSettings.findUnique({
+    where: { id: GLOBAL_CAPTCHA_MESSAGES_ID },
+    select: { challengeMessageTemplate: true }
+  });
+  return {
+    ...settings,
+    challengeMessageTemplate: global?.challengeMessageTemplate ?? DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate
+  };
+}
+
 export async function resolveEffectiveCaptchaSettings(chatId: string) {
   const local = await prisma.chatCaptchaSettings.findUnique({ where: { chatId } });
+  const settings = await overlayGlobalCaptchaText(serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS));
   return {
     source: "CHAT" as const,
     useGlobalProfile: false,
-    settings: serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS)
+    settings
   };
 }

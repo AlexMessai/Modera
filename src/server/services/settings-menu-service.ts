@@ -206,7 +206,7 @@ function renderProtectionMenu(captcha: CaptchaSettingsValue, antiRaid: AntiRaidS
 
 function renderCaptchaDetail(settings: CaptchaSettingsValue, telegramChatId: number) {
   return {
-    text: `🤖 CAPTCHA при вступлении\n\nНовый участник должен подтвердить, что не бот, прежде чем сможет писать в чат. Кто не подтвердит — будет исключён (не заблокирован) при ближайшей ежедневной проверке. Текст сообщения с кнопкой подтверждения редактируется в Web Admin.`,
+    text: `🤖 CAPTCHA при вступлении\n\nНовый участник должен подтвердить, что не бот, прежде чем сможет писать в чат. Кто не подтвердит — будет исключён (не заблокирован) при ближайшей ежедневной проверке. Текст сообщения общий для всех чатов, редактируется в Web Admin → Система → Уведомления.`,
     keyboard: {
       inline_keyboard: [
         toggleRow(`Статус: ${settings.enabled ? "✅ включена" : "⬜ выключена"}`, "protection.captcha.toggle", telegramChatId),
@@ -274,7 +274,7 @@ function renderPunishmentsDetail(settings: ModerationSettingsValue, telegramChat
     .map((rule) => `${rule.thresholdWarnings} варн(ов) → ${rule.action === "MUTE" ? "mute" : "бан"} (${formatRuleDuration(rule.durationMinutes)})`)
     .join("\n");
   return {
-    text: `🔨 Наказания\n\nЦепочка наказаний за накопленные предупреждения (полный список правил редактируется в Web Admin):\n${chain || "не настроена"}`,
+    text: `🔨 Наказания\n\nЦепочка наказаний за накопленные предупреждения (полный список правил редактируется в Web Admin; тексты сообщений — в Система → Уведомления):\n${chain || "не настроена"}`,
     keyboard: {
       inline_keyboard: [
         toggleRow(`Автонаказания: ${settings.autoEscalationEnabled ? "✅ включены" : "⬜ выключены"}`, "moderation.punishments.auto.toggle", telegramChatId),
@@ -535,7 +535,7 @@ function previewText(value: string, limit: number = CONTENT_PREVIEW_LIMIT) {
 
 function renderWelcomeDetail(settings: ContentSettingsValue, telegramChatId: number) {
   return {
-    text: `👋 Приветствие новых участников\n\nОтправляется в чат сразу после вступления. Текст (с переменными {name}/{username}/{group}/{member_count}) редактируется в Web Admin.\n\nТекущий текст:\n${previewText(settings.welcomeMessageTemplate)}`,
+    text: `👋 Приветствие новых участников\n\nОтправляется в чат сразу после вступления. Текст общий для всех чатов, редактируется в Web Admin → Система → Уведомления.\n\nТекущий текст:\n${previewText(settings.welcomeMessageTemplate)}`,
     keyboard: {
       inline_keyboard: [
         toggleRow(`Статус: ${settings.welcomeEnabled ? "✅ включено" : "⬜ выключено"}`, "chat.welcome.toggle", telegramChatId),

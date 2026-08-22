@@ -85,17 +85,55 @@ test("a chat with no settings row falls back to app defaults; saved templates ar
     assert.equal(beforeAnyEdit.source, "CHAT");
     assert.deepEqual(beforeAnyEdit.settings, DEFAULT_MANUAL_MODERATION_SETTINGS);
 
+    // banDeleteTargetMessage is chat-owned (a toggle, not a message template).
     const saved = await updateChatManualModerationProfile({
       chatId: chat.id,
       actingAdminId: admin.id,
-      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "CHAT BAN %target%" }
+      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banDeleteTargetMessage: true }
     });
-    assert.equal(saved?.banMessageTemplate, "CHAT BAN %target%");
+    assert.equal(saved?.banDeleteTargetMessage, true);
 
     const resolved = await resolveEffectiveManualModerationSettings(chat.id);
     assert.equal(resolved.source, "CHAT");
-    assert.equal(resolved.settings.banMessageTemplate, "CHAT BAN %target%");
+    assert.equal(resolved.settings.banDeleteTargetMessage, true);
   } finally {
+    await cleanup();
+  }
+});
+
+test("message templates are edited globally, not per chat -- a chat-local write to a template field has no effect on what resolveEffective returns", async () => {
+  await cleanup();
+  const chat = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID, title: "Manual Moderation Settings CI (templates)", type: "supergroup" }
+  });
+  const admin = await prisma.adminUser.create({
+    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
+  });
+
+  try {
+    await updateChatManualModerationProfile({
+      chatId: chat.id,
+      actingAdminId: admin.id,
+      settings: { ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "CHAT-LOCAL, SHOULD BE IGNORED" }
+    });
+
+    const resolved = await resolveEffectiveManualModerationSettings(chat.id);
+    assert.equal(resolved.settings.banMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate);
+
+    await prisma.globalManualModerationSettings.upsert({
+      where: { id: "global" },
+      create: { id: "global", ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" },
+      update: { banMessageTemplate: "GLOBAL BAN %target%" }
+    });
+
+    const afterGlobalEdit = await resolveEffectiveManualModerationSettings(chat.id);
+    assert.equal(afterGlobalEdit.settings.banMessageTemplate, "GLOBAL BAN %target%");
+  } finally {
+    await prisma.globalManualModerationSettings.upsert({
+      where: { id: "global" },
+      create: { id: "global", ...DEFAULT_MANUAL_MODERATION_SETTINGS },
+      update: { banMessageTemplate: DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate }
+    });
     await cleanup();
   }
 });
