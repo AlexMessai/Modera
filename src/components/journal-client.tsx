@@ -53,6 +53,7 @@ const actionLabels: Record<string, string> = {
   AUTOMOD_AUTO_BAN: "Автоматическая блокировка",
   AUTOMOD_ESCALATION_FAILED: "Ошибка автоматического наказания",
   AUTOMOD_ESCALATION_SKIPPED_PROTECTED: "Автонаказание пропущено для администратора",
+  AUTOMOD_ESCALATION_NOT_TRIGGERED: "Порог не сработал (диагностика)",
   AUTOMOD_DELETE_FAILED: "Ошибка автоматического удаления",
   AUTOMOD_SETTINGS_UPDATED: "Изменены правила чата",
   GLOBAL_AUTOMOD_SETTINGS_UPDATED: "Изменена глобальная политика",
