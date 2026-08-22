@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import {
   LayoutDashboard,
   LogOut,
@@ -65,8 +66,20 @@ export function Sidebar({
   const router = useRouter();
   const chatMatch = pathname.match(/^\/chats\/([^/]+)/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
-  const activeChat = activeChatId ? chats.find((chat) => chat.id === activeChatId) ?? null : null;
-  const activeTab = searchParams.get("tab") ?? "overview";
+
+  // The chat menu should keep showing while browsing pages reached from inside a chat
+  // (e.g. a member profile) that aren't themselves under /chats/[id] -- so once a chat
+  // is opened, remember it and only swap when the URL points at a *different* chat.
+  // Setting state during render (not in an effect) is React's documented pattern for
+  // this kind of "adjust state when a prop/derived value changes" case.
+  const [rememberedChatId, setRememberedChatId] = useState<string | null>(activeChatId);
+  if (activeChatId && activeChatId !== rememberedChatId) {
+    setRememberedChatId(activeChatId);
+  }
+
+  const shownChatId = activeChatId ?? rememberedChatId;
+  const activeChat = shownChatId ? chats.find((chat) => chat.id === shownChatId) ?? null : null;
+  const activeTab = activeChatId ? (searchParams.get("tab") ?? "overview") : null;
 
   const isSystem = admin.role === "OWNER" || admin.role === "ADMIN";
 
