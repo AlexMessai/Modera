@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { Fragment, FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search, TriangleAlert } from "lucide-react";
 
 type JournalCategory = "ALL" | "MANUAL" | "AUTOMOD" | "ERRORS" | "SETTINGS" | "PENDING";
 type Person = { id: string; displayName: string; username: string | null; telegramUserId: string };
 type Chat = { id: string; title: string; telegramChatId: string };
 type Admin = { id: string; displayName: string; email: string };
-type JournalItem = { id: string; source: string; action: string; reason: string | null; createdAt: string; status: "SUCCEEDED" | "FAILED"; chat: Chat | null; affectedUser: Person | null; actingAdmin: Admin | null };
+type JournalItem = { id: string; source: string; action: string; reason: string | null; metadata: unknown; createdAt: string; status: "SUCCEEDED" | "FAILED"; chat: Chat | null; affectedUser: Person | null; actingAdmin: Admin | null };
 type PendingItem = { id: string; source: string; type: string; reason: string | null; expiresAt: string | null; createdAt: string; chat: Chat; affectedUser: Person; actingAdmin: Admin | null };
 type ResponseData = { items: JournalItem[]; pending: PendingItem[]; chats: Chat[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } };
 
@@ -160,6 +160,7 @@ export function JournalClient({ canReconcile = false }: { canReconcile?: boolean
   const [error, setError] = useState<string | null>(null);
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const [reconciliationNotice, setReconciliationNotice] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -300,16 +301,31 @@ export function JournalClient({ canReconcile = false }: { canReconcile?: boolean
               <table className="data-table journal-table">
                 <thead><tr><th>Событие</th><th>Чат</th><th>Участник</th><th>Инициатор</th><th>Результат</th><th>Время</th></tr></thead>
                 <tbody>
-                  {data.items.map((item) => (
-                    <tr key={item.id}>
-                      <td><div className="stacked-cell journal-event-cell"><strong>{actionLabels[item.action] ?? "Системное событие"}</strong><span>{item.reason ?? (item.source === "SYSTEM" ? "Автоматическое правило" : "Без причины")}</span></div></td>
-                      <td>{item.chat ? <Link className="table-link" href={`/chats/${item.chat.id}`}>{item.chat.title}</Link> : "—"}</td>
-                      <td>{item.affectedUser ? <Link className="stacked-cell table-link" href={`/members/${item.affectedUser.id}`}><strong>{item.affectedUser.displayName}</strong><span>{item.affectedUser.username ? `@${item.affectedUser.username}` : item.affectedUser.telegramUserId}</span></Link> : "—"}</td>
-                      <td>{item.actingAdmin?.displayName ?? systemActorLabel(item)}</td>
-                      <td><span className={`badge ${item.status === "FAILED" ? "badge--danger" : "badge--active"}`}>{item.status === "FAILED" ? "Ошибка" : "Выполнено"}</span></td>
-                      <td>{formatDate(item.createdAt)}</td>
-                    </tr>
-                  ))}
+                  {data.items.map((item) => {
+                    const hasMetadata = item.metadata !== null && item.metadata !== undefined;
+                    const isExpanded = expandedId === item.id;
+                    return (
+                      <Fragment key={item.id}>
+                        <tr
+                          className={hasMetadata ? "journal-row--expandable" : undefined}
+                          onClick={hasMetadata ? () => setExpandedId(isExpanded ? null : item.id) : undefined}
+                          style={hasMetadata ? { cursor: "pointer" } : undefined}
+                        >
+                          <td><div className="stacked-cell journal-event-cell"><strong>{actionLabels[item.action] ?? "Системное событие"}</strong><span>{item.reason ?? (item.source === "SYSTEM" ? "Автоматическое правило" : "Без причины")}</span></div></td>
+                          <td>{item.chat ? <Link className="table-link" href={`/chats/${item.chat.id}`} onClick={(event) => event.stopPropagation()}>{item.chat.title}</Link> : "—"}</td>
+                          <td>{item.affectedUser ? <Link className="stacked-cell table-link" href={`/members/${item.affectedUser.id}`} onClick={(event) => event.stopPropagation()}><strong>{item.affectedUser.displayName}</strong><span>{item.affectedUser.username ? `@${item.affectedUser.username}` : item.affectedUser.telegramUserId}</span></Link> : "—"}</td>
+                          <td>{item.actingAdmin?.displayName ?? systemActorLabel(item)}</td>
+                          <td><span className={`badge ${item.status === "FAILED" ? "badge--danger" : "badge--active"}`}>{item.status === "FAILED" ? "Ошибка" : "Выполнено"}</span></td>
+                          <td>{formatDate(item.createdAt)}</td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr>
+                            <td colSpan={6}><pre className="journal-metadata">{JSON.stringify(item.metadata, null, 2)}</pre></td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
