@@ -23,6 +23,7 @@ function enabledRules(settings: {
   massMentionsEnabled: boolean;
   duplicateEnabled: boolean;
   blockedMessageTypes: string[];
+  mediaFilters: { enabled: boolean }[];
   autoEscalationEnabled: boolean;
 } | null) {
   if (!settings) return [];
@@ -32,7 +33,7 @@ function enabledRules(settings: {
   if (settings.spamEnabled) rules.push("FLOOD");
   if (settings.duplicateEnabled) rules.push("DUPLICATES");
   if (settings.massMentionsEnabled) rules.push("MENTIONS");
-  if (settings.blockedMessageTypes.length > 0) rules.push("MEDIA");
+  if (settings.blockedMessageTypes.length > 0 || settings.mediaFilters.some((rule) => rule.enabled)) rules.push("MEDIA");
   if (settings.autoEscalationEnabled) rules.push("PUNISHMENTS");
   return rules;
 }
@@ -64,7 +65,7 @@ export async function getModerationDashboard() {
     // A chat with no row at all follows the global profile — matches
     // resolveEffectiveModerationSettings in global-moderation-service.ts.
     const useGlobalProfile = chat.moderationSettings?.useGlobalProfile ?? true;
-    const effectiveSettings = useGlobalProfile ? globalSettings : (chat.moderationSettings ?? DEFAULT_MODERATION_SETTINGS);
+    const effectiveSettings = serializeModerationSettings(useGlobalProfile ? globalSettings : (chat.moderationSettings ?? DEFAULT_MODERATION_SETTINGS));
     const rules = enabledRules(effectiveSettings);
 
     return {

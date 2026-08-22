@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  DEFAULT_MEDIA_FILTERS,
+  findEnabledMediaFilterRule,
   findTriggeredEscalationRule,
   GLOBAL_MODERATION_PROFILE_ID,
   lowestEscalationThreshold,
+  MEDIA_FILTER_TYPES,
   normalizeEscalationRules,
+  normalizeMediaFilters,
   resolveEffectiveModerationSettings
 } from "./global-moderation-service";
 
@@ -60,6 +64,39 @@ test("normalizeEscalationRules validates shape, bounds, and caps the list length
     durationMinutes: null
   }));
   assert.equal(normalizeEscalationRules(tooMany).length, 20);
+});
+
+test("normalizeMediaFilters always returns all 7 types, defaulting anything missing or malformed", () => {
+  assert.deepEqual(normalizeMediaFilters("not an array"), DEFAULT_MEDIA_FILTERS);
+  assert.deepEqual(normalizeMediaFilters([{ type: "NOT_A_TYPE", enabled: true }]), DEFAULT_MEDIA_FILTERS);
+
+  const normalized = normalizeMediaFilters([
+    { type: "PHOTO", enabled: true, warnOnTrigger: 1, notifyEnabled: "yes", notifyText: "  🚫 нельзя  " },
+    { type: "DICE", enabled: true, warnOnTrigger: false, notifyEnabled: false, notifyText: "" }
+  ]);
+  assert.equal(normalized.length, MEDIA_FILTER_TYPES.length);
+  assert.equal(normalized.map((rule) => rule.type).join(","), MEDIA_FILTER_TYPES.join(","));
+
+  const photo = normalized.find((rule) => rule.type === "PHOTO")!;
+  assert.equal(photo.enabled, true);
+  assert.equal(photo.warnOnTrigger, true);
+  assert.equal(photo.notifyEnabled, true);
+  assert.equal(photo.notifyText, "🚫 нельзя");
+
+  const dice = normalized.find((rule) => rule.type === "DICE")!;
+  assert.equal(dice.enabled, true);
+  // Blank notifyText falls back to the default rather than saving empty.
+  assert.equal(dice.notifyText, DEFAULT_MEDIA_FILTERS[0].notifyText);
+
+  const video = normalized.find((rule) => rule.type === "VIDEO")!;
+  assert.equal(video.enabled, false);
+});
+
+test("findEnabledMediaFilterRule returns the rule only when its type is enabled", () => {
+  const rules = normalizeMediaFilters([{ type: "AUDIO", enabled: true, warnOnTrigger: true, notifyEnabled: false, notifyText: "x" }]);
+  assert.equal(findEnabledMediaFilterRule(rules, "AUDIO")?.type, "AUDIO");
+  assert.equal(findEnabledMediaFilterRule(rules, "VOICE"), null);
+  assert.equal(findEnabledMediaFilterRule(rules, "DOCUMENT"), null);
 });
 
 test("chat moderation stays local by default and inherits global rules only after explicit opt-in", async () => {

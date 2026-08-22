@@ -29,6 +29,34 @@ const ESCALATION_DURATION_MAX_BY_ACTION: Record<EscalationRuleAction, number> = 
 };
 const MAX_ESCALATION_RULES = 20;
 
+// The 7 media types the Filters module manages individually -- once a type
+// is here, it's read exclusively from `mediaFilters` (below), never from the
+// flat blockedMessageTypes list (automod-service.ts enforces this split).
+export const MEDIA_FILTER_TYPES = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE"] as const;
+export type MediaFilterType = (typeof MEDIA_FILTER_TYPES)[number];
+
+export type MediaFilterRuleValue = {
+  type: MediaFilterType;
+  enabled: boolean;
+  /** Counts this violation toward the member's warning/escalation chain -- only takes effect when the chat's autoEscalationEnabled is also on (AND, not OR: a per-type override can only narrow, never widen, the chat's escalation policy). */
+  warnOnTrigger: boolean;
+  /** Post a chat announcement immediately on deletion, independent of warnOnTrigger/escalation. */
+  notifyEnabled: boolean;
+  notifyText: string;
+};
+
+const DEFAULT_MEDIA_FILTER_NOTIFY_TEXT = "🚫 Этот тип контента запрещён в этом чате.";
+
+export const DEFAULT_MEDIA_FILTERS: MediaFilterRuleValue[] = MEDIA_FILTER_TYPES.map((type) => ({
+  type,
+  enabled: false,
+  warnOnTrigger: false,
+  notifyEnabled: false,
+  notifyText: DEFAULT_MEDIA_FILTER_NOTIFY_TEXT
+}));
+
+const MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH = 1000;
+
 export const DEFAULT_MODERATION_SETTINGS = {
   linkProtectionMode: "ALLOW_ALL" as LinkProtectionMode,
   allowedDomains: [] as string[],
@@ -53,7 +81,8 @@ export const DEFAULT_MODERATION_SETTINGS = {
   warningExpiryDays: 0,
   announceEscalationEnabled: false,
   escalationMuteMessageTemplate: "🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
-  escalationBanMessageTemplate: "⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%."
+  escalationBanMessageTemplate: "⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
+  mediaFilters: DEFAULT_MEDIA_FILTERS
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
@@ -64,9 +93,10 @@ export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
  * raw `Prisma.JsonValue` (a DB row read straight from `ChatModerationSettings`/
  * `GlobalModerationSettings`) — normalizeEscalationRules validates either.
  */
-type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" | "linkProtectionMode"> & {
+type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" | "linkProtectionMode" | "mediaFilters"> & {
   escalationRules: unknown;
   linkProtectionMode: string;
+  mediaFilters: unknown;
 };
 
 /** The lowest configured threshold — the closest analog to the old single "warns_limit" number for chat-reply placeholders. */
@@ -91,6 +121,12 @@ export function findTriggeredEscalationRule(
     .filter((rule) => activeWarningCount >= rule.thresholdWarnings && escalationMarker < rule.thresholdWarnings)
     .sort((a, b) => b.thresholdWarnings - a.thresholdWarnings);
   return candidates[0] ?? null;
+}
+
+/** The enabled rule for a message type, or null when that type isn't a Filters-managed type or isn't enabled. */
+export function findEnabledMediaFilterRule(rules: MediaFilterRuleValue[], messageType: string): MediaFilterRuleValue | null {
+  const rule = rules.find((candidate) => candidate.type === messageType);
+  return rule?.enabled ? rule : null;
 }
 
 export function normalizeEscalationRules(input: unknown): EscalationRuleValue[] {
@@ -168,6 +204,38 @@ function normalizeEscalationTemplate(value: string, fallback: string) {
   return trimmed ? trimmed.slice(0, 1000) : fallback;
 }
 
+const MEDIA_FILTER_TYPE_SET = new Set<string>(MEDIA_FILTER_TYPES);
+
+function isMediaFilterType(value: unknown): value is MediaFilterType {
+  return typeof value === "string" && MEDIA_FILTER_TYPE_SET.has(value);
+}
+
+/**
+ * One entry per MEDIA_FILTER_TYPES — always the full set, in that order,
+ * regardless of what's in `input` (a type missing from the raw input keeps
+ * its default-disabled row rather than silently dropping out of the list,
+ * so the admin UI always has all 7 cards to render).
+ */
+export function normalizeMediaFilters(input: unknown): MediaFilterRuleValue[] {
+  const byType = new Map<MediaFilterType, MediaFilterRuleValue>();
+  if (Array.isArray(input)) {
+    for (const raw of input) {
+      if (!raw || typeof raw !== "object") continue;
+      const candidate = raw as Partial<MediaFilterRuleValue>;
+      if (!isMediaFilterType(candidate.type)) continue;
+      const notifyText = typeof candidate.notifyText === "string" ? candidate.notifyText.trim() : "";
+      byType.set(candidate.type, {
+        type: candidate.type,
+        enabled: Boolean(candidate.enabled),
+        warnOnTrigger: Boolean(candidate.warnOnTrigger),
+        notifyEnabled: Boolean(candidate.notifyEnabled),
+        notifyText: (notifyText ? notifyText.slice(0, MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH) : DEFAULT_MEDIA_FILTER_NOTIFY_TEXT)
+      });
+    }
+  }
+  return MEDIA_FILTER_TYPES.map((type) => byType.get(type) ?? DEFAULT_MEDIA_FILTERS.find((rule) => rule.type === type)!);
+}
+
 export function normalizeModerationSettings(input: ModerationSettingsInput): ModerationSettingsValue {
   return {
     linkProtectionMode: isLinkProtectionMode(input.linkProtectionMode) ? input.linkProtectionMode : "ALLOW_ALL",
@@ -190,7 +258,8 @@ export function normalizeModerationSettings(input: ModerationSettingsInput): Mod
     warningExpiryDays: boundedInteger(input.warningExpiryDays, 0, 3650),
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate: normalizeEscalationTemplate(input.escalationMuteMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate),
-    escalationBanMessageTemplate: normalizeEscalationTemplate(input.escalationBanMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate)
+    escalationBanMessageTemplate: normalizeEscalationTemplate(input.escalationBanMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate),
+    mediaFilters: normalizeMediaFilters(input.mediaFilters)
   };
 }
 
@@ -216,7 +285,8 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
     warningExpiryDays: settings.warningExpiryDays,
     announceEscalationEnabled: settings.announceEscalationEnabled,
     escalationMuteMessageTemplate: settings.escalationMuteMessageTemplate,
-    escalationBanMessageTemplate: settings.escalationBanMessageTemplate
+    escalationBanMessageTemplate: settings.escalationBanMessageTemplate,
+    mediaFilters: normalizeMediaFilters(settings.mediaFilters)
   };
 }
 

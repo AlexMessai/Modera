@@ -2,12 +2,37 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Check, Globe2, Plus, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import { SettingsRow, ConditionalSettingsSection } from "@/components/settings-row";
 
+// The 7 Filters-managed types (below) used to live in this flat list too --
+// they're now configured individually in the "Фильтры" section instead, so
+// this list only covers the types that still don't have per-type settings.
 const mediaTypes = [
-  ["PHOTO", "Фото"], ["VIDEO", "Видео"], ["ANIMATION", "GIF / анимации"], ["DOCUMENT", "Файлы"],
-  ["STICKER", "Стикеры"], ["VOICE", "Голосовые"], ["AUDIO", "Аудио"], ["VIDEO_NOTE", "Видеосообщения"],
-  ["POLL", "Опросы"], ["DICE", "Игровые кубики"], ["LOCATION", "Геолокация"], ["CONTACT", "Контакты"]
+  ["DOCUMENT", "Файлы"], ["STICKER", "Стикеры"],
+  ["POLL", "Опросы"], ["LOCATION", "Геолокация"], ["CONTACT", "Контакты"]
 ] as const;
+
+export type MediaFilterType = "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE";
+
+export type MediaFilterRuleValue = {
+  type: MediaFilterType;
+  enabled: boolean;
+  warnOnTrigger: boolean;
+  notifyEnabled: boolean;
+  notifyText: string;
+};
+
+const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = {
+  PHOTO: "Изображения",
+  VIDEO: "Видео",
+  ANIMATION: "GIF",
+  VOICE: "Голосовые сообщения",
+  AUDIO: "Аудиофайлы",
+  VIDEO_NOTE: "Видеосообщения",
+  DICE: "Анимированные кости"
+};
+
+const MEDIA_FILTER_ORDER: MediaFilterType[] = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE"];
 
 export type EscalationRuleValue = {
   order: number;
@@ -48,6 +73,7 @@ export type ModerationSettingsValue = {
   announceEscalationEnabled: boolean;
   escalationMuteMessageTemplate: string;
   escalationBanMessageTemplate: string;
+  mediaFilters: MediaFilterRuleValue[];
 };
 
 const ESCALATION_DURATION_MAX: Record<EscalationRuleValue["action"], number> = {
@@ -133,7 +159,7 @@ export function ChatModerationSettings({
   const visibleBlockedDomains = inherited && globalSettings ? globalSettings.blockedDomains.join("\n") : blockedDomainsText;
   const visibleTerms = inherited && globalSettings ? globalSettings.blockedTerms.join("\n") : terms;
   const fieldsDisabled = !canEdit || saving || inherited;
-  const anyRuleEnabled = visibleSettings.linkProtectionMode !== "ALLOW_ALL" || visibleSettings.spamEnabled || visibleSettings.blockedTermsEnabled || visibleSettings.massMentionsEnabled || visibleSettings.duplicateEnabled || visibleSettings.blockedMessageTypes.length > 0;
+  const anyRuleEnabled = visibleSettings.linkProtectionMode !== "ALLOW_ALL" || visibleSettings.spamEnabled || visibleSettings.blockedTermsEnabled || visibleSettings.massMentionsEnabled || visibleSettings.duplicateEnabled || visibleSettings.blockedMessageTypes.length > 0 || visibleSettings.mediaFilters.some((rule) => rule.enabled);
   const activeAntiSpamPreset = matchingAntiSpamPreset(visibleSettings);
 
   function applyAntiSpamPreset(key: AntiSpamPresetKey) {
@@ -178,6 +204,13 @@ export function ChatModerationSettings({
 
   function toggleMedia(type: string, checked: boolean) {
     setSettings((current) => ({ ...current, blockedMessageTypes: checked ? Array.from(new Set([...current.blockedMessageTypes, type])) : current.blockedMessageTypes.filter((item) => item !== type) }));
+  }
+
+  function updateMediaFilter(type: MediaFilterType, patch: Partial<MediaFilterRuleValue>) {
+    setSettings((current) => ({
+      ...current,
+      mediaFilters: current.mediaFilters.map((rule) => (rule.type === type ? { ...rule, ...patch } : rule))
+    }));
   }
 
   function addEscalationRule() {
@@ -300,6 +333,51 @@ export function ChatModerationSettings({
         <div className="automod-rule-heading"><strong>Запрещённые типы контента</strong><small>Выбранные типы удаляются сразу после получения Telegram update.</small></div>
         <div className="automod-media-grid">{mediaTypes.map(([value, label]) => <label className="automod-media-option" key={value}><input type="checkbox" checked={visibleSettings.blockedMessageTypes.includes(value)} disabled={fieldsDisabled} onChange={(event) => toggleMedia(value, event.target.checked)} /><span>{label}</span></label>)}</div>
       </div>
+
+      <div className="automod-rule-heading"><strong>Фильтры</strong><small>Для медиатипов ниже — отдельно от общих настроек: можно решить, участвует ли конкретный тип в предупреждениях/автонаказаниях, и отправлять ли сообщение при срабатывании.</small></div>
+      {MEDIA_FILTER_ORDER.map((type) => {
+        const rule = visibleSettings.mediaFilters.find((item) => item.type === type);
+        if (!rule) return null;
+        return (
+          <div className="automod-rule" key={type}>
+            <SettingsRow
+              title={MEDIA_FILTER_LABELS[type]}
+              description="Удалять сообщения этого типа."
+              checked={rule.enabled}
+              disabled={fieldsDisabled}
+              onChange={(checked) => updateMediaFilter(type, { enabled: checked })}
+            />
+            <ConditionalSettingsSection visible={rule.enabled}>
+              <SettingsRow
+                title="Выдавать предупреждение нарушителю"
+                description="Засчитывается в общий счётчик предупреждений и автонаказаний чата (нужно также включить «Автоматические наказания» ниже)."
+                checked={rule.warnOnTrigger}
+                disabled={fieldsDisabled}
+                onChange={(checked) => updateMediaFilter(type, { warnOnTrigger: checked })}
+              />
+              <SettingsRow
+                title="Отправлять сообщение при срабатывании"
+                description="Публикует текст ниже в чат сразу при удалении — независимо от предупреждения."
+                checked={rule.notifyEnabled}
+                disabled={fieldsDisabled}
+                onChange={(checked) => updateMediaFilter(type, { notifyEnabled: checked })}
+              />
+              {rule.notifyEnabled ? (
+                <label className="automod-field">
+                  <span>Текст сообщения</span>
+                  <textarea
+                    rows={2}
+                    value={rule.notifyText}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => updateMediaFilter(type, { notifyText: event.target.value })}
+                  />
+                  <small>Доступны %target%, %chat%.</small>
+                </label>
+              ) : null}
+            </ConditionalSettingsSection>
+          </div>
+        );
+      })}
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={visibleSettings.autoEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, autoEscalationEnabled: event.target.checked }))} /><span><strong>Автоматические наказания</strong><small>Каждое успешно удалённое automod-сообщение добавляет предупреждение. По достижении порогов Modera применяет временный mute, затем ban.</small></span></label>

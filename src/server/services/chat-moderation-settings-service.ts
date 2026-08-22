@@ -10,6 +10,7 @@ import {
   getGlobalModerationProfile,
   isLinkProtectionMode,
   normalizeEscalationRules,
+  normalizeMediaFilters,
   resolveEffectiveModerationSettings,
   serializeModerationSettings
 } from "@/server/services/global-moderation-service";
@@ -160,6 +161,7 @@ export async function updateChatModerationSettings(input: {
   announceEscalationEnabled: boolean;
   escalationMuteMessageTemplate: string;
   escalationBanMessageTemplate: string;
+  mediaFilters: unknown;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
 
@@ -199,7 +201,8 @@ export async function updateChatModerationSettings(input: {
     warningExpiryDays,
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate,
-    escalationBanMessageTemplate
+    escalationBanMessageTemplate,
+    mediaFilters: normalizeMediaFilters(input.mediaFilters)
   };
 
   const saved = await prisma.$transaction(async (tx) => {

@@ -32,7 +32,7 @@ function countAutomodRulesOn(settings: ModerationSettingsValue) {
     settings.blockedTermsEnabled,
     settings.massMentionsEnabled,
     settings.duplicateEnabled,
-    settings.blockedMessageTypes.length > 0,
+    settings.blockedMessageTypes.length > 0 || settings.mediaFilters.some((rule) => rule.enabled),
     settings.autoEscalationEnabled
   ].filter(Boolean).length;
 }

@@ -88,6 +88,22 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   const result = await processAutomodMessage(input);
   const rule = RULE_BY_AUTOMOD_RESULT[result.result];
   if (!rule) return;
+
+  // A Filters-managed media type (global-moderation-service.ts's
+  // MediaFilterRuleValue) can opt out of the shared warning/escalation
+  // behavior every other automod rule uses, and/or post its own chat
+  // announcement independent of whether it warns.
+  if (result.mediaFilterRule) {
+    if (result.mediaFilterRule.notifyEnabled) {
+      const text = renderManualModerationTemplate(result.mediaFilterRule.notifyText, {
+        target: telegramDisplayName(input.message.from),
+        chat: input.message.chat.title ?? ""
+      });
+      await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+    }
+    if (!result.mediaFilterRule.warnOnTrigger) return;
+  }
+
   const violation = {
     chatId: input.chatId,
     telegramUserId: input.message.from.id,

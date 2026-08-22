@@ -333,6 +333,13 @@ model ChatModerationSettings {
   announceEscalationEnabled     Boolean  @default(false)
   escalationMuteMessageTemplate String   @default("🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
   escalationBanMessageTemplate  String   @default("⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
+  // Per-content-type "Фильтры" (§ Filters module): granular rules for the
+  // media types Automod's flat blockedMessageTypes list treats as one
+  // undifferentiated group — MediaFilterRule[] from global-moderation-service.ts:
+  // [{ type: "PHOTO"|"VIDEO"|"ANIMATION"|"VOICE"|"AUDIO"|"VIDEO_NOTE"|"DICE",
+  //    enabled, warnOnTrigger, notifyEnabled, notifyText }]. A type listed here
+  // is no longer read from blockedMessageTypes (see automod-service.ts).
+  mediaFilters           Json     @default("[]")
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -372,6 +379,8 @@ model GlobalModerationSettings {
   announceEscalationEnabled     Boolean  @default(false)
   escalationMuteMessageTemplate String   @default("🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
   escalationBanMessageTemplate  String   @default("⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
+  // See ChatModerationSettings.mediaFilters — same shape.
+  mediaFilters           Json     @default("[]")
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
