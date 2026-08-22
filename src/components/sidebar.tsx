@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 import {
-  ChevronRight,
+  ArrowLeft,
   LayoutDashboard,
   LogOut,
   MessageCircleQuestion,
@@ -67,19 +66,8 @@ export function Sidebar({
   const router = useRouter();
   const chatMatch = pathname.match(/^\/chats\/([^/]+)/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
-  const activeTab = activeChatId ? (searchParams.get("tab") ?? "overview") : null;
-  // undefined = "not yet touched, follow the URL"; once the admin clicks a row, this always wins over the URL.
-  const [manualOpenChatId, setManualOpenChatId] = useState<string | null | undefined>(undefined);
-  const openChatId = manualOpenChatId === undefined ? activeChatId : manualOpenChatId;
-
-  function selectChat(id: string) {
-    if (openChatId === id) {
-      setManualOpenChatId(null);
-      return;
-    }
-    setManualOpenChatId(id);
-    router.push(`/chats/${id}?tab=overview`);
-  }
+  const activeChat = activeChatId ? chats.find((chat) => chat.id === activeChatId) ?? null : null;
+  const activeTab = searchParams.get("tab") ?? "overview";
 
   const isSystem = admin.role === "OWNER" || admin.role === "ADMIN";
 
@@ -93,58 +81,47 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-top">
         <div className="brand"><span className="brand-mark">M</span><span>Modera</span></div>
-        <nav className="nav-list" aria-label="Основная навигация">
-          {topNavigation.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link key={item.href} className={`nav-item ${active ? "nav-item--active" : ""}`} href={item.href}>
-                <Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>
-              </Link>
-            );
-          })}
-          <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
-            <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
-          </a>
-        </nav>
 
-        <div className="section-label"><span>Чаты</span><span className="count">{chats.length}</span></div>
-        <div className="groups-list">
-          {chats.map((chat) => {
-            const open = openChatId === chat.id;
-            return (
-              <div className="group-node" key={chat.id}>
-                <button
-                  type="button"
-                  className={`group-row ${open ? "is-open" : ""} ${activeChatId === chat.id ? "is-active-parent" : ""}`}
-                  onClick={() => selectChat(chat.id)}
-                >
-                  <span className="group-avatar">{chat.title.slice(0, 1).toUpperCase()}</span>
-                  <span className="group-name">{chat.title}</span>
-                  <span className={statusDotClass(chat.status)} title={chat.status} />
-                  <ChevronRight className="group-chevron" size={13} strokeWidth={2} />
-                </button>
-                {open ? (
-                  <div className="group-tabs">
-                    {chatTabs.map((item) => {
-                      const Icon = item.icon;
-                      const active = activeChatId === chat.id && activeTab === item.tab;
-                      return (
-                        <Link
-                          key={item.tab}
-                          className={`group-tab ${active ? "is-active" : ""}`}
-                          href={`/chats/${chat.id}?tab=${item.tab}`}
-                        >
-                          <Icon size={14} strokeWidth={1.8} /><span>{item.label}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        {activeChat ? (
+          <>
+            <Link className="back-link sidebar-back-link" href="/chats"><ArrowLeft size={15} /> Группы</Link>
+            <div className="group-header">
+              <span className="group-avatar">{activeChat.title.slice(0, 1).toUpperCase()}</span>
+              <span className="group-name">{activeChat.title}</span>
+              <span className={statusDotClass(activeChat.status)} title={activeChat.status} />
+            </div>
+            <nav className="nav-list group-tabs--static" aria-label={`Вкладки чата ${activeChat.title}`}>
+              {chatTabs.map((item) => {
+                const Icon = item.icon;
+                const active = activeTab === item.tab;
+                return (
+                  <Link
+                    key={item.tab}
+                    className={`group-tab ${active ? "is-active" : ""}`}
+                    href={`/chats/${activeChat.id}?tab=${item.tab}`}
+                  >
+                    <Icon size={14} strokeWidth={1.8} /><span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </>
+        ) : (
+          <nav className="nav-list" aria-label="Основная навигация">
+            {topNavigation.map((item) => {
+              const Icon = item.icon;
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <Link key={item.href} className={`nav-item ${active ? "nav-item--active" : ""}`} href={item.href}>
+                  <Icon size={18} strokeWidth={1.8} /><span>{item.label}</span>
+                </Link>
+              );
+            })}
+            <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
+              <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
+            </a>
+          </nav>
+        )}
       </div>
 
       <div className="sidebar-footer">
