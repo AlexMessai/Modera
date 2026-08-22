@@ -393,7 +393,21 @@ async function executeTelegramBackedAction(input: {
           ...membershipUpdateFor(input.action, now, input.expiresAt),
           ...(input.escalationWarningCount !== undefined
             ? { lastAutoEscalationWarningCount: input.escalationWarningCount }
-            : {})
+            // Reversing a mute/ban (however it was applied) must also release
+            // whichever escalation threshold caused it -- otherwise the
+            // marker stays pinned at that threshold forever, silently
+            // blocking every rule at or below it for this member no matter
+            // how many further warnings accumulate (real incident: a member
+            // auto-banned at the threshold-6 rule, then manually unbanned,
+            // went on to accumulate 149 warnings with mute/ban never firing
+            // again). Reset to 0 rather than leaving anything pinned -- if
+            // their warningCount is still high, the very next warning
+            // re-evaluates and re-applies whatever the rules call for, which
+            // is the point: undoing the punishment doesn't erase the
+            // infraction count that earned it.
+            : (input.action === "UNMUTE" || input.action === "UNBAN")
+              ? { lastAutoEscalationWarningCount: 0 }
+              : {})
         }
       });
       const completedAction = await tx.moderationAction.update({
