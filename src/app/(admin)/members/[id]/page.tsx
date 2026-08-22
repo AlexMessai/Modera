@@ -74,7 +74,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
     <main className="page">
       <header className="page-header member-profile-header">
         <div>
-          <Link className="back-link" href="/members"><ArrowLeft size={15} /> Участники</Link>
+          <Link className="back-link" href={`/chats/${member.chat.id}?tab=members`}><ArrowLeft size={15} /> Участники</Link>
           <div className="profile-title-row">
             <TelegramAvatar
               userId={member.user.id}

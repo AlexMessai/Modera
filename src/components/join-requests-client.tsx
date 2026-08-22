@@ -56,10 +56,18 @@ async function requestData(input: { page: number; status: Status; chatId: string
   return payload.data as ResponseData;
 }
 
-export function JoinRequestsClient({ canModerate }: { canModerate: boolean }) {
+export function JoinRequestsClient({
+  canModerate,
+  initialChatId = "",
+  lockChat = false
+}: {
+  canModerate: boolean;
+  initialChatId?: string;
+  lockChat?: boolean;
+}) {
   const [data, setData] = useState<ResponseData | null>(null);
   const [status, setStatus] = useState<Status>("PENDING");
-  const [chatId, setChatId] = useState("");
+  const [chatId, setChatId] = useState(initialChatId);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -145,10 +153,12 @@ export function JoinRequestsClient({ canModerate }: { canModerate: boolean }) {
               <option value="APPROVED">Приняты</option>
               <option value="DECLINED">Отклонены</option>
             </select>
-            <select className="select-control" value={chatId} onChange={(event) => { setChatId(event.target.value); setPage(1); setLoading(true); }}>
-              <option value="">Все чаты</option>
-              {(data?.chats ?? []).map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
-            </select>
+            {lockChat ? null : (
+              <select className="select-control" value={chatId} onChange={(event) => { setChatId(event.target.value); setPage(1); setLoading(true); }}>
+                <option value="">Все чаты</option>
+                {(data?.chats ?? []).map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
+              </select>
+            )}
             <button className="button button--secondary" type="button" onClick={refreshNow} disabled={loading}><RefreshCw size={16} /> Обновить</button>
           </div>
         </div>

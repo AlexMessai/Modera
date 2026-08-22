@@ -120,15 +120,23 @@ export function ChatsClient() {
       ) : null}
 
       {!loading && !error && data && data.items.length > 0 ? <>
-        <div className="table-wrap"><table className="data-table"><thead><tr><th>Чат</th><th>Telegram ID</th><th>Тип</th><th>Участники</th><th>Права</th><th>Статус</th><th>Активность</th></tr></thead><tbody>{data.items.map((chat) => <tr key={chat.id}>
-          <td><Link href={`/chats/${chat.id}`} className="chat-cell chat-cell-link"><span className="chat-avatar">{chat.title.slice(0, 1).toUpperCase()}</span><div><strong>{chat.title}</strong><span>{chat.username ? `@${chat.username}` : "Без username"}</span></div></Link></td>
-          <td className="mono">{chat.telegramChatId}</td>
-          <td>{chat.type === "supergroup" ? "Супергруппа" : "Группа"}</td>
-          <td>{chat.knownMemberCount?.toLocaleString("ru-RU") ?? "—"}</td>
-          <td><div className="permission-stack"><span className={chat.permissions?.canDeleteMessages ? "permission-ok" : ""}>Удаление</span><span className={chat.permissions?.canRestrictMembers ? "permission-ok" : ""}>Ограничения</span><span className={chat.permissions?.canManageTags ? "permission-ok" : ""}>Теги</span></div></td>
-          <td><span className={`badge badge--${chat.status.toLowerCase()}`}>{statusLabels[chat.status]}</span>{chat.lastError ? <div className="row-note">{chat.lastError}</div> : null}</td>
-          <td>{new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(chat.lastActivityAt))}</td>
-        </tr>)}</tbody></table></div>
+        <div className="chat-card-grid">{data.items.map((chat) => (
+          <Link key={chat.id} href={`/chats/${chat.id}`} className="chat-card">
+            <div className="chat-card-top">
+              <span className="chat-card-avatar">{chat.title.slice(0, 1).toUpperCase()}</span>
+              <span className={`badge badge--${chat.status.toLowerCase()}`}>{statusLabels[chat.status]}</span>
+            </div>
+            <div>
+              <h3>{chat.title}</h3>
+              <p className="chat-card-meta">{chat.type === "supergroup" ? "Супергруппа" : "Группа"}{chat.username ? ` · @${chat.username}` : ""}</p>
+            </div>
+            <div className="chat-card-stats">
+              <div className="chat-card-stat"><span>Участников</span><strong>{chat.knownMemberCount?.toLocaleString("ru-RU") ?? "—"}</strong></div>
+              <span className="chat-card-open">Открыть →</span>
+            </div>
+            {chat.lastError ? <div className="row-note">{chat.lastError}</div> : null}
+          </Link>
+        ))}</div>
         <div className="table-footer"><span>Всего: {data.pagination.total.toLocaleString("ru-RU")}</span><span>Автообновление каждые 5 секунд</span></div>
       </> : null}
     </section>
