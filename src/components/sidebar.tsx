@@ -66,15 +66,20 @@ export function Sidebar({
   const router = useRouter();
   const chatMatch = pathname.match(/^\/chats\/([^/]+)/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
+  const onTopNavPage = topNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) && !activeChatId;
 
   // The chat menu should keep showing while browsing pages reached from inside a chat
   // (e.g. a member profile) that aren't themselves under /chats/[id] -- so once a chat
   // is opened, remember it and only swap when the URL points at a *different* chat.
-  // Setting state during render (not in an effect) is React's documented pattern for
-  // this kind of "adjust state when a prop/derived value changes" case.
+  // It's explicitly dropped when landing on one of the top-level nav pages (Группы grid,
+  // Обзор, Журнал) rather than a specific chat. Setting state during render (not in an
+  // effect) is React's documented pattern for this "adjust state when a derived value
+  // changes" case.
   const [rememberedChatId, setRememberedChatId] = useState<string | null>(activeChatId);
   if (activeChatId && activeChatId !== rememberedChatId) {
     setRememberedChatId(activeChatId);
+  } else if (!activeChatId && onTopNavPage && rememberedChatId !== null) {
+    setRememberedChatId(null);
   }
 
   const shownChatId = activeChatId ?? rememberedChatId;
