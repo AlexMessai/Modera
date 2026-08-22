@@ -47,17 +47,26 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-async function requestData(input: { page: number; status: Status }) {
+async function requestData(input: { page: number; status: Status; chatId: string }) {
   const params = new URLSearchParams({ page: String(input.page), pageSize: "50", status: input.status });
+  if (input.chatId) params.set("chatId", input.chatId);
   const response = await fetch(`/api/appeals?${params.toString()}`, { cache: "no-store" });
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось загрузить апелляции.");
   return payload.data as ResponseData;
 }
 
-export function AppealsClient({ canModerate }: { canModerate: boolean }) {
+export function AppealsClient({
+  canModerate,
+  initialChatId = ""
+}: {
+  canModerate: boolean;
+  initialChatId?: string;
+  lockChat?: boolean;
+}) {
   const [data, setData] = useState<ResponseData | null>(null);
   const [status, setStatus] = useState<Status>("PENDING");
+  const [chatId] = useState(initialChatId);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +77,7 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
   const [submitting, setSubmitting] = useState(false);
 
   function load() {
-    return requestData({ page, status })
+    return requestData({ page, status, chatId })
       .then((next) => { setData(next); setError(null); })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить апелляции."))
       .finally(() => setLoading(false));
@@ -76,7 +85,7 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
 
   useEffect(() => {
     let active = true;
-    const refresh = () => void requestData({ page, status }).then((next) => {
+    const refresh = () => void requestData({ page, status, chatId }).then((next) => {
       if (!active) return;
       setData(next); setError(null); setLoading(false);
     }).catch((caught: unknown) => {
@@ -86,7 +95,7 @@ export function AppealsClient({ canModerate }: { canModerate: boolean }) {
     refresh();
     const interval = window.setInterval(refresh, 15000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [page, status]);
+  }, [page, status, chatId]);
 
   function startDecision(id: string, next: Decision) {
     setDecidingId(id); setDecision(next); setComment(""); setError(null); setNotice(null);

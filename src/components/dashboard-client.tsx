@@ -241,7 +241,7 @@ export function DashboardClient({ initial }: { initial: DashboardData }) {
         <article className={`panel dashboard-attention ${attentionTotal > 0 ? "dashboard-attention--has-items" : ""}`}>
           <div className="panel-header"><div><h2>Требует внимания</h2><p>Текущие очереди и проблемы, а не исторические события.</p></div>{attentionTotal > 0 ? <span className="badge badge--warning">{attentionTotal}</span> : <ShieldCheck size={19} />}</div>
           <div className="dashboard-attention-list">
-            <Link href="/join-requests"><UserRoundPlus size={17} /><span><strong>Заявки ожидают решения</strong><small>Очередь PENDING</small></span><b>{data.attention.pendingJoinRequests}</b></Link>
+            <Link href="/chats"><UserRoundPlus size={17} /><span><strong>Заявки ожидают решения</strong><small>Очередь PENDING</small></span><b>{data.attention.pendingJoinRequests}</b></Link>
             <Link href="/incidents?tab=journal"><RefreshCw size={17} /><span><strong>Действия требуют сверки</strong><small>PENDING moderation actions</small></span><b>{data.attention.pendingModerationActions}</b></Link>
             <Link href="/system"><Bot size={17} /><span><strong>Проблемные подключения</strong><small>Бот не в ACTIVE</small></span><b>{data.attention.problematicBotLinks}</b></Link>
             <Link href="/incidents?tab=journal"><AlertTriangle size={17} /><span><strong>Ошибки за период</strong><small>Модерация / automod</small></span><b>{data.attention.errors}</b></Link>

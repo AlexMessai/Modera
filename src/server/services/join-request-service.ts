@@ -178,11 +178,6 @@ export async function recordTelegramJoinRequest(input: {
   });
 }
 
-export async function hasAnyJoinRequests() {
-  const existing = await prisma.joinRequest.findFirst({ select: { id: true } });
-  return Boolean(existing);
-}
-
 export async function listJoinRequests(input: {
   page: number;
   pageSize: number;

@@ -154,11 +154,13 @@ function formatDate(value: string) {
 export function MessagesClient({
   canModerate,
   initialSender = "",
-  initialChatId = ""
+  initialChatId = "",
+  lockChat = false
 }: {
   canModerate: boolean;
   initialSender?: string;
   initialChatId?: string;
+  lockChat?: boolean;
 }) {
   const [draft, setDraft] = useState<Filters>(() => initialFilters(initialSender, initialChatId));
   const [filters, setFilters] = useState<Filters>(() => initialFilters(initialSender, initialChatId));
@@ -208,8 +210,9 @@ export function MessagesClient({
   }
 
   function resetFilters() {
-    setDraft(DEFAULT_FILTERS);
-    setFilters(DEFAULT_FILTERS);
+    const base = lockChat ? initialFilters(initialSender, initialChatId) : DEFAULT_FILTERS;
+    setDraft(base);
+    setFilters(base);
     setPage(1);
     setLoading(true);
   }
@@ -282,13 +285,15 @@ export function MessagesClient({
               placeholder="Имя, @username или ID"
             />
           </label>
-          <label className="messages-filter">
-            <span>Чат</span>
-            <select className="select-control" value={draft.chatId} onChange={(event) => setDraft((current) => ({ ...current, chatId: event.target.value }))}>
-              <option value="">Все чаты</option>
-              {chats.map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
-            </select>
-          </label>
+          {lockChat ? null : (
+            <label className="messages-filter">
+              <span>Чат</span>
+              <select className="select-control" value={draft.chatId} onChange={(event) => setDraft((current) => ({ ...current, chatId: event.target.value }))}>
+                <option value="">Все чаты</option>
+                {chats.map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
+              </select>
+            </label>
+          )}
           <label className="messages-filter">
             <span>Тип</span>
             <select className="select-control" value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}>

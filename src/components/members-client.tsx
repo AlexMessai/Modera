@@ -109,12 +109,20 @@ async function requestChats(): Promise<ChatFilterItem[]> {
   return (payload.data?.items ?? []) as ChatFilterItem[];
 }
 
-export function MembersClient({ canManageTrust = false }: { canManageTrust?: boolean }) {
+export function MembersClient({
+  canManageTrust = false,
+  initialChatId = "",
+  lockChat = false
+}: {
+  canManageTrust?: boolean;
+  initialChatId?: string;
+  lockChat?: boolean;
+}) {
   const [data, setData] = useState<MembersResponse | null>(null);
   const [chats, setChats] = useState<ChatFilterItem[]>([]);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
-  const [chatId, setChatId] = useState("");
+  const [chatId, setChatId] = useState(initialChatId);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -123,6 +131,7 @@ export function MembersClient({ canManageTrust = false }: { canManageTrust?: boo
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (lockChat) return;
     let active = true;
     void requestChats().then((items) => {
       if (active) setChats(items);
@@ -130,7 +139,7 @@ export function MembersClient({ canManageTrust = false }: { canManageTrust?: boo
     return () => {
       active = false;
     };
-  }, []);
+  }, [lockChat]);
 
   useEffect(() => {
     let active = true;
@@ -248,19 +257,21 @@ export function MembersClient({ canManageTrust = false }: { canManageTrust?: boo
           />
         </form>
         <div className="toolbar-filters">
-          <select
-            className="select-control"
-            value={chatId}
-            onChange={(event) => changeChat(event.target.value)}
-            aria-label="Фильтр по чату"
-          >
-            <option value="">Все чаты</option>
-            {chats.map((chat) => (
-              <option value={chat.id} key={chat.id}>
-                {chat.title}
-              </option>
-            ))}
-          </select>
+          {lockChat ? null : (
+            <select
+              className="select-control"
+              value={chatId}
+              onChange={(event) => changeChat(event.target.value)}
+              aria-label="Фильтр по чату"
+            >
+              <option value="">Все чаты</option>
+              {chats.map((chat) => (
+                <option value={chat.id} key={chat.id}>
+                  {chat.title}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             className="select-control"
             value={status}
