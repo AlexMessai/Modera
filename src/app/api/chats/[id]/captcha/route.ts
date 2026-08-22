@@ -10,7 +10,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   enabled: z.boolean(),
   challengeMessageTemplate: z.string().min(1).max(1000)
 });
@@ -49,7 +48,6 @@ export async function PATCH(
   const saved = await updateChatCaptchaProfile({
     chatId: id,
     actingAdminId: auth.admin.id,
-    useGlobalProfile: parsed.data.useGlobalProfile,
     settings: parsed.data
   });
   if (!saved) {

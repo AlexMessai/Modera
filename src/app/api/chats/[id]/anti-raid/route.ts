@@ -10,7 +10,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  useGlobalProfile: z.boolean(),
   enabled: z.boolean(),
   joinThreshold: z.number().int().min(3).max(500),
   windowSeconds: z.number().int().min(5).max(600),
@@ -52,7 +51,6 @@ export async function PATCH(
   const saved = await updateChatAntiRaidSettings({
     chatId: id,
     actingAdminId: auth.admin.id,
-    useGlobalProfile: parsed.data.useGlobalProfile,
     settings: parsed.data
   });
   if (!saved) {

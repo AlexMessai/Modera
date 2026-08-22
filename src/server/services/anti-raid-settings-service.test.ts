@@ -5,8 +5,7 @@ import {
   DEFAULT_ANTI_RAID_SETTINGS,
   normalizeAntiRaidSettings,
   resolveEffectiveAntiRaidSettings,
-  updateChatAntiRaidSettings,
-  updateGlobalAntiRaidProfile
+  updateChatAntiRaidSettings
 } from "./anti-raid-settings-service";
 
 const CHAT_ID = -1009000013001n;
@@ -33,7 +32,7 @@ test("anti-raid settings are normalized: booleans coerced, numeric fields clampe
   assert.equal(normalizeAntiRaidSettings({ ...DEFAULT_ANTI_RAID_SETTINGS, forceCaptcha: false }).forceCaptcha, false);
 });
 
-test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
+test("a chat with no settings row falls back to app defaults; saved settings are read back from the chat's own row", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Anti-Raid Settings CI", type: "supergroup" }
@@ -43,30 +42,23 @@ test("a chat that never chose follows the global profile; opting out uses its ow
   });
 
   try {
-    await updateGlobalAntiRaidProfile({
-      actingAdminId: admin.id,
-      settings: { ...DEFAULT_ANTI_RAID_SETTINGS, enabled: true, joinThreshold: 40 }
-    });
-
     const beforeAnyChatEdit = await resolveEffectiveAntiRaidSettings(chat.id);
-    assert.equal(beforeAnyChatEdit.source, "GLOBAL");
-    assert.equal(beforeAnyChatEdit.settings.enabled, true);
-    assert.equal(beforeAnyChatEdit.settings.joinThreshold, 40);
+    assert.equal(beforeAnyChatEdit.source, "CHAT");
+    assert.equal(beforeAnyChatEdit.settings.enabled, DEFAULT_ANTI_RAID_SETTINGS.enabled);
 
     const saved = await updateChatAntiRaidSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
-      settings: { ...DEFAULT_ANTI_RAID_SETTINGS, enabled: false, joinThreshold: 10 }
+      settings: { ...DEFAULT_ANTI_RAID_SETTINGS, enabled: true, joinThreshold: 10 }
     });
-    assert.equal(saved?.useGlobalProfile, false);
+    assert.equal(saved?.enabled, true);
+    assert.equal(saved?.joinThreshold, 10);
 
-    const optedOut = await resolveEffectiveAntiRaidSettings(chat.id);
-    assert.equal(optedOut.source, "CHAT");
-    assert.equal(optedOut.settings.enabled, false);
-    assert.equal(optedOut.settings.joinThreshold, 10);
+    const resolved = await resolveEffectiveAntiRaidSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.settings.enabled, true);
+    assert.equal(resolved.settings.joinThreshold, 10);
   } finally {
-    await updateGlobalAntiRaidProfile({ actingAdminId: admin.id, settings: DEFAULT_ANTI_RAID_SETTINGS });
     await cleanup();
   }
 });

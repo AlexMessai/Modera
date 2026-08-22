@@ -67,7 +67,7 @@ function stepperRow(label: string, value: number, field: string, basePath: strin
 
 function renderRoot(chatTitle: string, telegramChatId: number) {
   return {
-    text: `⚙️ Настройки чата «${chatTitle}»\n\nИзменения здесь применяются только к этому чату (не влияют на глобальную политику и другие чаты).`,
+    text: `⚙️ Настройки чата «${chatTitle}»\n\nИзменения здесь применяются только к этому чату.`,
     keyboard: {
       inline_keyboard: [
         [{ text: "⚖️ Модерация", callback_data: buildSettingsCallbackData(telegramChatId, "moderation") }],
@@ -295,13 +295,13 @@ async function renderModerationSection(input: { chatId: string; chatTitle: strin
   if (path === "moderation.warnings" || path.startsWith("moderation.warnings.expiry.")) {
     const profile = await getChatModerationProfile(input.chatId);
     if (!profile) return null;
-    let settings = profile.effectiveSettings;
+    let settings = profile.settings;
 
     const stepperMatch = /^moderation\.warnings\.expiry\.([+-]\d+)$/.exec(path);
     if (stepperMatch) {
       const nextValue = Math.min(3650, Math.max(0, settings.warningExpiryDays + Number(stepperMatch[1])));
       const merged: ModerationSettingsValue = { ...settings, warningExpiryDays: nextValue };
-      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, ...merged });
+      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, ...merged });
       settings = saved ?? merged;
     }
     return renderWarningsDetail(settings, input.telegramChatId);
@@ -310,7 +310,7 @@ async function renderModerationSection(input: { chatId: string; chatTitle: strin
   if (path === "moderation.punishments" || path === "moderation.punishments.auto.toggle" || path === "moderation.punishments.announce.toggle") {
     const profile = await getChatModerationProfile(input.chatId);
     if (!profile) return null;
-    let settings = profile.effectiveSettings;
+    let settings = profile.settings;
 
     let patch: Partial<ModerationSettingsValue> | null = null;
     if (path === "moderation.punishments.auto.toggle") patch = { autoEscalationEnabled: !settings.autoEscalationEnabled };
@@ -318,7 +318,7 @@ async function renderModerationSection(input: { chatId: string; chatTitle: strin
 
     if (patch) {
       const merged: ModerationSettingsValue = { ...settings, ...patch };
-      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, useGlobalProfile: false, ...merged });
+      const saved = await updateChatModerationSettings({ chatId: input.chatId, actingAdminId: input.actingAdminId, ...merged });
       settings = saved ?? merged;
     }
     return renderPunishmentsDetail(settings, input.telegramChatId);
@@ -342,7 +342,7 @@ function renderReportsDetail(settings: ReportSettingsValue, telegramChatId: numb
 async function renderReportsSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
   const profile = await getChatReportProfile(input.chatId);
   if (!profile) return null;
-  let settings = profile.effectiveSettings;
+  let settings = profile.settings;
 
   let patch: Partial<ReportSettingsValue> | null = null;
   if (input.path === "reports.toggle") {
@@ -360,7 +360,6 @@ async function renderReportsSection(input: { chatId: string; chatTitle: string; 
     const saved = await updateChatReportSettings({
       chatId: input.chatId,
       actingAdminId: input.actingAdminId,
-      useGlobalProfile: false,
       settings: merged
     });
     settings = saved ?? merged;
@@ -556,7 +555,7 @@ function renderRulesDetail(settings: ContentSettingsValue, telegramChatId: numbe
 async function renderChatSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
   const profile = await getChatContentProfile(input.chatId);
   if (!profile) return null;
-  let settings = profile.effectiveSettings;
+  let settings = profile.settings;
 
   if (input.path === "chat") return renderChatMenu(settings, input.telegramChatId);
 
@@ -565,7 +564,6 @@ async function renderChatSection(input: { chatId: string; chatTitle: string; tel
       const saved = await updateChatContentSettings({
         chatId: input.chatId,
         actingAdminId: input.actingAdminId,
-        useGlobalProfile: false,
         settings: { ...settings, welcomeEnabled: !settings.welcomeEnabled }
       });
       settings = saved ?? { ...settings, welcomeEnabled: !settings.welcomeEnabled };
@@ -691,7 +689,6 @@ async function applyAutomodAction(chatId: string, actingAdminId: string, setting
   const saved = await updateChatModerationSettings({
     chatId,
     actingAdminId,
-    useGlobalProfile: false,
     ...merged
   });
   return { viewPath, settings: saved ?? merged };
@@ -701,7 +698,7 @@ async function renderAutomodSection(input: { chatId: string; chatTitle: string; 
   const profile = await getChatModerationProfile(input.chatId);
   if (!profile) return null;
 
-  const { viewPath, settings } = await applyAutomodAction(input.chatId, input.actingAdminId, profile.effectiveSettings, input.path);
+  const { viewPath, settings } = await applyAutomodAction(input.chatId, input.actingAdminId, profile.settings, input.path);
   const renderer = AUTOMOD_VIEWS[viewPath];
   if (!renderer) return renderRoot(input.chatTitle, input.telegramChatId);
   return renderer(settings, input.telegramChatId);
@@ -728,18 +725,17 @@ async function renderProtectionSection(input: { chatId: string; chatTitle: strin
       getChatAntiRaidProfile(input.chatId)
     ]);
     if (!captchaProfile || !antiRaidProfile) return null;
-    return renderProtectionMenu(captchaProfile.effectiveSettings, antiRaidProfile.effectiveSettings, input.telegramChatId);
+    return renderProtectionMenu(captchaProfile.settings, antiRaidProfile.settings, input.telegramChatId);
   }
 
   if (path === "protection.captcha" || path === "protection.captcha.toggle") {
     const profile = await getChatCaptchaProfile(input.chatId);
     if (!profile) return null;
-    let settings = profile.effectiveSettings;
+    let settings = profile.settings;
     if (path === "protection.captcha.toggle") {
       const saved = await updateChatCaptchaProfile({
         chatId: input.chatId,
         actingAdminId: input.actingAdminId,
-        useGlobalProfile: false,
         settings: { ...settings, enabled: !settings.enabled }
       });
       settings = saved ?? { ...settings, enabled: !settings.enabled };
@@ -750,7 +746,7 @@ async function renderProtectionSection(input: { chatId: string; chatTitle: strin
   if (path.startsWith("protection.antiraid")) {
     const profile = await getChatAntiRaidProfile(input.chatId);
     if (!profile) return null;
-    let settings = profile.effectiveSettings;
+    let settings = profile.settings;
 
     let patch: Partial<AntiRaidSettingsValue> | null = null;
     if (path === "protection.antiraid.toggle") {
@@ -778,7 +774,6 @@ async function renderProtectionSection(input: { chatId: string; chatTitle: strin
       const saved = await updateChatAntiRaidSettings({
         chatId: input.chatId,
         actingAdminId: input.actingAdminId,
-        useGlobalProfile: false,
         settings: merged
       });
       settings = saved ?? merged;

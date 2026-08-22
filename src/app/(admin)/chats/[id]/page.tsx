@@ -18,7 +18,7 @@ import { canModerate, canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage } from "@/server/auth/guards";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
-import { getChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
+import { getChatManualModerationProfile, getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
 import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getChatReportProfile } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
@@ -85,10 +85,11 @@ export default async function ChatDetailPage({
   const tab = typeof query.tab === "string" ? query.tab : "overview";
   const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
 
-  const [profile, captchaProfile, manualModerationProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
+    getManualModerationVisibility(),
     getChatAntiRaidProfile(id),
     getChatReportProfile(id),
     getChatLogChannelProfile(id),
@@ -108,7 +109,7 @@ export default async function ChatDetailPage({
     <main className="page">
       <header className="page-header chat-detail-header">
         <div><Link className="back-link" href="/chats"><ArrowLeft size={15} /> Группы</Link><span className="eyebrow">Telegram · Автомодерация</span><h1>{profile.chat.title}</h1><p>{profile.chat.username ? `@${profile.chat.username} · ` : ""}{profile.chat.type === "supergroup" ? "Супергруппа" : "Группа"} · ID {profile.chat.telegramChatId}</p></div>
-        <div className="chat-detail-status"><span className={`badge badge--${profile.bot.status.toLowerCase()}`}>{botStatusLabels[profile.bot.status] ?? profile.bot.status}</span><small>Удаление сообщений: {profile.bot.canDeleteMessages ? "разрешено" : "нет права"}</small><small>Ограничение участников: {profile.bot.canRestrictMembers ? "разрешено" : "нет права"}</small><small>Политика: {profile.policy.effectiveSource === "GLOBAL" ? "глобальная" : "индивидуальная"}</small></div>
+        <div className="chat-detail-status"><span className={`badge badge--${profile.bot.status.toLowerCase()}`}>{botStatusLabels[profile.bot.status] ?? profile.bot.status}</span><small>Удаление сообщений: {profile.bot.canDeleteMessages ? "разрешено" : "нет права"}</small><small>Ограничение участников: {profile.bot.canRestrictMembers ? "разрешено" : "нет права"}</small></div>
       </header>
 
       {tab === "settings" ? (
@@ -121,29 +122,29 @@ export default async function ChatDetailPage({
 
           {section === "automod" ? (
             <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Правила чата</h2><p>Используйте глобальную политику или храните индивидуальные правила только для этого чата.</p></div></div>
-              <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} initialUseGlobalProfile={profile.policy.useGlobalProfile} globalSettings={profile.globalSettings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
+              <div className="panel-header"><div><h2>Правила чата</h2><p>Индивидуальные правила автомодерации для этого чата.</p></div></div>
+              <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
             </section>
           ) : null}
 
           {section === "captcha" && captchaProfile ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Новый участник должен подтвердить, что не бот, прежде чем сможет писать в чат.</p></div></div>
-              <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} initialUseGlobalProfile={captchaProfile.policy.useGlobalProfile} globalSettings={captchaProfile.globalSettings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
+              <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
             </section>
           ) : null}
 
           {section === "antiraid" && antiRaidProfile ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Anti-Raid</h2><p>Защита от массового вступления: усиливает капчу, пока наплыв новых участников не прекратится.</p></div></div>
-              <AntiRaidSettings chatId={antiRaidProfile.chat.id} initial={antiRaidProfile.settings} initialUseGlobalProfile={antiRaidProfile.policy.useGlobalProfile} globalSettings={antiRaidProfile.globalSettings} canEdit={canEdit} />
+              <AntiRaidSettings chatId={antiRaidProfile.chat.id} initial={antiRaidProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 
           {section === "manual" && manualModerationProfile ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Ручная модерация</h2><p>Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в этом чате.</p></div></div>
-              <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} initialUseGlobalProfile={manualModerationProfile.policy.useGlobalProfile} globalSettings={manualModerationProfile.globalSettings} visibility={manualModerationProfile.globalVisibility} canEdit={canEdit} />
+              <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} visibility={manualModerationVisibility} canEdit={canEdit} />
             </section>
           ) : null}
 
@@ -157,14 +158,14 @@ export default async function ChatDetailPage({
           {section === "content" && contentProfile ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Приветствие и правила</h2><p>Текст приветствия новым участникам и правила чата по команде /rules.</p></div></div>
-              <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} initialUseGlobalProfile={contentProfile.policy.useGlobalProfile} globalSettings={contentProfile.globalSettings} canEdit={canEdit} />
+              <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 
           {section === "reports" && reportProfile ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Жалобы</h2><p>Команда /report: участники жалуются на сообщение, администраторы получают приватную карточку с кнопками действий.</p></div></div>
-              <ReportSettings chatId={reportProfile.chat.id} initial={reportProfile.settings} initialUseGlobalProfile={reportProfile.policy.useGlobalProfile} globalSettings={reportProfile.globalSettings} canEdit={canEdit} />
+              <ReportSettings chatId={reportProfile.chat.id} initial={reportProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 

@@ -34,7 +34,6 @@ test("evaluateRaidOnJoin opens an incident once joins cross the threshold, and i
     await updateChatAntiRaidSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
       settings: { ...DEFAULT_ANTI_RAID_SETTINGS, enabled: true, joinThreshold: 3, windowSeconds: 20, forceCaptcha: true }
     });
 
@@ -82,7 +81,6 @@ test("processStaleRaidIncidents resolves an incident once its cooldown has elaps
     await updateChatAntiRaidSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
       settings: { ...DEFAULT_ANTI_RAID_SETTINGS, enabled: true, joinThreshold: 1, windowSeconds: 20, cooldownMinutes: 15 }
     });
 

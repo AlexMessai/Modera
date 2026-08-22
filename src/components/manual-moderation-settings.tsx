@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Globe2, ShieldCheck } from "lucide-react";
+import { Check, ShieldCheck } from "lucide-react";
 import { SettingsRow, ConditionalSettingsSection } from "@/components/settings-row";
 
 export type ManualModerationSettingsValue = {
@@ -32,16 +32,12 @@ export type ManualModerationVisibilitySettingsValue = {
 };
 
 type Props = {
-  chatId?: string;
+  chatId: string;
   initial: ManualModerationSettingsValue;
-  /** Global-only visibility flags. Editable switches at scope="global"; at scope="chat" this is the current global state, shown read-only. */
+  /** Global-only visibility flags, shown here read-only for context (edited under Система → Уведомления). */
   visibility: ManualModerationVisibilitySettingsValue;
   canEdit: boolean;
-  scope?: "chat" | "global";
-  initialUseGlobalProfile?: boolean;
-  globalSettings?: ManualModerationSettingsValue;
   onSaved?: (saved: ManualModerationSettingsValue) => void;
-  onVisibilitySaved?: (visibility: ManualModerationVisibilitySettingsValue) => void;
 };
 
 type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
@@ -116,74 +112,36 @@ export function ManualModerationSettings({
   initial,
   visibility,
   canEdit,
-  scope = "chat",
-  initialUseGlobalProfile = false,
-  globalSettings,
-  onSaved,
-  onVisibilitySaved
+  onSaved
 }: Props) {
   const [settings, setSettings] = useState(initial);
-  const [visibilityState, setVisibilityState] = useState(visibility);
-  const [useGlobalProfile, setUseGlobalProfile] = useState(initialUseGlobalProfile);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const isGlobalScope = scope === "global";
-  const inherited = !isGlobalScope && useGlobalProfile && Boolean(globalSettings);
-  const visibleSettings = inherited && globalSettings ? globalSettings : settings;
-  const fieldsDisabled = !canEdit || saving || inherited;
-  // The two punishment-visibility switches and the proactive-DM switch are a
-  // single global source of truth (no per-chat/per-command override) — only
-  // editable from the global scope; the chat-scope editor shows the current
-  // global state read-only so template visibility here stays consistent with
-  // what will actually be sent.
-  const effectiveVisibility = isGlobalScope ? visibilityState : visibility;
-  const visibilityDisabled = !canEdit || saving || !isGlobalScope;
+  const fieldsDisabled = !canEdit || saving;
 
   function setField<K extends keyof ManualModerationSettingsValue>(field: K, value: ManualModerationSettingsValue[K]) {
     setSettings((current) => ({ ...current, [field]: value }) as ManualModerationSettingsValue);
   }
 
-  function setVisibilityField<K extends keyof ManualModerationVisibilitySettingsValue>(field: K, value: boolean) {
-    if (!isGlobalScope) return;
-    setVisibilityState((current) => ({ ...current, [field]: value }) as ManualModerationVisibilitySettingsValue);
-  }
-
   async function save() {
-    if (!isGlobalScope && !chatId) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      const body = isGlobalScope
-        ? { ...settings, ...visibilityState }
-        : { ...settings, useGlobalProfile };
-      const response = await fetch(isGlobalScope ? "/api/manual-moderation/global" : `/api/chats/${chatId}/manual-moderation`, {
+      const response = await fetch(`/api/chats/${chatId}/manual-moderation`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(settings)
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки ручной модерации.");
 
-      if (isGlobalScope) {
-        const saved = payload.data as ManualModerationSettingsValue & ManualModerationVisibilitySettingsValue;
-        const { publicPunishmentMessagesEnabled, privatePunishmentMessagesEnabled, proactiveDmNotificationsEnabled, ...savedSettings } = saved;
-        const savedVisibility = { publicPunishmentMessagesEnabled, privatePunishmentMessagesEnabled, proactiveDmNotificationsEnabled };
-        setSettings(savedSettings);
-        setVisibilityState(savedVisibility);
-        setSuccess("Глобальные настройки сохранены.");
-        onSaved?.(savedSettings);
-        onVisibilitySaved?.(savedVisibility);
-      } else {
-        const saved = payload.data as ManualModerationSettingsValue & { useGlobalProfile: boolean };
-        const { useGlobalProfile: savedMode, ...savedSettings } = saved;
-        setUseGlobalProfile(savedMode);
-        setSettings(savedSettings);
-        setSuccess(savedMode ? "Чат переключён на глобальные шаблоны." : "Шаблоны этого чата сохранены.");
-        onSaved?.(savedSettings);
-      }
+      const savedSettings = payload.data as ManualModerationSettingsValue;
+      setSettings(savedSettings);
+      setSuccess("Шаблоны этого чата сохранены.");
+      onSaved?.(savedSettings);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки ручной модерации.");
     } finally {
@@ -193,30 +151,10 @@ export function ManualModerationSettings({
 
   return (
     <div className="automod-settings">
-      {!isGlobalScope ? (
-        <div className="automod-rule">
-          <label className="automod-toggle-row">
-            <input
-              type="checkbox"
-              checked={useGlobalProfile}
-              disabled={!canEdit || saving}
-              onChange={(event) => setUseGlobalProfile(event.target.checked)}
-            />
-            <span><strong>Использовать глобальные шаблоны</strong><small>Настройки этого чата будут автоматически следовать глобальным значениям из раздела «Модерация».</small></span>
-          </label>
-          {useGlobalProfile ? (
-            <div className="moderation-readonly">
-              <Globe2 size={18} />
-              <div><strong>Глобальное наследование включено</strong><p>Индивидуальные значения сохранены, но пока не применяются. Отключите наследование, чтобы вернуться к ним.</p></div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
       {!canEdit ? (
         <div className="moderation-readonly">
           <ShieldCheck size={18} />
-          <div><strong>Только просмотр</strong><p>{isGlobalScope ? "Изменять глобальные настройки могут OWNER и ADMIN." : "Изменять настройки чата могут OWNER и ADMIN."}</p></div>
+          <div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div>
         </div>
       ) : null}
 
@@ -224,12 +162,12 @@ export function ManualModerationSettings({
         <SettingsRow
           title="Публичные сообщения о наказаниях"
           description="Показывать сообщения о действиях модераторов в общем чате. Единая настройка для /warn, /unwarn, /mute, /unmute, /ban, /unban и /kick."
-          checked={effectiveVisibility.publicPunishmentMessagesEnabled}
-          disabled={visibilityDisabled}
-          onChange={(checked) => setVisibilityField("publicPunishmentMessagesEnabled", checked)}
+          checked={visibility.publicPunishmentMessagesEnabled}
+          disabled
+          onChange={() => undefined}
         />
-        {!isGlobalScope ? <small className="hint-note">Управляется глобально, в разделе «Модерация» → «Ручная модерация».</small> : null}
-        <ConditionalSettingsSection visible={effectiveVisibility.publicPunishmentMessagesEnabled}>
+        <small className="hint-note">Управляется глобально, в разделе «Система» → «Уведомления».</small>
+        <ConditionalSettingsSection visible={visibility.publicPunishmentMessagesEnabled}>
           <span className="settings-section-title">Шаблоны публичных сообщений</span>
           {COMMAND_SECTIONS.map((section) => (
             <div key={section.title}>
@@ -239,7 +177,7 @@ export function ManualModerationSettings({
                   <span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>{commandInfo.label}</span>
                   <textarea
                     rows={2}
-                    value={visibleSettings[templateKey(commandInfo.key)]}
+                    value={settings[templateKey(commandInfo.key)]}
                     disabled={fieldsDisabled}
                     onChange={(event) => setField(templateKey(commandInfo.key), event.target.value)}
                   />
@@ -255,12 +193,12 @@ export function ManualModerationSettings({
         <SettingsRow
           title="Приватные сообщения о наказаниях"
           description="Личное уведомление наказанному участнику: в чате, видимое только ему, и в личные сообщения. Не зависит от публичных сообщений выше."
-          checked={effectiveVisibility.privatePunishmentMessagesEnabled}
-          disabled={visibilityDisabled}
-          onChange={(checked) => setVisibilityField("privatePunishmentMessagesEnabled", checked)}
+          checked={visibility.privatePunishmentMessagesEnabled}
+          disabled
+          onChange={() => undefined}
         />
-        {!isGlobalScope ? <small className="hint-note">Управляется глобально, в разделе «Модерация» → «Ручная модерация».</small> : null}
-        <ConditionalSettingsSection visible={effectiveVisibility.privatePunishmentMessagesEnabled}>
+        <small className="hint-note">Управляется глобально, в разделе «Система» → «Уведомления».</small>
+        <ConditionalSettingsSection visible={visibility.privatePunishmentMessagesEnabled}>
           <span className="settings-section-title">Шаблоны приватных сообщений</span>
           {COMMAND_SECTIONS.flatMap((section) => section.commands)
             .filter((commandInfo): commandInfo is CommandInfo & { key: EphemeralCommandKey } => isEphemeralCommand(commandInfo.key))
@@ -269,7 +207,7 @@ export function ManualModerationSettings({
                 <span>{commandInfo.label} ({commandInfo.command})</span>
                 <textarea
                   rows={2}
-                  value={visibleSettings[ephemeralTemplateKey(commandInfo.key)]}
+                  value={settings[ephemeralTemplateKey(commandInfo.key)]}
                   disabled={fieldsDisabled}
                   onChange={(event) => setField(ephemeralTemplateKey(commandInfo.key), event.target.value)}
                 />
@@ -278,18 +216,6 @@ export function ManualModerationSettings({
             ))}
         </ConditionalSettingsSection>
       </div>
-
-      {isGlobalScope ? (
-        <div className="settings-section">
-          <SettingsRow
-            title="Проактивные DM-уведомления"
-            description="Сообщения, которые бот сам присылает в личные сообщения без прямой команды пользователя в этот момент — например, решение по апелляции. Не относится к ответам на команды, которые пользователь отправил боту в личке напрямую."
-            checked={effectiveVisibility.proactiveDmNotificationsEnabled}
-            disabled={visibilityDisabled}
-            onChange={(checked) => setVisibilityField("proactiveDmNotificationsEnabled", checked)}
-          />
-        </div>
-      ) : null}
 
       <div className="settings-section">
         <span className="settings-section-title">Независимые настройки команд</span>
@@ -303,7 +229,7 @@ export function ManualModerationSettings({
                 title={<span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>Удалять сообщение участника — {commandInfo.label}</span>}
                 ariaLabel={`Удалять сообщение участника — ${commandInfo.label} (${commandInfo.command})`}
                 description="Удалять исходное сообщение при применении наказания."
-                checked={visibleSettings[deleteTargetKey(commandInfo.key)]}
+                checked={settings[deleteTargetKey(commandInfo.key)]}
                 disabled={fieldsDisabled}
                 onChange={(checked) => setField(deleteTargetKey(commandInfo.key), checked)}
               />
@@ -317,7 +243,7 @@ export function ManualModerationSettings({
       {canEdit ? (
         <div className="automod-actions">
           <button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}>
-            <Check size={16} />{saving ? "Сохраняю…" : isGlobalScope ? "Сохранить глобальные настройки" : "Сохранить настройки"}
+            <Check size={16} />{saving ? "Сохраняю…" : "Сохранить настройки"}
           </button>
         </div>
       ) : null}

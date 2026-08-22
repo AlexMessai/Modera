@@ -83,7 +83,6 @@ test("renderSettingsMenu: toggling flood persists to the chat's own profile and 
 
     const stored = await prisma.chatModerationSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.spamEnabled, true);
-    assert.equal(stored?.useGlobalProfile, false, "editing via Telegram must fork the chat off the global profile");
 
     const incremented = await renderSettingsMenu({
       chatId: chat.id,
@@ -158,7 +157,6 @@ test("renderSettingsMenu: protection menu, CAPTCHA toggle persists to the chat's
 
     const stored = await prisma.chatCaptchaSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.enabled, true);
-    assert.equal(stored?.useGlobalProfile, false);
   } finally {
     await cleanup();
   }
@@ -195,7 +193,6 @@ test("renderSettingsMenu: Anti-Raid toggle and stepper persist to the chat's own
     const stored = await prisma.chatAntiRaidSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.enabled, true);
     assert.equal(stored?.joinThreshold, 35);
-    assert.equal(stored?.useGlobalProfile, false);
   } finally {
     await cleanup();
   }

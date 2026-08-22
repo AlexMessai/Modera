@@ -5,8 +5,7 @@ import {
   DEFAULT_REPORT_SETTINGS,
   normalizeReportSettings,
   resolveEffectiveReportSettings,
-  updateChatReportSettings,
-  updateGlobalReportProfile
+  updateChatReportSettings
 } from "./report-settings-service";
 
 const CHAT_ID = -1009000017001n;
@@ -30,7 +29,7 @@ test("report settings are normalized: enabled coerced to boolean, mute duration 
   assert.equal(normalizeReportSettings({ ...DEFAULT_REPORT_SETTINGS, muteDurationMinutes: -5 }).muteDurationMinutes, 1);
 });
 
-test("a chat that never chose follows the global profile; opting out uses its own settings", async () => {
+test("a chat with no settings row falls back to app defaults; saved settings are read back from the chat's own row", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Report Settings CI", type: "supergroup" }
@@ -40,30 +39,23 @@ test("a chat that never chose follows the global profile; opting out uses its ow
   });
 
   try {
-    await updateGlobalReportProfile({
-      actingAdminId: admin.id,
-      settings: { enabled: false, muteDurationMinutes: 30 }
-    });
-
     const beforeAnyChatEdit = await resolveEffectiveReportSettings(chat.id);
-    assert.equal(beforeAnyChatEdit.source, "GLOBAL");
-    assert.equal(beforeAnyChatEdit.settings.enabled, false);
-    assert.equal(beforeAnyChatEdit.settings.muteDurationMinutes, 30);
+    assert.equal(beforeAnyChatEdit.source, "CHAT");
+    assert.equal(beforeAnyChatEdit.settings.enabled, DEFAULT_REPORT_SETTINGS.enabled);
 
     const saved = await updateChatReportSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      useGlobalProfile: false,
-      settings: { enabled: true, muteDurationMinutes: 90 }
+      settings: { enabled: false, muteDurationMinutes: 90 }
     });
-    assert.equal(saved?.useGlobalProfile, false);
+    assert.equal(saved?.enabled, false);
+    assert.equal(saved?.muteDurationMinutes, 90);
 
-    const optedOut = await resolveEffectiveReportSettings(chat.id);
-    assert.equal(optedOut.source, "CHAT");
-    assert.equal(optedOut.settings.enabled, true);
-    assert.equal(optedOut.settings.muteDurationMinutes, 90);
+    const resolved = await resolveEffectiveReportSettings(chat.id);
+    assert.equal(resolved.source, "CHAT");
+    assert.equal(resolved.settings.enabled, false);
+    assert.equal(resolved.settings.muteDurationMinutes, 90);
   } finally {
-    await updateGlobalReportProfile({ actingAdminId: admin.id, settings: DEFAULT_REPORT_SETTINGS });
     await cleanup();
   }
 });
