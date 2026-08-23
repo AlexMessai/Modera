@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
+import { prisma } from "@/server/db/prisma";
 import { setTrustedMember } from "@/server/services/trusted-member-service";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,37 @@ export async function PATCH(
 
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
-  if (!canManageChatSettings(auth.admin.role)) {
+
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return Response.json(
+      { error: { code: "VALIDATION_ERROR", message: "Некорректное состояние исключения." } },
+      { status: 400 }
+    );
+  }
+
+  const { id } = await context.params;
+
+  // See appeals/[id]/action/route.ts for the reasoning: chat-access check
+  // (honest 404) only runs when the membership's chat can actually be
+  // resolved; a missing membership falls through to setTrustedMember()'s own
+  // "not found" (null) result below.
+  let chatId: string | null = null;
+  if (auth.admin.scope === "CHAT") {
+    const membership = await prisma.chatMember.findUnique({ where: { id }, select: { chatId: true } });
+    if (!membership) {
+      return Response.json(
+        { error: { code: "MEMBER_NOT_FOUND", message: "Участник не найден." } },
+        { status: 404 }
+      );
+    }
+    const access = await requireChatAccess(auth.admin, membership.chatId);
+    if (!access.ok) return access.response;
+    chatId = membership.chatId;
+  }
+
+  const effectiveRole = chatId ? await resolveEffectiveChatRole(auth.admin, chatId) : auth.admin.role;
+  if (!canManageChatSettings(effectiveRole)) {
     return Response.json(
       {
         error: {
@@ -33,15 +64,6 @@ export async function PATCH(
     );
   }
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return Response.json(
-      { error: { code: "VALIDATION_ERROR", message: "Некорректное состояние исключения." } },
-      { status: 400 }
-    );
-  }
-
-  const { id } = await context.params;
   const result = await setTrustedMember({
     membershipId: id,
     actingAdminId: auth.admin.id,

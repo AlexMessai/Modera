@@ -8,7 +8,7 @@ import { MemberMessageHistory } from "@/components/member-message-history";
 import { TelegramAvatar } from "@/components/telegram-avatar";
 import { memberStatusBadgeClass, memberStatusLabel } from "@/lib/member-status";
 import { canModerate } from "@/server/auth/permissions";
-import { requireAdminPage } from "@/server/auth/guards";
+import { requireAdminPage, requireChatAccess, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { getMemberProfile } from "@/server/services/member-service";
 import { getMemberRisk } from "@/server/services/member-risk-service";
 import { getModerationContext } from "@/server/services/moderation-context";
@@ -67,6 +67,9 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const [member, moderation] = await Promise.all([getMemberProfile(id), getModerationContext(id)]);
   if (!member || !moderation) notFound();
+  const access = await requireChatAccess(admin, member.chat.id);
+  if (!access.ok) notFound();
+  const effectiveRole = await resolveEffectiveChatRole(admin, member.chat.id);
   const risk = await getMemberRisk(id, moderation.activeWarningCount);
   if (!risk) notFound();
 
@@ -177,7 +180,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           punishmentState={moderation.punishmentState}
           userIsBot={moderation.userIsBot}
           chatType={moderation.chatType}
-          adminCanModerate={canModerate(admin.role)}
+          adminCanModerate={canModerate(effectiveRole)}
           botStatus={moderation.botStatus}
           storedBotCanRestrict={moderation.storedBotCanRestrict}
         />

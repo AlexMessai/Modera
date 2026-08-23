@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { requireModerationApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess, resolveEffectiveChatRole } from "@/server/auth/guards";
+import { canModerate } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
+import { prisma } from "@/server/db/prisma";
 import {
   executeJoinRequestAction,
   JoinRequestError
@@ -23,7 +25,7 @@ export async function POST(
     );
   }
 
-  const auth = await requireModerationApi();
+  const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -35,6 +37,32 @@ export async function POST(
   }
 
   const { id } = await context.params;
+
+  // See appeals/[id]/action/route.ts for the reasoning: chat-access check
+  // (honest 404) only runs when the request's chat can actually be resolved;
+  // a missing request falls through to executeJoinRequestAction()'s own 404.
+  let chatId: string | null = null;
+  if (auth.admin.scope === "CHAT") {
+    const joinRequest = await prisma.joinRequest.findUnique({ where: { id }, select: { chatId: true } });
+    if (!joinRequest) {
+      return Response.json(
+        { error: { code: "JOIN_REQUEST_NOT_FOUND", message: "Заявка не найдена." } },
+        { status: 404 }
+      );
+    }
+    const access = await requireChatAccess(auth.admin, joinRequest.chatId);
+    if (!access.ok) return access.response;
+    chatId = joinRequest.chatId;
+  }
+
+  const effectiveRole = chatId ? await resolveEffectiveChatRole(auth.admin, chatId) : auth.admin.role;
+  if (!canModerate(effectiveRole)) {
+    return Response.json(
+      { error: { code: "FORBIDDEN", message: "У вашей роли нет прав на действия модерации." } },
+      { status: 403 }
+    );
+  }
+
   try {
     const result = await executeJoinRequestAction({
       requestId: id,
