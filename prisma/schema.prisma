@@ -74,6 +74,21 @@ enum ReportStatus {
   DISMISSED
 }
 
+// Chat-scoped self-service admin access (see chat-admin-access-service.ts).
+// GLOBAL is every existing/manually-created AdminUser (unchanged behavior,
+// sees every chat). CHAT is a self-registered-via-Telegram-login account
+// scoped only to chats it has a ChatAdminAccess row for.
+enum AdminScope {
+  GLOBAL
+  CHAT
+}
+
+enum ChatAdminAccessRole {
+  OWNER
+  ADMIN
+  MODERATOR
+}
+
 model TelegramBot {
   id              String    @id @default(uuid()) @db.Uuid
   telegramBotId   BigInt    @unique
@@ -121,6 +136,7 @@ model Chat {
   silenceState             ChatSilenceState?
   autoResponseRules        AutoResponseRule[]
   customCommands           CustomCommand[]
+  adminAccess              ChatAdminAccess[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -720,10 +736,18 @@ model CustomCommand {
 
 model AdminUser {
   id                        String             @id @default(uuid()) @db.Uuid
-  email                     String             @unique
+  // Nullable: a Telegram-only self-registered (scope: CHAT) account has
+  // neither an email nor a password — see migration for the partial unique
+  // index (WHERE email IS NOT NULL) that lets multiple such rows coexist.
+  email                     String?            @unique
   displayName               String
-  passwordHash              String
+  passwordHash              String?
   role                      AdminRole          @default(VIEWER)
+  // GLOBAL (default) = unchanged existing behavior, sees every chat via
+  // `role`. CHAT = self-registered via Telegram login, scoped to chats in
+  // `chatAdminAccess`; `role` stays the inert default "VIEWER" and is never
+  // consulted for these accounts (see chat-admin-access-service.ts).
+  scope                     AdminScope         @default(GLOBAL)
   isActive                  Boolean            @default(true)
   telegramUserId            BigInt?            @unique
   telegramUsername          String?
@@ -739,8 +763,34 @@ model AdminUser {
   auditLogs                 AuditLog[]         @relation("ActingAdmin")
   resolvedAppeals           Appeal[]           @relation("AppealResolver")
   resolvedReports           Report[]           @relation("ReportResolver")
+  chatAdminAccess           ChatAdminAccess[]  @relation("ChatAdminAccessAdmin")
+  grantedChatAdminAccess    ChatAdminAccess[]  @relation("ChatAdminAccessGrantedBy")
 
   @@index([role, isActive])
+  @@index([scope])
+}
+
+// Web-panel visibility gate for a chat, distinct from ChatRole (which
+// governs bot-command permissions inside Telegram). See
+// chat-admin-access-service.ts.
+model ChatAdminAccess {
+  id               String              @id @default(uuid()) @db.Uuid
+  chatId           String              @db.Uuid
+  adminId          String              @db.Uuid
+  role             ChatAdminAccessRole @default(ADMIN)
+  // "AUTO" = discovered from cached live Telegram CREATOR/ADMINISTRATOR
+  // status on login; "MANUAL" = added via a chat's Команда tab.
+  grantedVia       String
+  grantedByAdminId String?             @db.Uuid
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+  chat             Chat                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  admin            AdminUser           @relation("ChatAdminAccessAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  grantedByAdmin   AdminUser?          @relation("ChatAdminAccessGrantedBy", fields: [grantedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([chatId, adminId])
+  @@index([adminId])
+  @@index([chatId])
 }
 
 model AdminSession {
