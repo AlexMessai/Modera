@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -29,7 +29,8 @@ export async function PATCH(
   const { id, commandId } = await context.params;
   const access = await requireChatAccess(auth.admin, id);
   if (!access.ok) return access.response;
-  if (!canManageChatSettings(auth.admin.role)) {
+  const effectiveRole = await resolveEffectiveChatRole(auth.admin, id);
+  if (!canManageChatSettings(effectiveRole)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять команды могут только владелец и администратор Modera." } }, { status: 403 });
   }
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
@@ -59,7 +60,8 @@ export async function DELETE(
   const { id, commandId } = await context.params;
   const access = await requireChatAccess(auth.admin, id);
   if (!access.ok) return access.response;
-  if (!canManageChatSettings(auth.admin.role)) {
+  const effectiveRole = await resolveEffectiveChatRole(auth.admin, id);
+  if (!canManageChatSettings(effectiveRole)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять команды могут только владелец и администратор Modera." } }, { status: 403 });
   }
   try {

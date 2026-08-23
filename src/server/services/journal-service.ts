@@ -131,13 +131,31 @@ export function isJournalCategory(value: string): value is JournalCategory {
   return JOURNAL_CATEGORIES.includes(value as JournalCategory);
 }
 
-export async function listModerationJournal(input: { page: number; pageSize: number; category: JournalCategory; chatId?: string; search?: string }) {
+export async function listModerationJournal(input: {
+  page: number;
+  pageSize: number;
+  category: JournalCategory;
+  chatId?: string;
+  search?: string;
+  // Additive scoping for the top-level /incidents page: null/undefined = no
+  // filter (unchanged behavior, matches the listChats/listChatsForAdmin
+  // sentinel convention); an array restricts to those chats. When an
+  // explicit single `chatId` was also requested (the per-chat journal tab),
+  // that takes precedence and this is ignored -- a chat already passed
+  // requireChatAccess by the time it reaches here.
+  visibleChatIds?: string[] | null;
+}) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
   const search = input.search?.trim() || undefined;
-  const auditWhere: Prisma.AuditLogWhereInput = { action: auditActionFilter(input.category), ...(input.chatId ? { chatId: input.chatId } : {}), ...(search ? { OR: searchFilter(search) } : {}) };
+  const chatScope = input.chatId
+    ? { chatId: input.chatId }
+    : input.visibleChatIds
+      ? { chatId: { in: input.visibleChatIds } }
+      : {};
+  const auditWhere: Prisma.AuditLogWhereInput = { action: auditActionFilter(input.category), ...chatScope, ...(search ? { OR: searchFilter(search) } : {}) };
   const includePending = ["ALL", "MANUAL", "AUTOMOD", "PENDING"].includes(input.category);
-  const pendingWhere: Prisma.ModerationActionWhereInput = { status: "PENDING", ...(input.category === "AUTOMOD" ? { source: "SYSTEM" } : {}), ...(input.category === "MANUAL" ? { source: "ADMIN" } : {}), ...(input.chatId ? { chatId: input.chatId } : {}), ...(search ? { OR: pendingSearchFilter(search) } : {}) };
+  const pendingWhere: Prisma.ModerationActionWhereInput = { status: "PENDING", ...(input.category === "AUTOMOD" ? { source: "SYSTEM" } : {}), ...(input.category === "MANUAL" ? { source: "ADMIN" } : {}), ...chatScope, ...(search ? { OR: pendingSearchFilter(search) } : {}) };
 
   const [total, events, pendingRows, chats] = await Promise.all([
     prisma.auditLog.count({ where: auditWhere }),
@@ -149,7 +167,10 @@ export async function listModerationJournal(input: { page: number; pageSize: num
       where: pendingWhere, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 20,
       include: { chat: { select: { id: true, title: true, telegramChatId: true } }, affectedUser: { select: { id: true, displayName: true, username: true, telegramUserId: true } }, actingAdmin: { select: { id: true, displayName: true, email: true } } }
     }),
-    prisma.chat.findMany({ orderBy: { title: "asc" }, take: 200, select: { id: true, title: true, telegramChatId: true } })
+    prisma.chat.findMany({
+      where: input.visibleChatIds ? { id: { in: input.visibleChatIds } } : undefined,
+      orderBy: { title: "asc" }, take: 200, select: { id: true, title: true, telegramChatId: true }
+    })
   ]);
 
   const pending = includePending ? pendingRows : [];

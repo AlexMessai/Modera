@@ -81,6 +81,29 @@ export async function requireChatAccess(admin: CurrentAdmin, chatId: string) {
 }
 
 /**
+ * The role to evaluate `canManageChatSettings`/`canModerate` against for a
+ * *specific chat*. GLOBAL admins pass through unchanged -- byte-for-byte the
+ * same `admin.role` value used today, zero behavior change. CHAT admins get
+ * their `ChatAdminAccess.role` for that chat (already the same
+ * OWNER/ADMIN/MODERATOR vocabulary those permission checks expect), or
+ * "VIEWER" if no row exists -- a defensive fallback that should be
+ * unreachable in practice since `requireChatAccess` already guarantees a row
+ * exists on every real code path.
+ */
+export async function resolveEffectiveChatRole(
+  admin: CurrentAdmin,
+  chatId: string
+): Promise<"OWNER" | "ADMIN" | "MODERATOR" | "VIEWER"> {
+  if (admin.scope === "GLOBAL") return admin.role;
+
+  const access = await prisma.chatAdminAccess.findUnique({
+    where: { chatId_adminId: { chatId, adminId: admin.id } },
+    select: { role: true }
+  });
+  return access?.role ?? "VIEWER";
+}
+
+/**
  * Granting web-panel access to other people is more sensitive than editing
  * automod settings, so within CHAT scope it's OWNER-only (not ADMIN too,
  * unlike canManageChatSettings' GLOBAL-scope semantics which this mirrors

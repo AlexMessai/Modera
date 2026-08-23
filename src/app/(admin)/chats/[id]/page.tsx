@@ -16,7 +16,7 @@ import { JoinRequestsClient } from "@/components/join-requests-client";
 import { AppealsClient } from "@/components/appeals-client";
 import { MessagesClient } from "@/components/messages-client";
 import { canModerate, canManageChatSettings } from "@/server/auth/permissions";
-import { requireAdminPage, requireChatAccess, canManageChatTeam } from "@/server/auth/guards";
+import { requireAdminPage, requireChatAccess, canManageChatTeam, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { ChatTeamSettings } from "@/components/chat-team-settings";
 import { listChatTeam } from "@/server/services/chat-admin-access-service";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
@@ -88,6 +88,7 @@ export default async function ChatDetailPage({
   const [admin, { id }, query] = await Promise.all([requireAdminPage(), params, searchParams]);
   const access = await requireChatAccess(admin, id);
   if (!access.ok) notFound();
+  const effectiveRole = await resolveEffectiveChatRole(admin, id);
   const tab = typeof query.tab === "string" ? query.tab : "overview";
   const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
 
@@ -110,8 +111,8 @@ export default async function ChatDetailPage({
   ]);
   if (!profile) notFound();
 
-  const canEdit = canManageChatSettings(admin.role);
-  const canModerateChat = canModerate(admin.role);
+  const canEdit = canManageChatSettings(effectiveRole);
+  const canModerateChat = canModerate(effectiveRole);
 
   return (
     <main className="page">

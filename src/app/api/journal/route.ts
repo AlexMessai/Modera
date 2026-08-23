@@ -1,8 +1,9 @@
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import {
   isJournalCategory,
   listModerationJournal
 } from "@/server/services/journal-service";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,23 @@ export async function GET(request: Request) {
     );
   }
 
+  // /incidents is a cross-chat aggregate: a CHAT-scoped admin only sees their
+  // own chats (visibleChatIds), and an explicit ?chatId= for the client-side
+  // filter dropdown must itself pass the same honest-404 access check --
+  // otherwise it would bypass the aggregate scoping entirely.
+  const visibleChatIds = await listChatsForAdmin(auth.admin.id);
+  if (chatIdValue && visibleChatIds !== null) {
+    const access = await requireChatAccess(auth.admin, chatIdValue);
+    if (!access.ok) return access.response;
+  }
+
   const result = await listModerationJournal({
     page: Number.isFinite(page) ? page : 1,
     pageSize: Number.isFinite(pageSize) ? pageSize : 50,
     category: categoryValue,
     chatId: chatIdValue,
-    search
+    search,
+    visibleChatIds
   });
 
   return Response.json({ data: result });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -40,7 +40,8 @@ export async function PATCH(
   const { id } = await context.params;
   const access = await requireChatAccess(auth.admin, id);
   if (!access.ok) return access.response;
-  if (!canManageChatSettings(auth.admin.role)) {
+  const effectiveRole = await resolveEffectiveChatRole(auth.admin, id);
+  if (!canManageChatSettings(effectiveRole)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять настройки канала логов могут только владелец и администратор Modera." } }, { status: 403 });
   }
   const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
@@ -70,7 +71,8 @@ export async function DELETE(
   const { id } = await context.params;
   const access = await requireChatAccess(auth.admin, id);
   if (!access.ok) return access.response;
-  if (!canManageChatSettings(auth.admin.role)) {
+  const effectiveRole = await resolveEffectiveChatRole(auth.admin, id);
+  if (!canManageChatSettings(effectiveRole)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Отключать канал логов могут только владелец и администратор Modera." } }, { status: 403 });
   }
   const saved = await unlinkLogChannel({ chatId: id, actingAdminId: auth.admin.id });

@@ -67,11 +67,10 @@ export function Sidebar({
   const router = useRouter();
   const chatMatch = pathname.match(/^\/chats\/([^/]+)/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
-  // Обзор/Журнал aggregate across every chat -- not yet scoped for a
-  // CHAT-scoped admin (deliberate, honest deferral, see plan follow-ups), so
-  // they're simply not offered in the nav for that account type.
-  const visibleTopNavigation = admin.scope === "GLOBAL" ? topNavigation : topNavigation.filter((item) => item.href === "/chats");
-  const onTopNavPage = visibleTopNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) && !activeChatId;
+  // Обзор/Журнал now scope themselves to the admin's own chats server-side
+  // (getDashboardData/listModerationJournal with visibleChatIds), so every
+  // admin -- GLOBAL or CHAT-scoped -- sees both links.
+  const onTopNavPage = topNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) && !activeChatId;
 
   // The chat menu should keep showing while browsing pages reached from inside a chat
   // (e.g. a member profile) that aren't themselves under /chats/[id] -- so once a chat
@@ -107,7 +106,7 @@ export function Sidebar({
         <div className="brand"><span className="brand-mark">M</span><span>Modera</span></div>
 
         <nav className="nav-list" aria-label="Основная навигация">
-          {visibleTopNavigation.map((item) => {
+          {topNavigation.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
