@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -27,6 +27,9 @@ export async function PATCH(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id, ruleId } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять автоответы могут только владелец и администратор Modera." } }, { status: 403 });
   }
@@ -34,7 +37,6 @@ export async function PATCH(
   if (!parsed.success) {
     return Response.json({ error: { code: "VALIDATION_ERROR", message: "Проверьте триггер и текст ответа." } }, { status: 400 });
   }
-  const { id, ruleId } = await context.params;
   try {
     const rule = await updateAutoResponseRule({ chatId: id, ruleId, actingAdminId: auth.admin.id, ...parsed.data });
     return Response.json({ data: rule });
@@ -55,10 +57,12 @@ export async function DELETE(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id, ruleId } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять автоответы могут только владелец и администратор Modera." } }, { status: 403 });
   }
-  const { id, ruleId } = await context.params;
   try {
     await deleteAutoResponseRule({ chatId: id, ruleId, actingAdminId: auth.admin.id });
     return Response.json({ data: { deleted: true } });

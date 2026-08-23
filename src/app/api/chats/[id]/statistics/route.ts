@@ -1,4 +1,4 @@
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
 import { DASHBOARD_PERIODS, type DashboardPeriod } from "@/server/services/dashboard-service";
 
@@ -20,6 +20,8 @@ export async function GET(
   const period = isDashboardPeriod(rawPeriod) ? rawPeriod : "7D";
 
   const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   const stats = await getChatStatistics(id, period);
   if (!stats) {
     return Response.json({ error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } }, { status: 404 });

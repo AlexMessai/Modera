@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -25,6 +25,8 @@ export async function GET(
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
   const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   const rules = await listAutoResponseRules(id);
   return Response.json({ data: rules });
 }
@@ -38,6 +40,9 @@ export async function POST(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять автоответы могут только владелец и администратор Modera." } }, { status: 403 });
   }
@@ -45,7 +50,6 @@ export async function POST(
   if (!parsed.success) {
     return Response.json({ error: { code: "VALIDATION_ERROR", message: "Проверьте триггер и текст ответа." } }, { status: 400 });
   }
-  const { id } = await context.params;
   try {
     const rule = await createAutoResponseRule({ chatId: id, actingAdminId: auth.admin.id, ...parsed.data });
     return Response.json({ data: rule });
