@@ -45,8 +45,10 @@ export async function POST(request: Request) {
     return Response.json({ error: { code: "INVALID_TELEGRAM_LOGIN", message } }, { status: 401 });
   }
 
-  const admin = await prisma.adminUser.findUnique({ where: { telegramUserId: BigInt(parsed.data.id) } });
-  if (!admin || !admin.isActive) {
+  const telegramUserId = BigInt(parsed.data.id);
+  let admin = await prisma.adminUser.findUnique({ where: { telegramUserId } });
+
+  if (admin && !admin.isActive) {
     return Response.json(
       {
         error: {
@@ -56,6 +58,72 @@ export async function POST(request: Request) {
       },
       { status: 401 }
     );
+  }
+
+  if (!admin) {
+    // Self-registration: no existing AdminUser for this Telegram account at
+    // all. Discover chats they actually administer via CACHED ChatMember
+    // status (not a live Bot API fan-out -- see telegram-login plan notes),
+    // reusing the exact botIsPresent shape from listChats so a chat the bot
+    // has left doesn't grant access.
+    const adminChatMemberships = await prisma.chatMember.findMany({
+      where: {
+        user: { telegramUserId },
+        status: { in: ["CREATOR", "ADMINISTRATOR"] },
+        chat: { botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } } }
+      },
+      select: { chatId: true, status: true }
+    });
+
+    if (adminChatMemberships.length === 0) {
+      return Response.json(
+        {
+          error: {
+            code: "TELEGRAM_NO_ADMIN_CHATS",
+            message: "Вы не администратор ни одного чата, подключённого к Modera."
+          }
+        },
+        { status: 401 }
+      );
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const newAdmin = await tx.adminUser.create({
+        data: {
+          scope: "CHAT",
+          role: "VIEWER",
+          email: null,
+          passwordHash: null,
+          displayName: [parsed.data.first_name, parsed.data.last_name].filter(Boolean).join(" ").trim() || parsed.data.username || `Telegram ${parsed.data.id}`,
+          telegramUserId,
+          telegramUsername: parsed.data.username ?? null,
+          telegramFirstName: parsed.data.first_name,
+          isActive: true
+        }
+      });
+
+      await tx.chatAdminAccess.createMany({
+        data: adminChatMemberships.map((membership) => ({
+          chatId: membership.chatId,
+          adminId: newAdmin.id,
+          role: membership.status === "CREATOR" ? "OWNER" : "ADMIN",
+          grantedVia: "AUTO"
+        }))
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actingAdminId: newAdmin.id,
+          source: "ADMIN",
+          action: "ADMIN_ACCOUNT_SELF_REGISTERED",
+          metadata: { chatCount: adminChatMemberships.length, telegramUsername: parsed.data.username ?? null }
+        }
+      });
+
+      return newAdmin;
+    });
+
+    admin = created;
   }
 
   await prisma.adminUser.update({
