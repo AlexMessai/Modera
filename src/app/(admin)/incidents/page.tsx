@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { JournalClient } from "@/components/journal-client";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canReconcileModeration } from "@/server/auth/permissions";
@@ -6,10 +5,11 @@ import { canReconcileModeration } from "@/server/auth/permissions";
 export const dynamic = "force-dynamic";
 
 export default async function IncidentsPage() {
+  // Cross-chat aggregate page. Unlike /overview this page has no direct
+  // service call to scope -- the client fetches through /api/journal, which
+  // resolves listChatsForAdmin(admin.id) and enforces the same scoping (plus
+  // an honest 404 on the ?chatId= filter dropdown) itself.
   const admin = await requireAdminPage();
-  // Cross-chat aggregate page -- deliberately not scoped in this phase (see
-  // plan follow-ups). Same honest-redirect treatment as /overview.
-  if (admin.scope !== "GLOBAL") redirect("/chats");
 
   return (
     <main className="page">

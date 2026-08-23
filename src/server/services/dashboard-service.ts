@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { buildTrendSlots, DASHBOARD_PERIODS, periodMilliseconds, type DashboardPeriod } from "@/server/services/trend-utils";
 
@@ -48,14 +49,26 @@ function comparisonPercent(current: number, previous: number) {
 
 type TrendRow = { bucket: string; count: number };
 
-async function loadMessageTrend(period: DashboardPeriod, from: Date) {
+// null = no filter (GLOBAL admin, unchanged behavior); a chatId array
+// restricts every parallel query below to those chats -- same sentinel
+// convention as listChats/listChatsForAdmin. Splices as a raw-SQL fragment
+// for the $queryRaw trend/top-chats queries and as a Prisma `in` filter
+// everywhere else.
+function chatFilterSql(column: Prisma.Sql, visibleChatIds: string[] | null) {
+  if (visibleChatIds === null) return Prisma.empty;
+  if (visibleChatIds.length === 0) return Prisma.sql`AND false`;
+  return Prisma.sql`AND ${column} = ANY(${visibleChatIds})`;
+}
+
+async function loadMessageTrend(period: DashboardPeriod, from: Date, visibleChatIds: string[] | null) {
+  const chatFilter = chatFilterSql(Prisma.sql`"chatId"`, visibleChatIds);
   if (period === "24H") {
     return prisma.$queryRaw<TrendRow[]>`
       SELECT
         to_char(date_trunc('hour', "telegramDate" AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00:00"Z"') AS bucket,
         COUNT(*)::int AS count
       FROM "Message"
-      WHERE "telegramDate" >= ${from}
+      WHERE "telegramDate" >= ${from} ${chatFilter}
       GROUP BY 1
       ORDER BY 1
     `;
@@ -65,20 +78,21 @@ async function loadMessageTrend(period: DashboardPeriod, from: Date) {
       (date_trunc('day', "telegramDate" AT TIME ZONE 'UTC'))::date::text AS bucket,
       COUNT(*)::int AS count
     FROM "Message"
-    WHERE "telegramDate" >= ${from}
+    WHERE "telegramDate" >= ${from} ${chatFilter}
     GROUP BY 1
     ORDER BY 1
   `;
 }
 
-async function loadJoinTrend(period: DashboardPeriod, from: Date) {
+async function loadJoinTrend(period: DashboardPeriod, from: Date, visibleChatIds: string[] | null) {
+  const chatFilter = chatFilterSql(Prisma.sql`"chatId"`, visibleChatIds);
   if (period === "24H") {
     return prisma.$queryRaw<TrendRow[]>`
       SELECT
         to_char(date_trunc('hour', "joinedAt" AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00:00"Z"') AS bucket,
         COUNT(*)::int AS count
       FROM "ChatMember"
-      WHERE "joinedAt" >= ${from}
+      WHERE "joinedAt" >= ${from} ${chatFilter}
       GROUP BY 1
       ORDER BY 1
     `;
@@ -88,20 +102,21 @@ async function loadJoinTrend(period: DashboardPeriod, from: Date) {
       (date_trunc('day', "joinedAt" AT TIME ZONE 'UTC'))::date::text AS bucket,
       COUNT(*)::int AS count
     FROM "ChatMember"
-    WHERE "joinedAt" >= ${from}
+    WHERE "joinedAt" >= ${from} ${chatFilter}
     GROUP BY 1
     ORDER BY 1
   `;
 }
 
-async function loadModerationTrend(period: DashboardPeriod, from: Date) {
+async function loadModerationTrend(period: DashboardPeriod, from: Date, visibleChatIds: string[] | null) {
+  const chatFilter = chatFilterSql(Prisma.sql`"chatId"`, visibleChatIds);
   if (period === "24H") {
     return prisma.$queryRaw<TrendRow[]>`
       SELECT
         to_char(date_trunc('hour', "createdAt" AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00:00"Z"') AS bucket,
         COUNT(*)::int AS count
       FROM "ModerationAction"
-      WHERE "createdAt" >= ${from}
+      WHERE "createdAt" >= ${from} ${chatFilter}
       GROUP BY 1
       ORDER BY 1
     `;
@@ -111,17 +126,22 @@ async function loadModerationTrend(period: DashboardPeriod, from: Date) {
       (date_trunc('day', "createdAt" AT TIME ZONE 'UTC'))::date::text AS bucket,
       COUNT(*)::int AS count
     FROM "ModerationAction"
-    WHERE "createdAt" >= ${from}
+    WHERE "createdAt" >= ${from} ${chatFilter}
     GROUP BY 1
     ORDER BY 1
   `;
 }
 
-export async function getDashboardData(period: DashboardPeriod) {
+export async function getDashboardData(period: DashboardPeriod, visibleChatIds: string[] | null = null) {
   const now = new Date();
   const duration = periodMilliseconds(period);
   const from = new Date(now.getTime() - duration);
   const previousFrom = new Date(from.getTime() - duration);
+
+  // Prisma `in: []` (an empty visible-chat set) already yields zero rows via
+  // valid SQL -- same pattern proven in chat-service.ts's listChats fix --
+  // so no special-casing is needed for the ORM-query branches below.
+  const chatIdIn = visibleChatIds === null ? undefined : { in: visibleChatIds };
 
   const [
     chats,
@@ -148,38 +168,38 @@ export async function getDashboardData(period: DashboardPeriod) {
     topChatsRows,
     recentEvents
   ] = await Promise.all([
-    prisma.chat.count(),
-    prisma.botChat.count({ where: { status: "ACTIVE" } }),
-    prisma.telegramUser.count({ where: { isBot: false } }),
-    prisma.chatMember.count({ where: { internalRole: "TRUSTED" } }),
-    prisma.message.count({ where: { telegramDate: { gte: from, lte: now } } }),
-    prisma.message.count({ where: { telegramDate: { gte: previousFrom, lt: from } } }),
-    prisma.chatMember.count({ where: { joinedAt: { gte: from, lte: now } } }),
-    prisma.chatMember.count({ where: { joinedAt: { gte: previousFrom, lt: from } } }),
-    prisma.joinRequest.count({ where: { requestedAt: { gte: from, lte: now } } }),
-    prisma.joinRequest.count({ where: { requestedAt: { gte: previousFrom, lt: from } } }),
-    prisma.moderationAction.count({ where: { createdAt: { gte: from, lte: now } } }),
-    prisma.moderationAction.count({ where: { createdAt: { gte: previousFrom, lt: from } } }),
-    prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: from, lte: now } } }),
-    prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: previousFrom, lt: from } } }),
-    prisma.joinRequest.count({ where: { status: "PENDING" } }),
-    prisma.moderationAction.count({ where: { status: "PENDING" } }),
-    prisma.botChat.count({ where: { status: { not: "ACTIVE" } } }),
-    prisma.auditLog.count({ where: { action: { in: ERROR_ACTIONS }, createdAt: { gte: from, lte: now } } }),
-    loadMessageTrend(period, from),
-    loadJoinTrend(period, from),
-    loadModerationTrend(period, from),
+    prisma.chat.count({ where: chatIdIn ? { id: chatIdIn } : undefined }),
+    prisma.botChat.count({ where: { status: "ACTIVE", ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.telegramUser.count({ where: { isBot: false, ...(chatIdIn ? { memberships: { some: { chatId: chatIdIn } } } : {}) } }),
+    prisma.chatMember.count({ where: { internalRole: "TRUSTED", ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.message.count({ where: { telegramDate: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.message.count({ where: { telegramDate: { gte: previousFrom, lt: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.chatMember.count({ where: { joinedAt: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.chatMember.count({ where: { joinedAt: { gte: previousFrom, lt: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.joinRequest.count({ where: { requestedAt: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.joinRequest.count({ where: { requestedAt: { gte: previousFrom, lt: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.moderationAction.count({ where: { createdAt: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.moderationAction.count({ where: { createdAt: { gte: previousFrom, lt: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.auditLog.count({ where: { action: { in: AUTOMOD_ENFORCEMENT_ACTIONS }, createdAt: { gte: previousFrom, lt: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.joinRequest.count({ where: { status: "PENDING", ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.moderationAction.count({ where: { status: "PENDING", ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.botChat.count({ where: { status: { not: "ACTIVE" }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    prisma.auditLog.count({ where: { action: { in: ERROR_ACTIONS }, createdAt: { gte: from, lte: now }, ...(chatIdIn ? { chatId: chatIdIn } : {}) } }),
+    loadMessageTrend(period, from, visibleChatIds),
+    loadJoinTrend(period, from, visibleChatIds),
+    loadModerationTrend(period, from, visibleChatIds),
     prisma.$queryRaw<Array<{ id: string; title: string; telegramChatId: bigint; messages: number }>>`
       SELECT c."id", c."title", c."telegramChatId", COUNT(m."id")::int AS messages
       FROM "Message" m
       JOIN "Chat" c ON c."id" = m."chatId"
-      WHERE m."telegramDate" >= ${from}
+      WHERE m."telegramDate" >= ${from} ${chatFilterSql(Prisma.sql`m."chatId"`, visibleChatIds)}
       GROUP BY c."id", c."title", c."telegramChatId"
       ORDER BY messages DESC
       LIMIT 8
     `,
     prisma.auditLog.findMany({
-      where: { action: { in: RECENT_ACTIONS }, createdAt: { gte: from } },
+      where: { action: { in: RECENT_ACTIONS }, createdAt: { gte: from }, ...(chatIdIn ? { chatId: chatIdIn } : {}) },
       orderBy: { createdAt: "desc" },
       take: 12,
       include: {
