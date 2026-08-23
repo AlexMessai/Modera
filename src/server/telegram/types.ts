@@ -165,6 +165,13 @@ export type TelegramUserProfilePhotos = {
   photos: TelegramPhotoSize[][];
 };
 
+export type TelegramChatPhoto = {
+  small_file_id: string;
+  small_file_unique_id: string;
+  big_file_id: string;
+  big_file_unique_id: string;
+};
+
 export type TelegramFile = {
   file_id: string;
   file_unique_id: string;

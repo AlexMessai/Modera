@@ -1,6 +1,7 @@
 import type {
   TelegramApiEnvelope,
   TelegramChatMember,
+  TelegramChatPhoto,
   TelegramFile,
   TelegramInlineKeyboardMarkup,
   TelegramMessage,
@@ -180,9 +181,9 @@ export class TelegramClient {
     return this.call<number>("getChatMemberCount", { chat_id: chatId });
   }
 
-  /** Only `permissions` is typed -- silence-service.ts is the sole caller, snapshotting a supergroup's default member permissions before locking it down so they can be restored exactly (not just reopened to "everything allowed") once silence lifts. */
+  /** `permissions` (silence-service.ts, snapshotting default member permissions before locking down) and `photo` (telegram-chat-avatar-service.ts, the chat's current avatar) are the only fields callers need. */
   getChat(chatId: number) {
-    return this.call<{ permissions?: TelegramChatPermissions }>("getChat", { chat_id: chatId });
+    return this.call<{ permissions?: TelegramChatPermissions; photo?: TelegramChatPhoto }>("getChat", { chat_id: chatId });
   }
 
   getChatAdministrators(chatId: number) {

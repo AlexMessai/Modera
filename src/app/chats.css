@@ -6,7 +6,7 @@
 }
 .chat-card:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: 0 6px 16px -10px rgba(15, 17, 21, .25); }
 .chat-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.chat-card-avatar { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; display: grid; place-items: center; background: #e9edf5; color: #17233d; font-weight: 700; font-size: 15px; }
+.chat-card-avatar { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; background: #e9edf5; color: #17233d; font-weight: 700; font-size: 15px; }
 .chat-card h3 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 .chat-card-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 .chat-card-stats { display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px solid var(--line); }

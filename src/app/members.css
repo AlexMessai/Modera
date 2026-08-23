@@ -21,7 +21,7 @@
 .back-link { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 18px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .back-link:hover { color: var(--text); }
 .profile-title-row { display: flex; align-items: center; gap: 14px; }
-.profile-avatar { width: 52px; height: 52px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 14px; background: #e9edf5; font-size: 19px; font-weight: 750; }
+.profile-avatar { width: 52px; height: 52px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #e9edf5; font-size: 19px; font-weight: 750; }
 .profile-avatar.telegram-avatar { overflow: hidden; }
 .profile-heading-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .profile-heading-line h1 { margin: 0; }
