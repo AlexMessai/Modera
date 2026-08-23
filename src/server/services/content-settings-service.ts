@@ -3,13 +3,11 @@ import { prisma } from "@/server/db/prisma";
 export type ContentSettingsValue = {
   welcomeEnabled: boolean;
   welcomeMessageTemplate: string;
-  rulesText: string;
 };
 
 export const DEFAULT_CONTENT_SETTINGS: ContentSettingsValue = {
   welcomeEnabled: false,
-  welcomeMessageTemplate: "Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников.",
-  rulesText: ""
+  welcomeMessageTemplate: "Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников."
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,16 +20,14 @@ function normalizeTemplate(value: string, fallback: string) {
 export function normalizeContentSettings(input: ContentSettingsValue): ContentSettingsValue {
   return {
     welcomeEnabled: Boolean(input.welcomeEnabled),
-    welcomeMessageTemplate: normalizeTemplate(input.welcomeMessageTemplate, DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate),
-    rulesText: input.rulesText.trim().slice(0, 4000)
+    welcomeMessageTemplate: normalizeTemplate(input.welcomeMessageTemplate, DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate)
   };
 }
 
 export function serializeContentSettings(settings: ContentSettingsValue): ContentSettingsValue {
   return {
     welcomeEnabled: settings.welcomeEnabled,
-    welcomeMessageTemplate: settings.welcomeMessageTemplate,
-    rulesText: settings.rulesText
+    welcomeMessageTemplate: settings.welcomeMessageTemplate
   };
 }
 
@@ -96,10 +92,9 @@ const GLOBAL_CONTENT_MESSAGES_ID = "global";
 
 /**
  * The welcome text is edited in one place -- Система → Уведомления, see
- * system-messages-service.ts -- not per chat; `welcomeEnabled`/`rulesText` stay chat-owned
- * (rulesText is each chat's own /rules content, not a system notification). Overlaying instead of
- * a hard split keeps this function's return shape unchanged, so every runtime caller
- * (welcome-service.ts) needed no changes.
+ * system-messages-service.ts -- not per chat; `welcomeEnabled` stays chat-owned.
+ * Overlaying instead of a hard split keeps this function's return shape
+ * unchanged, so every runtime caller (welcome-service.ts) needed no changes.
  */
 async function overlayGlobalContentText(settings: ContentSettingsValue): Promise<ContentSettingsValue> {
   const global = await prisma.globalContentSettings.findUnique({

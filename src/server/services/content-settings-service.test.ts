@@ -17,16 +17,14 @@ async function cleanup() {
   await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
 }
 
-test("content settings are normalized: blank welcome template falls back to default, rules text is trimmed and capped", () => {
+test("content settings are normalized: blank welcome template falls back to default", () => {
   const normalized = normalizeContentSettings({
     ...DEFAULT_CONTENT_SETTINGS,
     welcomeEnabled: true,
-    welcomeMessageTemplate: "   ",
-    rulesText: `  ${"a".repeat(4100)}  `
+    welcomeMessageTemplate: "   "
   });
   assert.equal(normalized.welcomeEnabled, true);
   assert.equal(normalized.welcomeMessageTemplate, DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate);
-  assert.equal(normalized.rulesText.length, 4000);
 });
 
 test("renderWelcomeTemplate substitutes all four documented placeholders", () => {
@@ -56,15 +54,13 @@ test("a chat with no settings row falls back to app defaults; saved settings are
     const saved = await updateChatContentSettings({
       chatId: chat.id,
       actingAdminId: admin.id,
-      settings: { ...DEFAULT_CONTENT_SETTINGS, welcomeEnabled: true, rulesText: "Chat-only rules" }
+      settings: { ...DEFAULT_CONTENT_SETTINGS, welcomeEnabled: true }
     });
     assert.equal(saved?.welcomeEnabled, true);
-    assert.equal(saved?.rulesText, "Chat-only rules");
 
     const resolved = await resolveEffectiveContentSettings(chat.id);
     assert.equal(resolved.source, "CHAT");
     assert.equal(resolved.settings.welcomeEnabled, true);
-    assert.equal(resolved.settings.rulesText, "Chat-only rules");
   } finally {
     await cleanup();
   }

@@ -1,9 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import {
   normalizeAllowedDomains,
-  normalizeBlockedTerms,
-  RESTRICTABLE_MESSAGE_TYPES,
-  type RestrictableMessageType
+  normalizeBlockedTerms
 } from "@/server/services/automod-service";
 import {
   DEFAULT_MODERATION_SETTINGS,
@@ -15,11 +13,6 @@ import {
 } from "@/server/services/global-moderation-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function normalizeBlockedMessageTypes(values: string[]) {
-  const allowed = new Set<string>(RESTRICTABLE_MESSAGE_TYPES);
-  return Array.from(new Set(values.filter((value) => allowed.has(value)))).slice(0, 20) as RestrictableMessageType[];
-}
 
 export async function getChatModerationProfile(chatId: string) {
   if (!UUID_PATTERN.test(chatId)) return null;
@@ -139,7 +132,6 @@ export async function updateChatModerationSettings(input: {
   duplicateEnabled: boolean;
   duplicateWindowSeconds: number;
   duplicateMaxMessages: number;
-  blockedMessageTypes: string[];
   ignoreAdmins: boolean;
   autoEscalationEnabled: boolean;
   escalationRules: unknown;
@@ -161,7 +153,6 @@ export async function updateChatModerationSettings(input: {
   const blockedDomains = normalizeAllowedDomains(input.blockedDomains);
   const linkProtectionMode = isLinkProtectionMode(input.linkProtectionMode) ? input.linkProtectionMode : "ALLOW_ALL";
   const blockedTerms = normalizeBlockedTerms(input.blockedTerms);
-  const blockedMessageTypes = normalizeBlockedMessageTypes(input.blockedMessageTypes);
   const warningExpiryDays = Math.min(3650, Math.max(0, Math.trunc(input.warningExpiryDays)));
   const escalationMuteMessageTemplate = input.escalationMuteMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate;
   const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
@@ -179,7 +170,6 @@ export async function updateChatModerationSettings(input: {
     duplicateEnabled: input.duplicateEnabled,
     duplicateWindowSeconds: input.duplicateWindowSeconds,
     duplicateMaxMessages: input.duplicateMaxMessages,
-    blockedMessageTypes,
     ignoreAdmins: input.ignoreAdmins,
     autoEscalationEnabled: input.autoEscalationEnabled,
     escalationRules: normalizeEscalationRules(input.escalationRules),

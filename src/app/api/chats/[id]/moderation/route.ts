@@ -2,7 +2,6 @@ import { z } from "zod";
 import { requireAdminApi } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
-import { RESTRICTABLE_MESSAGE_TYPES } from "@/server/services/automod-service";
 import {
   getChatModerationProfile,
   updateChatModerationSettings
@@ -40,7 +39,6 @@ const settingsSchema = z.object({
   duplicateEnabled: z.boolean(),
   duplicateWindowSeconds: z.number().int().min(5).max(3600),
   duplicateMaxMessages: z.number().int().min(1).max(20),
-  blockedMessageTypes: z.array(z.enum(RESTRICTABLE_MESSAGE_TYPES)).max(20),
   ignoreAdmins: z.boolean(),
   autoEscalationEnabled: z.boolean(),
   escalationRules: z.array(escalationRuleSchema).max(20),

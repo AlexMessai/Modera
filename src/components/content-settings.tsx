@@ -6,7 +6,6 @@ import { Check, ShieldCheck } from "lucide-react";
 export type ContentSettingsValue = {
   welcomeEnabled: boolean;
   welcomeMessageTemplate: string;
-  rulesText: string;
 };
 
 type Props = {
@@ -40,14 +39,14 @@ export function ContentSettings({
         body: JSON.stringify(settings)
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить приветствие и правила.");
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить приветствие.");
 
       const savedSettings = payload.data as ContentSettingsValue;
       setSettings(savedSettings);
-      setSuccess("Текст этого чата сохранён.");
+      setSuccess("Приветствие этого чата сохранено.");
       onSaved?.(savedSettings);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось сохранить приветствие и правила.");
+      setError(caught instanceof Error ? caught.message : "Не удалось сохранить приветствие.");
     } finally {
       setSaving(false);
     }
@@ -71,20 +70,6 @@ export function ContentSettings({
             onChange={(event) => setSettings((current) => ({ ...current, welcomeEnabled: event.target.checked }))}
           />
           <span><strong>Приветствие новых участников</strong><small>Отправляется в чат сразу после вступления. Текст редактируется в «Система» → «Уведомления».</small></span>
-        </label>
-      </div>
-
-      <div className="automod-rule">
-        <div className="automod-rule-heading"><strong>Правила чата</strong><small>Показываются по команде /rules. Пусто — команда ответит, что правила ещё не заданы.</small></div>
-        <label className="automod-field">
-          <span>Текст правил</span>
-          <textarea
-            value={settings.rulesText}
-            disabled={fieldsDisabled}
-            maxLength={4000}
-            placeholder="Например: 1. Уважайте друг друга. 2. Без спама и рекламы. 3. По всем вопросам — к администрации."
-            onChange={(event) => setSettings((current) => ({ ...current, rulesText: event.target.value }))}
-          />
         </label>
       </div>
 

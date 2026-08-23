@@ -11,7 +11,7 @@ const TRIGGER_PATTERN = /^[a-z0-9_]{2,32}$/;
 // create/update time rather than relying solely on dispatch order.
 const RESERVED_TRIGGERS = new Set([
   "warn", "unwarn", "mute", "unmute", "ban", "unban", "kick",
-  "warns", "info", "rules", "silence", "unsilence", "report",
+  "warns", "info", "silence", "unsilence", "report",
   "settings", "appeal", "start", "help", "status", "link"
 ]);
 

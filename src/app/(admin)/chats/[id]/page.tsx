@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
+import { ChatMediaFilters } from "@/components/chat-media-filters";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
 import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { ReportSettings } from "@/components/report-settings";
@@ -59,11 +60,11 @@ const botStatusLabels: Record<string, string> = {
 
 const SETTINGS_SECTIONS = [
   { key: "automod", label: "Automod" },
-  { key: "captcha", label: "Капча" },
+  { key: "filters", label: "Фильтры" },
+  { key: "newusers", label: "Новые пользователи" },
   { key: "antiraid", label: "Anti-Raid" },
   { key: "manual", label: "Ручная модерация" },
   { key: "roles", label: "Роли" },
-  { key: "content", label: "Контент" },
   { key: "reports", label: "Жалобы" },
   { key: "logchannel", label: "Канал логов" },
   { key: "autoresponses", label: "Автоответы" },
@@ -121,16 +122,22 @@ export default async function ChatDetailPage({
           </nav>
 
           {section === "automod" ? (
+            <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
+          ) : null}
+
+          {section === "filters" ? (
             <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Правила чата</h2><p>Индивидуальные правила автомодерации для этого чата.</p></div></div>
-              <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
+              <div className="panel-header"><div><h2>Фильтры</h2><p>Индивидуальные правила по каждому типу контента для этого чата.</p></div></div>
+              <ChatMediaFilters chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
             </section>
           ) : null}
 
-          {section === "captcha" && captchaProfile ? (
+          {section === "newusers" && captchaProfile && contentProfile ? (
             <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Капча при вступлении</h2><p>Новый участник должен подтвердить, что не бот, прежде чем сможет писать в чат.</p></div></div>
+              <div className="panel-header"><div><h2>Новые пользователи</h2><p>Капча при вступлении и приветственное сообщение для новых участников этого чата.</p></div></div>
               <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
+              <hr className="sidebar-divider" />
+              <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 
@@ -152,13 +159,6 @@ export default async function ChatDetailPage({
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Роли</h2><p>Права каждой роли этого чата. Роль назначается автоматически по статусу в Telegram (владелец/администратор) или вручную доверенным участникам.</p></div></div>
               {roles.length > 0 ? <ChatRolesSettings chatId={id} initial={roles} canEdit={canEdit} /> : <div className="state-box state-box--compact"><strong>Ролей пока нет</strong></div>}
-            </section>
-          ) : null}
-
-          {section === "content" && contentProfile ? (
-            <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Приветствие и правила</h2><p>Текст приветствия новым участникам и правила чата по команде /rules.</p></div></div>
-              <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 

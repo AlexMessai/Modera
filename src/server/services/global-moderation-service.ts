@@ -27,10 +27,14 @@ const ESCALATION_DURATION_MAX_BY_ACTION: Record<EscalationRuleAction, number> = 
 };
 const MAX_ESCALATION_RULES = 20;
 
-// The 7 media types the Filters module manages individually -- once a type
-// is here, it's read exclusively from `mediaFilters` (below), never from the
-// flat blockedMessageTypes list (automod-service.ts enforces this split).
-export const MEDIA_FILTER_TYPES = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE"] as const;
+// All 12 restrictable content types, each managed individually via its own
+// `mediaFilters` entry -- the old flat `blockedMessageTypes` list has been
+// removed entirely (see automod-service.ts, which reads exclusively from
+// mediaFilters now).
+export const MEDIA_FILTER_TYPES = [
+  "PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE",
+  "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"
+] as const;
 export type MediaFilterType = (typeof MEDIA_FILTER_TYPES)[number];
 
 export type MediaFilterRuleValue = {
@@ -69,7 +73,6 @@ export const DEFAULT_MODERATION_SETTINGS = {
   duplicateEnabled: false,
   duplicateWindowSeconds: 60,
   duplicateMaxMessages: 2,
-  blockedMessageTypes: [] as string[],
   ignoreAdmins: true,
   autoEscalationEnabled: false,
   escalationRules: [
@@ -173,25 +176,6 @@ function normalizeTerms(values: string[]) {
   return Array.from(new Set(values.map(normalizeText).filter(Boolean))).slice(0, 200);
 }
 
-const BLOCKABLE_TYPES = new Set([
-  "PHOTO",
-  "VIDEO",
-  "ANIMATION",
-  "DOCUMENT",
-  "STICKER",
-  "VOICE",
-  "AUDIO",
-  "VIDEO_NOTE",
-  "POLL",
-  "DICE",
-  "LOCATION",
-  "CONTACT"
-]);
-
-function normalizeMessageTypes(values: string[]) {
-  return Array.from(new Set(values.filter((value) => BLOCKABLE_TYPES.has(value)))).slice(0, 20);
-}
-
 function boundedInteger(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.trunc(value)));
@@ -212,7 +196,7 @@ function isMediaFilterType(value: unknown): value is MediaFilterType {
  * One entry per MEDIA_FILTER_TYPES — always the full set, in that order,
  * regardless of what's in `input` (a type missing from the raw input keeps
  * its default-disabled row rather than silently dropping out of the list,
- * so the admin UI always has all 7 cards to render).
+ * so the admin UI always has all 12 cards to render).
  */
 export function normalizeMediaFilters(input: unknown): MediaFilterRuleValue[] {
   const byType = new Map<MediaFilterType, MediaFilterRuleValue>();
@@ -249,7 +233,6 @@ export function normalizeModerationSettings(input: ModerationSettingsInput): Mod
     duplicateEnabled: input.duplicateEnabled,
     duplicateWindowSeconds: input.duplicateWindowSeconds,
     duplicateMaxMessages: input.duplicateMaxMessages,
-    blockedMessageTypes: normalizeMessageTypes(input.blockedMessageTypes),
     ignoreAdmins: input.ignoreAdmins,
     autoEscalationEnabled: input.autoEscalationEnabled,
     escalationRules: normalizeEscalationRules(input.escalationRules),
@@ -276,7 +259,6 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
     duplicateEnabled: settings.duplicateEnabled,
     duplicateWindowSeconds: settings.duplicateWindowSeconds,
     duplicateMaxMessages: settings.duplicateMaxMessages,
-    blockedMessageTypes: [...settings.blockedMessageTypes],
     ignoreAdmins: settings.ignoreAdmins,
     autoEscalationEnabled: settings.autoEscalationEnabled,
     escalationRules: normalizeEscalationRules(settings.escalationRules),

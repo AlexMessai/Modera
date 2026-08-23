@@ -318,7 +318,6 @@ model ChatModerationSettings {
   duplicateEnabled       Boolean  @default(false)
   duplicateWindowSeconds Int      @default(60)
   duplicateMaxMessages   Int      @default(2)
-  blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
   autoEscalationEnabled  Boolean  @default(false)
   // Deprecated: superseded by escalationRules below (kept, unread by app
@@ -333,12 +332,12 @@ model ChatModerationSettings {
   announceEscalationEnabled     Boolean  @default(false)
   escalationMuteMessageTemplate String   @default("🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
   escalationBanMessageTemplate  String   @default("⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.") @db.VarChar(1000)
-  // Per-content-type "Фильтры" (§ Filters module): granular rules for the
-  // media types Automod's flat blockedMessageTypes list treats as one
-  // undifferentiated group — MediaFilterRule[] from global-moderation-service.ts:
-  // [{ type: "PHOTO"|"VIDEO"|"ANIMATION"|"VOICE"|"AUDIO"|"VIDEO_NOTE"|"DICE",
-  //    enabled, warnOnTrigger, notifyEnabled, notifyText }]. A type listed here
-  // is no longer read from blockedMessageTypes (see automod-service.ts).
+  // Per-content-type "Фильтры" (§ Filters module): granular rules for every
+  // restrictable content type (all 12 -- the old flat blockedMessageTypes
+  // list has been removed entirely) — MediaFilterRule[] from
+  // global-moderation-service.ts: [{ type: "PHOTO"|"VIDEO"|"ANIMATION"|
+  // "VOICE"|"AUDIO"|"VIDEO_NOTE"|"DICE"|"DOCUMENT"|"STICKER"|"POLL"|
+  // "LOCATION"|"CONTACT", enabled, warnOnTrigger, notifyEnabled, notifyText }].
   mediaFilters           Json     @default("[]")
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
@@ -364,7 +363,6 @@ model GlobalModerationSettings {
   duplicateEnabled       Boolean  @default(false)
   duplicateWindowSeconds Int      @default(60)
   duplicateMaxMessages   Int      @default(2)
-  blockedMessageTypes    String[] @default([])
   ignoreAdmins           Boolean  @default(true)
   autoEscalationEnabled  Boolean  @default(false)
   // Deprecated: superseded by escalationRules below (kept, unread by app
@@ -634,7 +632,6 @@ model ChatContentSettings {
   useGlobalProfile       Boolean  @default(true)
   welcomeEnabled         Boolean  @default(false)
   welcomeMessageTemplate String   @default("Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников.") @db.VarChar(2000)
-  rulesText              String   @default("") @db.VarChar(4000)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -644,7 +641,6 @@ model GlobalContentSettings {
   id                     String   @id @default("global")
   welcomeEnabled         Boolean  @default(false)
   welcomeMessageTemplate String   @default("Добро пожаловать, {name}! 👋\n\nЧат «{group}» рад видеть вас — сейчас в нём {member_count} участников.") @db.VarChar(2000)
-  rulesText              String   @default("") @db.VarChar(4000)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
