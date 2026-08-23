@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import { CommandsReference } from "@/components/commands-reference-client";
 import { COMMAND_CATEGORIES } from "@/components/commands-reference-data";
+import { Sidebar } from "@/components/sidebar";
+import { getCurrentAdmin } from "@/server/auth/session";
+import { listChats } from "@/server/services/chat-service";
 
 export const metadata: Metadata = {
   title: "Команды Modera",
   description: "Команды ручной модерации Modera: /warn, /mute, /ban и другие."
 };
 
-export default function CommandsPage() {
+function CommandsContent() {
   return (
     <main className="cmd-page">
       <header className="cmd-page-header">
@@ -25,5 +28,30 @@ export default function CommandsPage() {
 
       <CommandsReference categories={COMMAND_CATEGORIES} />
     </main>
+  );
+}
+
+// Public reference page (no login required) -- but a logged-in admin who
+// reaches it from the sidebar's "Команды" link should stay inside the same
+// admin shell as every other tab, not lose the sidebar to a bare page. So
+// this is the one route outside the (admin) route group that still renders
+// Sidebar, conditionally, via a plain getCurrentAdmin() lookup (never
+// redirects, unlike requireAdminPage) -- anonymous visitors keep today's
+// bare public layout untouched.
+export default async function CommandsPage() {
+  const admin = await getCurrentAdmin();
+  if (!admin) return <CommandsContent />;
+
+  const chatList = await listChats({ page: 1, pageSize: 100 });
+  const chats = chatList.items.map((chat) => ({ id: chat.id, title: chat.title, status: chat.status }));
+
+  return (
+    <div className="admin-shell">
+      <Sidebar
+        admin={{ displayName: admin.displayName, email: admin.email, role: admin.role }}
+        chats={chats}
+      />
+      <div className="admin-main"><CommandsContent /></div>
+    </div>
   );
 }
