@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { TelegramChatAvatar } from "@/components/telegram-avatar";
 import {
   LayoutDashboard,
   LogOut,
@@ -118,7 +119,7 @@ export function Sidebar({
           <>
             <hr className="sidebar-divider" />
             <div className="group-header">
-              <span className="group-avatar">{activeChat.title.slice(0, 1).toUpperCase()}</span>
+              <TelegramChatAvatar chatId={activeChat.id} displayName={activeChat.title} size={28} className="group-avatar" />
               <span className="group-name">{activeChat.title}</span>
               <span className={statusDotClass(activeChat.status)} title={activeChat.status} />
             </div>

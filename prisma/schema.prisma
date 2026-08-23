@@ -95,6 +95,7 @@ model Chat {
   username           String?
   type               String
   photoFileId        String?
+  avatarSyncedAt     DateTime?               @db.Timestamptz(3)
   knownMemberCount   Int?
   firstSeenAt        DateTime                @default(now()) @db.Timestamptz(3)
   lastActivityAt     DateTime                @default(now()) @db.Timestamptz(3)

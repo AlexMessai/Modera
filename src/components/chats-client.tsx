@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
+import { TelegramChatAvatar } from "@/components/telegram-avatar";
 
 type ChatItem = {
   id: string;
@@ -123,7 +124,7 @@ export function ChatsClient() {
         <div className="chat-card-grid">{data.items.map((chat) => (
           <Link key={chat.id} href={`/chats/${chat.id}`} className="chat-card">
             <div className="chat-card-top">
-              <span className="chat-card-avatar">{chat.title.slice(0, 1).toUpperCase()}</span>
+              <TelegramChatAvatar chatId={chat.id} displayName={chat.title} size={40} className="chat-card-avatar" />
               <span className={`badge badge--${chat.status.toLowerCase()}`}>{statusLabels[chat.status]}</span>
             </div>
             <div>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requireAdminApi } from "@/server/auth/guards";
-import { getTelegramUserAvatar } from "@/server/services/telegram-avatar-service";
+import { getTelegramChatAvatar } from "@/server/services/telegram-chat-avatar-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,15 +32,15 @@ export async function GET(
   const { id } = await params;
   if (!uuidSchema.safeParse(id).success) {
     return Response.json(
-      { error: { code: "INVALID_USER_ID", message: "Некорректный идентификатор пользователя." } },
+      { error: { code: "INVALID_CHAT_ID", message: "Некорректный идентификатор чата." } },
       { status: 400 }
     );
   }
 
-  const avatar = await getTelegramUserAvatar(id);
+  const avatar = await getTelegramChatAvatar(id);
   if (!avatar) {
     return Response.json(
-      { error: { code: "USER_NOT_FOUND", message: "Пользователь не найден." } },
+      { error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } },
       { status: 404 }
     );
   }
