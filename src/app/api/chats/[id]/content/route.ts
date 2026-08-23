@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -21,6 +21,8 @@ export async function GET(
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
   const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   const profile = await getChatContentProfile(id);
   if (!profile) {
     return Response.json({ error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } }, { status: 404 });
@@ -37,6 +39,9 @@ export async function PATCH(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять приветствие/правила могут только владелец и администратор Modera." } }, { status: 403 });
   }
@@ -44,7 +49,6 @@ export async function PATCH(
   if (!parsed.success) {
     return Response.json({ error: { code: "VALIDATION_ERROR", message: parsed.error.issues[0]?.message ?? "Проверьте текст приветствия и правил." } }, { status: 400 });
   }
-  const { id } = await context.params;
   const saved = await updateChatContentSettings({
     chatId: id,
     actingAdminId: auth.admin.id,

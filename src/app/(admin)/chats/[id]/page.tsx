@@ -16,7 +16,9 @@ import { JoinRequestsClient } from "@/components/join-requests-client";
 import { AppealsClient } from "@/components/appeals-client";
 import { MessagesClient } from "@/components/messages-client";
 import { canModerate, canManageChatSettings } from "@/server/auth/permissions";
-import { requireAdminPage } from "@/server/auth/guards";
+import { requireAdminPage, requireChatAccess, canManageChatTeam } from "@/server/auth/guards";
+import { ChatTeamSettings } from "@/components/chat-team-settings";
+import { listChatTeam } from "@/server/services/chat-admin-access-service";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 import { getChatManualModerationProfile, getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
@@ -65,6 +67,7 @@ const SETTINGS_SECTIONS = [
   { key: "antiraid", label: "Anti-Raid" },
   { key: "manual", label: "Ручная модерация" },
   { key: "roles", label: "Роли" },
+  { key: "team", label: "Команда" },
   { key: "reports", label: "Жалобы" },
   { key: "logchannel", label: "Канал логов" },
   { key: "autoresponses", label: "Автоответы" },
@@ -83,10 +86,12 @@ export default async function ChatDetailPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [admin, { id }, query] = await Promise.all([requireAdminPage(), params, searchParams]);
+  const access = await requireChatAccess(admin, id);
+  if (!access.ok) notFound();
   const tab = typeof query.tab === "string" ? query.tab : "overview";
   const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
 
-  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -99,7 +104,9 @@ export default async function ChatDetailPage({
     getActiveSilence(id),
     listAutoResponseRules(id),
     listCustomCommands(id),
-    getChatStatistics(id, "7D")
+    getChatStatistics(id, "7D"),
+    listChatTeam(id),
+    canManageChatTeam(admin, id)
   ]);
   if (!profile) notFound();
 
@@ -159,6 +166,13 @@ export default async function ChatDetailPage({
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Роли</h2><p>Права каждой роли этого чата. Роль назначается автоматически по статусу в Telegram (владелец/администратор) или вручную доверенным участникам.</p></div></div>
               {roles.length > 0 ? <ChatRolesSettings chatId={id} initial={roles} canEdit={canEdit} /> : <div className="state-box state-box--compact"><strong>Ролей пока нет</strong></div>}
+            </section>
+          ) : null}
+
+          {section === "team" ? (
+            <section className="panel profile-section">
+              <div className="panel-header"><div><h2>Команда</h2><p>Реальные администраторы Telegram (только просмотр) и доступ к веб-панели по @username для этого чата.</p></div></div>
+              <ChatTeamSettings chatId={id} initial={team} canEdit={canEditTeam} />
             </section>
           ) : null}
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -19,6 +19,8 @@ export async function GET(
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
   const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   const profile = await getChatLogChannelProfile(id);
   if (!profile) {
     return Response.json({ error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } }, { status: 404 });
@@ -35,6 +37,9 @@ export async function PATCH(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять настройки канала логов могут только владелец и администратор Modera." } }, { status: 403 });
   }
@@ -42,7 +47,6 @@ export async function PATCH(
   if (!parsed.success) {
     return Response.json({ error: { code: "VALIDATION_ERROR", message: "Проверьте настройки канала логов." } }, { status: 400 });
   }
-  const { id } = await context.params;
   const saved = await updateChatLogChannelSettings({
     chatId: id,
     actingAdminId: auth.admin.id,
@@ -63,10 +67,12 @@ export async function DELETE(
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const { id } = await context.params;
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Отключать канал логов могут только владелец и администратор Modera." } }, { status: 403 });
   }
-  const { id } = await context.params;
   const saved = await unlinkLogChannel({ chatId: id, actingAdminId: auth.admin.id });
   if (!saved) {
     return Response.json({ error: { code: "CHAT_NOT_FOUND", message: "Чат не найден." } }, { status: 404 });

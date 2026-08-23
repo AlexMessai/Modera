@@ -36,7 +36,9 @@ export async function POST(request: Request) {
 
   const email = parsed.data.email.toLowerCase().trim();
   const admin = await prisma.adminUser.findUnique({ where: { email } });
-  const passwordOk = admin?.isActive && (await bcrypt.compare(parsed.data.password, admin.passwordHash));
+  // A Telegram-only self-registered account (scope: CHAT) has no
+  // passwordHash at all -- must not reach bcrypt.compare(null), which throws.
+  const passwordOk = admin?.isActive && admin.passwordHash && (await bcrypt.compare(parsed.data.password, admin.passwordHash));
 
   if (!admin || !passwordOk) {
     return Response.json(
