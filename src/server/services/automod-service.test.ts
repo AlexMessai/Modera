@@ -236,9 +236,9 @@ test("same Telegram message revision is processed once and a later edit is a new
 // No TELEGRAM_BOT_TOKEN in CI (see CLAUDE.md), so getTelegramClient() always
 // throws and every would-be deletion ends up DELETE_FAILED rather than the
 // RESULT_BY_RULE success value -- these tests exercise rule *detection*
-// (rulesEnabled, the mediaFilters/blockedMessageTypes split), which is fully
-// decided before the Telegram call, not the success branch itself.
-test("mediaFilters (Filters module) enables automod for a type blockedMessageTypes never mentioned", async () => {
+// (rulesEnabled, mediaFilters), which is fully decided before the Telegram
+// call, not the success branch itself.
+test("mediaFilters (Filters module) enables automod for an enabled type", async () => {
   const telegramChatId = -1009000000401n;
   const telegramUserId = 900000401n;
 
@@ -269,8 +269,7 @@ test("mediaFilters (Filters module) enables automod for a type blockedMessageTyp
   try {
     const result = await processAutomodMessage({ chatId: chat.id, message, isEdited: false });
     // DELETE_FAILED (not DISABLED/CLEAN) proves the PHOTO rule was matched
-    // and deletion was attempted -- blockedMessageTypes is empty on this
-    // chat, so only the new mediaFilters entry could have enabled it.
+    // and deletion was attempted.
     assert.equal(result.result, "DELETE_FAILED");
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });
@@ -278,7 +277,7 @@ test("mediaFilters (Filters module) enables automod for a type blockedMessageTyp
   }
 });
 
-test("a Filters-managed type is read exclusively from mediaFilters, ignoring a stale blockedMessageTypes entry", async () => {
+test("a disabled mediaFilters entry does not trigger automod for that type", async () => {
   const telegramChatId = -1009000000402n;
   const telegramUserId = 900000402n;
 
@@ -290,9 +289,11 @@ test("a Filters-managed type is read exclusively from mediaFilters, ignoring a s
     data: {
       chatId: chat.id,
       useGlobalProfile: false,
-      // Legacy list still names PHOTO, but PHOTO is now a Filters-managed
-      // type and its own rule (disabled) below must be the one that decides.
-      blockedMessageTypes: ["PHOTO"],
+      // Some other rule must stay enabled so automod isn't skipped
+      // altogether (rulesEnabled) -- massMentionsEnabled here never matches
+      // this message, so it can't be what makes the result CLEAN.
+      massMentionsEnabled: true,
+      maxMentions: 50,
       mediaFilters: [{ type: "PHOTO", enabled: false, warnOnTrigger: false, notifyEnabled: false, notifyText: "🚫" }]
     }
   });

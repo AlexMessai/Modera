@@ -2,17 +2,12 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Check, Plus, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
-import { SettingsRow, ConditionalSettingsSection } from "@/components/settings-row";
-
-// The 7 Filters-managed types (below) used to live in this flat list too --
-// they're now configured individually in the "Фильтры" section instead, so
-// this list only covers the types that still don't have per-type settings.
-const mediaTypes = [
-  ["DOCUMENT", "Файлы"], ["STICKER", "Стикеры"],
-  ["POLL", "Опросы"], ["LOCATION", "Геолокация"], ["CONTACT", "Контакты"]
-] as const;
-
-export type MediaFilterType = "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE";
+// Filters-managed types (all 12 -- the old flat "Запрещённые типы контента"
+// checkbox list has been removed) now live entirely in their own "Фильтры"
+// tab; see chat-media-filters.tsx, which imports the type/label exports below.
+export type MediaFilterType =
+  | "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE"
+  | "DOCUMENT" | "STICKER" | "POLL" | "LOCATION" | "CONTACT";
 
 export type MediaFilterRuleValue = {
   type: MediaFilterType;
@@ -22,17 +17,25 @@ export type MediaFilterRuleValue = {
   notifyText: string;
 };
 
-const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = {
+export const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = {
   PHOTO: "Изображения",
   VIDEO: "Видео",
   ANIMATION: "GIF",
   VOICE: "Голосовые сообщения",
   AUDIO: "Аудиофайлы",
   VIDEO_NOTE: "Видеосообщения",
-  DICE: "Анимированные кости"
+  DICE: "Анимированные кости",
+  DOCUMENT: "Файлы",
+  STICKER: "Стикеры",
+  POLL: "Опросы",
+  LOCATION: "Геолокация",
+  CONTACT: "Контакты"
 };
 
-const MEDIA_FILTER_ORDER: MediaFilterType[] = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE"];
+export const MEDIA_FILTER_ORDER: MediaFilterType[] = [
+  "PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE",
+  "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"
+];
 
 export type EscalationRuleValue = {
   order: number;
@@ -65,7 +68,6 @@ export type ModerationSettingsValue = {
   duplicateEnabled: boolean;
   duplicateWindowSeconds: number;
   duplicateMaxMessages: number;
-  blockedMessageTypes: string[];
   ignoreAdmins: boolean;
   autoEscalationEnabled: boolean;
   escalationRules: EscalationRuleValue[];
@@ -146,7 +148,7 @@ export function ChatModerationSettings({
   const [success, setSuccess] = useState<string | null>(null);
 
   const fieldsDisabled = !canEdit || saving;
-  const anyRuleEnabled = settings.linkProtectionMode !== "ALLOW_ALL" || settings.spamEnabled || settings.blockedTermsEnabled || settings.massMentionsEnabled || settings.duplicateEnabled || settings.blockedMessageTypes.length > 0 || settings.mediaFilters.some((rule) => rule.enabled);
+  const anyRuleEnabled = settings.linkProtectionMode !== "ALLOW_ALL" || settings.spamEnabled || settings.blockedTermsEnabled || settings.massMentionsEnabled || settings.duplicateEnabled || settings.mediaFilters.some((rule) => rule.enabled);
   const activeAntiSpamPreset = matchingAntiSpamPreset(settings);
 
   function applyAntiSpamPreset(key: AntiSpamPresetKey) {
@@ -177,17 +179,6 @@ export function ChatModerationSettings({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки.");
     } finally { setSaving(false); }
-  }
-
-  function toggleMedia(type: string, checked: boolean) {
-    setSettings((current) => ({ ...current, blockedMessageTypes: checked ? Array.from(new Set([...current.blockedMessageTypes, type])) : current.blockedMessageTypes.filter((item) => item !== type) }));
-  }
-
-  function updateMediaFilter(type: MediaFilterType, patch: Partial<MediaFilterRuleValue>) {
-    setSettings((current) => ({
-      ...current,
-      mediaFilters: current.mediaFilters.map((rule) => (rule.type === type ? { ...rule, ...patch } : rule))
-    }));
   }
 
   function addEscalationRule() {
@@ -295,45 +286,6 @@ export function ChatModerationSettings({
         <label className="automod-toggle-row"><input type="checkbox" checked={settings.massMentionsEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, massMentionsEnabled: event.target.checked }))} /><span><strong>Массовые упоминания</strong><small>Считает реальные Telegram mention/text_mention entities.</small></span></label>
         {settings.massMentionsEnabled ? <label className="automod-field automod-field--short"><span>Максимум упоминаний</span><input type="number" min={1} max={50} value={settings.maxMentions} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, maxMentions: Number(event.target.value) }))} /></label> : null}
       </div>
-
-      <div className="automod-rule">
-        <div className="automod-rule-heading"><strong>Запрещённые типы контента</strong><small>Выбранные типы удаляются сразу после получения Telegram update.</small></div>
-        <div className="automod-media-grid">{mediaTypes.map(([value, label]) => <label className="automod-media-option" key={value}><input type="checkbox" checked={settings.blockedMessageTypes.includes(value)} disabled={fieldsDisabled} onChange={(event) => toggleMedia(value, event.target.checked)} /><span>{label}</span></label>)}</div>
-      </div>
-
-      <div className="automod-rule-heading"><strong>Фильтры</strong><small>Для медиатипов ниже — отдельно от общих настроек: можно решить, участвует ли конкретный тип в предупреждениях/автонаказаниях, и отправлять ли сообщение при срабатывании.</small></div>
-      {MEDIA_FILTER_ORDER.map((type) => {
-        const rule = settings.mediaFilters.find((item) => item.type === type);
-        if (!rule) return null;
-        return (
-          <div className="automod-rule" key={type}>
-            <SettingsRow
-              title={MEDIA_FILTER_LABELS[type]}
-              description="Удалять сообщения этого типа."
-              checked={rule.enabled}
-              disabled={fieldsDisabled}
-              onChange={(checked) => updateMediaFilter(type, { enabled: checked })}
-            />
-            <ConditionalSettingsSection visible={rule.enabled}>
-              <SettingsRow
-                title="Выдавать предупреждение нарушителю"
-                description="Засчитывается в общий счётчик предупреждений и автонаказаний чата (нужно также включить «Автоматические наказания» ниже)."
-                checked={rule.warnOnTrigger}
-                disabled={fieldsDisabled}
-                onChange={(checked) => updateMediaFilter(type, { warnOnTrigger: checked })}
-              />
-              <SettingsRow
-                title="Отправлять сообщение при срабатывании"
-                description="Публикует текст ниже в чат сразу при удалении — независимо от предупреждения."
-                checked={rule.notifyEnabled}
-                disabled={fieldsDisabled}
-                onChange={(checked) => updateMediaFilter(type, { notifyEnabled: checked })}
-              />
-              {rule.notifyEnabled ? <small className="hint-note">Текст сообщения редактируется в Система → Уведомления.</small> : null}
-            </ConditionalSettingsSection>
-          </div>
-        );
-      })}
 
       <div className="automod-rule">
         <label className="automod-toggle-row"><input type="checkbox" checked={settings.autoEscalationEnabled} disabled={fieldsDisabled} onChange={(event) => setSettings((current) => ({ ...current, autoEscalationEnabled: event.target.checked }))} /><span><strong>Автоматические наказания</strong><small>Каждое успешно удалённое automod-сообщение добавляет предупреждение. По достижении порогов Modera применяет временный mute, затем ban.</small></span></label>

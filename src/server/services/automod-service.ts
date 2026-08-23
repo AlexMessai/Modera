@@ -2,7 +2,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 import {
   findEnabledMediaFilterRule,
-  MEDIA_FILTER_TYPES,
   resolveEffectiveModerationSettings,
   type LinkProtectionMode
 } from "@/server/services/global-moderation-service";
@@ -36,7 +35,6 @@ export const RESTRICTABLE_MESSAGE_TYPES = [
 
 export type RestrictableMessageType = (typeof RESTRICTABLE_MESSAGE_TYPES)[number];
 
-const MEDIA_FILTER_MANAGED_TYPES = new Set<string>(MEDIA_FILTER_TYPES);
 export type AutomodRule =
   | "LINK"
   | "TERM"
@@ -399,7 +397,6 @@ export async function processAutomodMessage(input: {
       settings.blockedTermsEnabled ||
       settings.massMentionsEnabled ||
       settings.duplicateEnabled ||
-      settings.blockedMessageTypes.length > 0 ||
       settings.mediaFilters.some((filterRule) => filterRule.enabled)
   );
 
@@ -438,17 +435,11 @@ export async function processAutomodMessage(input: {
   const mentionCount = settings.massMentionsEnabled
     ? countMentions(input.message)
     : 0;
-  // The 7 Filters-managed types (MEDIA_FILTER_TYPES) are read exclusively
-  // from mediaFilters -- blockedMessageTypes only still applies to the
-  // remaining types (DOCUMENT, STICKER, POLL, LOCATION, CONTACT).
-  const mediaFilterRule = MEDIA_FILTER_MANAGED_TYPES.has(stored.messageType)
-    ? findEnabledMediaFilterRule(settings.mediaFilters, stored.messageType)
-    : null;
-  const blockedMessageType = mediaFilterRule
-    ? stored.messageType
-    : (!MEDIA_FILTER_MANAGED_TYPES.has(stored.messageType) && settings.blockedMessageTypes.includes(stored.messageType))
-      ? stored.messageType
-      : null;
+  // Every restrictable content type is now Filters-managed (MEDIA_FILTER_TYPES
+  // covers all 12), so this is read exclusively from mediaFilters -- the old
+  // flat blockedMessageTypes fallback has been removed.
+  const mediaFilterRule = findEnabledMediaFilterRule(settings.mediaFilters, stored.messageType);
+  const blockedMessageType = mediaFilterRule ? stored.messageType : null;
 
   let rule: AutomodRule | null = null;
   if (blockedDomains.length > 0) rule = "LINK";
@@ -552,9 +543,8 @@ export async function processAutomodMessage(input: {
   return {
     processed: true,
     result: RESULT_BY_RULE[rule],
-    // Only meaningful when rule === "MEDIA" and the match came from the
-    // Filters module (not the legacy blockedMessageTypes list) -- lets the
-    // caller (update-handler.ts) decide whether to escalate/announce per the
+    // Only meaningful when rule === "MEDIA" -- lets the caller
+    // (update-handler.ts) decide whether to escalate/announce per the
     // matched type's own warnOnTrigger/notifyEnabled, instead of the
     // chat-wide default every other rule uses.
     mediaFilterRule

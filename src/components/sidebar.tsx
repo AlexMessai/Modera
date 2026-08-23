@@ -22,7 +22,7 @@ const topNavigation = [
   { href: "/incidents", label: "Журнал", icon: ScrollText }
 ];
 
-// Public reference page (no login) — opens outside the admin shell, so it's a plain external link rather than a routed nav-item.
+// Public reference page (no login required, but still part of the admin shell's nav).
 const commandsReferenceLink = { href: "/commands", label: "Команды", icon: Terminal };
 
 const chatTabs = [
@@ -109,9 +109,9 @@ export function Sidebar({
               </Link>
             );
           })}
-          <a className="nav-item" href={commandsReferenceLink.href} target="_blank" rel="noreferrer">
+          <Link className={`nav-item ${pathname === commandsReferenceLink.href ? "nav-item--active" : ""}`} href={commandsReferenceLink.href}>
             <Terminal size={18} strokeWidth={1.8} /><span>{commandsReferenceLink.label}</span>
-          </a>
+          </Link>
         </nav>
 
         {activeChat ? (

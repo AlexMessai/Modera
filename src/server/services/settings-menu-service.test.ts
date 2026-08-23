@@ -476,7 +476,7 @@ test("renderSettingsMenu: Users/Roles section lists roles and a permission toggl
   }
 });
 
-test("renderSettingsMenu: Chat section, welcome toggle persists and rules preview reflects saved text", async () => {
+test("renderSettingsMenu: Chat section, welcome toggle persists", async () => {
   await cleanup();
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
@@ -485,7 +485,7 @@ test("renderSettingsMenu: Chat section, welcome toggle persists and rules previe
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
   await prisma.chatContentSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, welcomeEnabled: false, rulesText: "Никакого спама." }
+    data: { chatId: chat.id, useGlobalProfile: false, welcomeEnabled: false }
   });
 
   try {
@@ -496,7 +496,7 @@ test("renderSettingsMenu: Chat section, welcome toggle persists and rules previe
       actingAdminId: admin.id,
       path: "chat"
     });
-    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("заданы"))));
+    assert.ok(menu?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("выкл"))));
 
     const toggled = await renderSettingsMenu({
       chatId: chat.id,
@@ -506,15 +506,6 @@ test("renderSettingsMenu: Chat section, welcome toggle persists and rules previe
       path: "chat.welcome.toggle"
     });
     assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("включено"))));
-
-    const rules = await renderSettingsMenu({
-      chatId: chat.id,
-      chatTitle: chat.title,
-      telegramChatId: Number(CHAT_ID),
-      actingAdminId: admin.id,
-      path: "chat.rules"
-    });
-    assert.ok(rules?.text.includes("Никакого спама."));
 
     const stored = await prisma.chatContentSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.welcomeEnabled, true);

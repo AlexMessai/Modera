@@ -95,7 +95,7 @@ function renderAutomodMenu(settings: ModerationSettingsValue, telegramChatId: nu
         [{ text: `🚫 Запрещённые слова: ${settings.blockedTermsEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "automod.terms") }],
         [{ text: `📢 Массовые упоминания: ${settings.massMentionsEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "automod.mentions") }],
         [{ text: `🔁 Повторы: ${settings.duplicateEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "automod.duplicates") }],
-        [{ text: `📎 Медиа: ${settings.blockedMessageTypes.length} тип(ов) ограничено`, callback_data: buildSettingsCallbackData(telegramChatId, "automod.media") }],
+        [{ text: `📎 Фильтры: ${settings.mediaFilters.filter((rule) => rule.enabled).length} тип(ов) ограничено`, callback_data: buildSettingsCallbackData(telegramChatId, "automod.media") }],
         backRow("root", telegramChatId)
       ]
     } satisfies TelegramInlineKeyboardMarkup
@@ -175,8 +175,9 @@ function renderDuplicatesDetail(settings: ModerationSettingsValue, telegramChatI
 }
 
 function renderMediaDetail(settings: ModerationSettingsValue, telegramChatId: number) {
+  const enabledCount = settings.mediaFilters.filter((rule) => rule.enabled).length;
   return {
-    text: `📎 Ограничение типов сообщений\n\nОграничено типов: ${settings.blockedMessageTypes.length}. Список редактируется в Web Admin (Модерация → правило чата).`,
+    text: `📎 Фильтры\n\nОграничено типов: ${enabledCount}. Список редактируется в Web Admin (Настройки → Фильтры).`,
     keyboard: { inline_keyboard: [backRow("automod", telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
   };
 }
@@ -515,7 +516,6 @@ function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) 
     keyboard: {
       inline_keyboard: [
         [{ text: `👋 Приветствие: ${settings.welcomeEnabled ? "вкл" : "выкл"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.welcome") }],
-        [{ text: `📜 Правила: ${settings.rulesText ? "заданы" : "не заданы"}`, callback_data: buildSettingsCallbackData(telegramChatId, "chat.rules") }],
         [{ text: "🔇 Режим тишины", callback_data: buildSettingsCallbackData(telegramChatId, "chat.silence") }],
         backRow("root", telegramChatId)
       ]
@@ -523,10 +523,10 @@ function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) 
   };
 }
 
-// Telegram caps a message at 4096 characters; welcomeMessageTemplate/
-// rulesText can be up to 2000/4000 on their own, so the preview shown here
-// (which also has to fit the surrounding explanation) is truncated -- the
-// full text is always visible in Web Admin, this is just a status preview.
+// Telegram caps a message at 4096 characters; welcomeMessageTemplate can be
+// up to 2000 on its own, so the preview shown here (which also has to fit
+// the surrounding explanation) is truncated -- the full text is always
+// visible in Web Admin, this is just a status preview.
 const CONTENT_PREVIEW_LIMIT = 1500;
 
 function previewText(value: string, limit: number = CONTENT_PREVIEW_LIMIT) {
@@ -542,13 +542,6 @@ function renderWelcomeDetail(settings: ContentSettingsValue, telegramChatId: num
         backRow("chat", telegramChatId)
       ]
     } satisfies TelegramInlineKeyboardMarkup
-  };
-}
-
-function renderRulesDetail(settings: ContentSettingsValue, telegramChatId: number) {
-  return {
-    text: `📜 Правила чата\n\nПоказываются по команде /rules. Текст редактируется в Web Admin.\n\n${settings.rulesText ? previewText(settings.rulesText) : "Правила ещё не заданы."}`,
-    keyboard: { inline_keyboard: [backRow("chat", telegramChatId)] } satisfies TelegramInlineKeyboardMarkup
   };
 }
 
@@ -570,8 +563,6 @@ async function renderChatSection(input: { chatId: string; chatTitle: string; tel
     }
     return renderWelcomeDetail(settings, input.telegramChatId);
   }
-
-  if (input.path === "chat.rules") return renderRulesDetail(settings, input.telegramChatId);
 
   if (input.path === "chat.silence") {
     const active = await getActiveSilence(input.chatId);

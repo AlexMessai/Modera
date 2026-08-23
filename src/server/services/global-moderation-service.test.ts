@@ -65,7 +65,7 @@ test("normalizeEscalationRules validates shape, bounds, and caps the list length
   assert.equal(normalizeEscalationRules(tooMany).length, 20);
 });
 
-test("normalizeMediaFilters always returns all 7 types, defaulting anything missing or malformed", () => {
+test("normalizeMediaFilters always returns all 12 types, defaulting anything missing or malformed", () => {
   assert.deepEqual(normalizeMediaFilters("not an array"), DEFAULT_MEDIA_FILTERS);
   assert.deepEqual(normalizeMediaFilters([{ type: "NOT_A_TYPE", enabled: true }]), DEFAULT_MEDIA_FILTERS);
 

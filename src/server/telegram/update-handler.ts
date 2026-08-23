@@ -8,7 +8,6 @@ import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
 import { findMatchingAutoResponse } from "@/server/services/auto-response-service";
 import { findCustomCommand } from "@/server/services/custom-command-service";
 import { sendWelcomeMessage } from "@/server/services/welcome-service";
-import { resolveEffectiveContentSettings } from "@/server/services/content-settings-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
@@ -630,40 +629,15 @@ async function processInfoCommand(input: {
   return true;
 }
 
-const RULES_COMMAND_PATTERN = /^\/rules(?:@\w+)?\s*$/i;
-
-/**
- * /rules — BOT_PRODUCT_SPEC §29. No permission gate (any member can ask to
- * see the rules) and, unlike the admin commands above, deliberately public
- * and doesn't delete the command message -- the text is meant for everyone
- * in the chat, not just whoever typed the command.
- */
-async function processRulesCommand(input: {
-  chatId: string;
-  telegramChatId: number;
-  message: TelegramMessage;
-  client: ReturnType<typeof getTelegramClient>;
-}): Promise<boolean> {
-  const text = input.message.text?.trim() ?? "";
-  const from = input.message.from;
-  if (!from || from.is_bot) return false;
-  if (!RULES_COMMAND_PATTERN.test(text)) return false;
-
-  const { settings } = await resolveEffectiveContentSettings(input.chatId);
-  const reply = settings.rulesText.trim() || "Правила этого чата пока не заданы.";
-  await input.client.sendMessage({ chatId: input.telegramChatId, text: `📜 Правила чата\n\n${reply}` }).catch(() => undefined);
-  return true;
-}
-
 const CUSTOM_COMMAND_WORD_PATTERN = /^\/([a-zA-Z0-9_]{1,32})(?:@\w+)?(?:\s|$)/;
 
 /**
  * Custom Commands (§41, Phase 10) -- checked last in the command chain so
  * every built-in command above always wins a name collision (on top of
  * custom-command-service.ts rejecting reserved trigger words outright at
- * create/update time). Doesn't delete the invoking message -- like /rules,
- * this is a "show me info" command, not a moderation action, and members
- * generally expect their question to stay visible next to the answer.
+ * create/update time). Doesn't delete the invoking message -- this is a
+ * "show me info" command, not a moderation action, and members generally
+ * expect their question to stay visible next to the answer.
  */
 async function processCustomCommand(input: {
   chatId: string;
@@ -1407,11 +1381,6 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             message: update.message,
             client
           })) || (await processInfoCommand({
-            chatId: syncedChat.id,
-            telegramChatId: chat.id,
-            message: update.message,
-            client
-          })) || (await processRulesCommand({
             chatId: syncedChat.id,
             telegramChatId: chat.id,
             message: update.message,

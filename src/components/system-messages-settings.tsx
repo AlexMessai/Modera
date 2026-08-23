@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 
-export type MediaFilterType = "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE";
+export type MediaFilterType =
+  | "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE"
+  | "DOCUMENT" | "STICKER" | "POLL" | "LOCATION" | "CONTACT";
 
 export type MediaFilterRuleValue = {
   type: MediaFilterType;
@@ -47,10 +49,18 @@ const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = {
   VOICE: "Голосовые сообщения",
   AUDIO: "Аудиофайлы",
   VIDEO_NOTE: "Видеосообщения",
-  DICE: "Анимированные кости"
+  DICE: "Анимированные кости",
+  DOCUMENT: "Файлы",
+  STICKER: "Стикеры",
+  POLL: "Опросы",
+  LOCATION: "Геолокация",
+  CONTACT: "Контакты"
 };
 
-const MEDIA_FILTER_ORDER: MediaFilterType[] = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE"];
+const MEDIA_FILTER_ORDER: MediaFilterType[] = [
+  "PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE",
+  "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"
+];
 
 type ManualModerationCommandKey = keyof SystemMessagesValue["manualModeration"];
 
