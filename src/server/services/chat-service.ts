@@ -145,17 +145,29 @@ export async function listChats(input: {
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
   const search = input.search?.trim();
 
+  // Only chats the bot is currently a member of -- excludes REMOVED (bot left/kicked) and
+  // DISABLED (no live BotChat link, or explicitly disabled). NOT_ADMIN/INSUFFICIENT_PERMISSIONS
+  // still count as "added": the bot is present, it just needs permission setup.
+  const botIsPresent: Prisma.ChatWhereInput = {
+    botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } }
+  };
+
   const where: Prisma.ChatWhereInput = search
     ? {
-        OR: [
-          { title: { contains: search, mode: "insensitive" } },
-          { username: { contains: search, mode: "insensitive" } },
-          ...(BigIntSafe(search)
-            ? [{ telegramChatId: BigInt(search) }]
-            : [])
+        AND: [
+          botIsPresent,
+          {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { username: { contains: search, mode: "insensitive" } },
+              ...(BigIntSafe(search)
+                ? [{ telegramChatId: BigInt(search) }]
+                : [])
+            ]
+          }
         ]
       }
-    : {};
+    : botIsPresent;
 
   const [total, chats] = await Promise.all([
     prisma.chat.count({ where }),
