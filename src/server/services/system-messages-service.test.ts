@@ -17,7 +17,7 @@ test("getSystemMessages falls back to app defaults when no Global*Settings rows 
   const messages = await getSystemMessages();
   assert.equal(typeof messages.automod.escalationMuteMessageTemplate, "string");
   assert.equal(typeof messages.automod.escalationBanMessageTemplate, "string");
-  assert.equal(messages.automod.mediaFilters.length, 7);
+  assert.equal(messages.automod.mediaFilters.length, 12);
   assert.equal(typeof messages.manualModeration.warnMessageTemplate, "string");
   assert.equal(typeof messages.captcha.challengeMessageTemplate, "string");
   assert.equal(typeof messages.content.welcomeMessageTemplate, "string");
