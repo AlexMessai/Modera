@@ -1,5 +1,6 @@
 import { requireAdminApi } from "@/server/auth/guards";
 import { listChats } from "@/server/services/chat-service";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +12,12 @@ export async function GET(request: Request) {
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
   const search = url.searchParams.get("search") ?? undefined;
+  const visibleChatIds = await listChatsForAdmin(auth.admin.id);
   const result = await listChats({
     page: Number.isFinite(page) ? page : 1,
     pageSize: Number.isFinite(pageSize) ? pageSize : 25,
-    search
+    search,
+    visibleChatIds
   });
 
   return Response.json({ data: result });

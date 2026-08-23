@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { canModerate } from "@/server/auth/permissions";
 import { getCurrentAdmin } from "@/server/auth/session";
+import { prisma } from "@/server/db/prisma";
+
+type CurrentAdmin = NonNullable<Awaited<ReturnType<typeof getCurrentAdmin>>>;
 
 export async function requireAdminPage() {
   const admin = await getCurrentAdmin();
@@ -43,4 +46,53 @@ export async function requireModerationApi() {
   }
 
   return { ok: true as const, admin: auth.admin };
+}
+
+async function hasChatAccess(admin: CurrentAdmin, chatId: string): Promise<boolean> {
+  if (admin.scope === "GLOBAL") return true;
+  const access = await prisma.chatAdminAccess.findUnique({
+    where: { chatId_adminId: { chatId, adminId: admin.id } },
+    select: { id: true }
+  });
+  return access !== null;
+}
+
+/**
+ * GLOBAL admins pass through unconditionally (current behavior preserved
+ * exactly). A CHAT-scoped admin without a ChatAdminAccess row for this chat
+ * is treated as **not found**, not forbidden -- matching the existing
+ * honest-404 convention elsewhere, so a scoped admin can't probe for a
+ * chat's existence. Call right after requireAdminApi()/requireAdminPage():
+ * API routes do `if (!auth.ok) return auth.response;`, pages do
+ * `if (!auth.ok) notFound();`.
+ */
+export async function requireChatAccess(admin: CurrentAdmin, chatId: string) {
+  const ok = await hasChatAccess(admin, chatId);
+  if (!ok) {
+    return {
+      ok: false as const,
+      response: Response.json(
+        { error: { code: "NOT_FOUND", message: "Чат не найден." } },
+        { status: 404 }
+      )
+    };
+  }
+  return { ok: true as const };
+}
+
+/**
+ * Granting web-panel access to other people is more sensitive than editing
+ * automod settings, so within CHAT scope it's OWNER-only (not ADMIN too,
+ * unlike canManageChatSettings' GLOBAL-scope semantics which this mirrors
+ * for GLOBAL OWNER/ADMIN).
+ */
+export async function canManageChatTeam(admin: CurrentAdmin, chatId: string): Promise<boolean> {
+  if (admin.scope === "GLOBAL") {
+    return admin.role === "OWNER" || admin.role === "ADMIN";
+  }
+  const access = await prisma.chatAdminAccess.findUnique({
+    where: { chatId_adminId: { chatId, adminId: admin.id } },
+    select: { role: true }
+  });
+  return access?.role === "OWNER";
 }

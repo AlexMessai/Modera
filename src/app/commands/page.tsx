@@ -4,6 +4,7 @@ import { COMMAND_CATEGORIES } from "@/components/commands-reference-data";
 import { Sidebar } from "@/components/sidebar";
 import { getCurrentAdmin } from "@/server/auth/session";
 import { listChats } from "@/server/services/chat-service";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 
 export const metadata: Metadata = {
   title: "Команды Modera",
@@ -42,13 +43,14 @@ export default async function CommandsPage() {
   const admin = await getCurrentAdmin();
   if (!admin) return <CommandsContent />;
 
-  const chatList = await listChats({ page: 1, pageSize: 100 });
+  const visibleChatIds = await listChatsForAdmin(admin.id);
+  const chatList = await listChats({ page: 1, pageSize: 100, visibleChatIds });
   const chats = chatList.items.map((chat) => ({ id: chat.id, title: chat.title, status: chat.status }));
 
   return (
     <div className="admin-shell">
       <Sidebar
-        admin={{ displayName: admin.displayName, email: admin.email, role: admin.role }}
+        admin={{ displayName: admin.displayName, email: admin.email ?? "", role: admin.role, scope: admin.scope }}
         chats={chats}
       />
       <div className="admin-main"><CommandsContent /></div>

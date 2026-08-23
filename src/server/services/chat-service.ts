@@ -140,6 +140,10 @@ export async function listChats(input: {
   page: number;
   pageSize: number;
   search?: string;
+  // null (default) = no filter, see everything (GLOBAL admin, unchanged
+  // behavior). An array restricts to those chat IDs -- a CHAT-scoped admin's
+  // ChatAdminAccess rows, see listChatsForAdmin in chat-admin-access-service.ts.
+  visibleChatIds?: string[] | null;
 }) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
@@ -152,10 +156,15 @@ export async function listChats(input: {
     botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } }
   };
 
+  const scopeFilter: Prisma.ChatWhereInput[] = input.visibleChatIds
+    ? [{ id: { in: input.visibleChatIds } }]
+    : [];
+
   const where: Prisma.ChatWhereInput = search
     ? {
         AND: [
           botIsPresent,
+          ...scopeFilter,
           {
             OR: [
               { title: { contains: search, mode: "insensitive" } },
@@ -167,7 +176,9 @@ export async function listChats(input: {
           }
         ]
       }
-    : botIsPresent;
+    : scopeFilter.length > 0
+      ? { AND: [botIsPresent, ...scopeFilter] }
+      : botIsPresent;
 
   const [total, chats] = await Promise.all([
     prisma.chat.count({ where }),
