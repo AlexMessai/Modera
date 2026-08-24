@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
-import { DEFAULT_MANUAL_MODERATION_SETTINGS, renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
+import { DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS, DEFAULT_MANUAL_MODERATION_SETTINGS, renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
 import { getTelegramClient } from "@/server/telegram/client";
 import type { TelegramMessageEntity } from "@/server/telegram/types";
 import { escapeTelegramHtml, parseTelegramHtml } from "@/server/telegram/formatted-text";
@@ -137,7 +137,7 @@ function defaultLegacy(): LegacySettings {
   return {
     publicPunishmentMessagesEnabled: true,
     privatePunishmentMessagesEnabled: true,
-    ...DEFAULT_MANUAL_MODERATION_SETTINGS
+    ...DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS
   };
 }
 
@@ -177,7 +177,7 @@ export async function updateModerationNotificationProfiles(input: {
       where: { id: GLOBAL_ID },
       create: {
         id: GLOBAL_ID,
-        ...DEFAULT_MANUAL_MODERATION_SETTINGS,
+        ...DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS,
         ...legacyText,
         publicPunishmentMessagesEnabled: profiles.some((profile) => profile.channels.PUBLIC.enabled),
         privatePunishmentMessagesEnabled: profiles.some((profile) => profile.channels.OFFENDER.enabled),
@@ -215,20 +215,20 @@ type TelegramPlaceholder = string | { text: string; telegramUserId: number | big
 export function renderTelegramModerationNotification(
   channel: ModerationNotificationChannel,
   source: ModerationNotificationSource,
-  placeholders: Partial<Record<"admin" | "target" | "reason" | "duration" | "warns" | "warnsLimit" | "chat" | "contact", TelegramPlaceholder>>
+  placeholders: Partial<Record<"admin" | "target" | "reason" | "duration" | "warns" | "warnsLimit" | "amount" | "chat" | "contact", TelegramPlaceholder>>
 ): { text: string; entities: TelegramMessageEntity[] } {
   return renderTelegramTemplate(channel.templates[source], placeholders);
 }
 
 export function renderTelegramTemplate(
   templateText: string,
-  placeholders: Partial<Record<"admin" | "target" | "reason" | "duration" | "warns" | "warnsLimit" | "chat" | "contact", TelegramPlaceholder>>
+  placeholders: Partial<Record<"admin" | "target" | "reason" | "duration" | "warns" | "warnsLimit" | "amount" | "chat" | "contact", TelegramPlaceholder>>
 ): { text: string; entities: TelegramMessageEntity[] } {
   const tokens: Record<string, keyof typeof placeholders> = {
     "%admin%": "admin", "%target%": "target", "%reason%": "reason", "%duration%": "duration",
-    "%warns_limit%": "warnsLimit", "%warns%": "warns", "%chat%": "chat", "%contact%": "contact"
+    "%warns_limit%": "warnsLimit", "%warns%": "warns", "%amount%": "amount", "%chat%": "chat", "%contact%": "contact"
   };
-  const tokenPattern = /%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%/g;
+  const tokenPattern = /%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%amount%|%chat%|%contact%/g;
   let formatted = "";
   let cursor = 0;
   for (const match of templateText.matchAll(tokenPattern)) {

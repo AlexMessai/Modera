@@ -26,7 +26,19 @@ const settingsSchema = z.object({
   unbanMessageTemplate: z.string().min(1).max(1000),
   unbanDeleteTargetMessage: z.boolean(),
   kickMessageTemplate: z.string().min(1).max(1000),
-  kickDeleteTargetMessage: z.boolean()
+  kickDeleteTargetMessage: z.boolean(),
+  commands: z.array(z.object({
+    command: z.enum(["warn", "unwarn", "mute", "unmute", "ban", "unban", "kick"]),
+    allowAmount: z.boolean(),
+    deleteCommandMessage: z.boolean(),
+    deleteTargetMessage: z.boolean(),
+    deleteAllTargetMessages: z.boolean(),
+    notifications: z.object({
+      TARGET: z.object({ enabled: z.boolean(), template: z.string().min(1).max(1000) }),
+      PUBLIC: z.object({ enabled: z.boolean(), template: z.string().min(1).max(1000) }),
+      MODERATOR: z.object({ enabled: z.boolean(), template: z.string().min(1).max(1000) })
+    })
+  })).length(7)
 });
 
 export async function GET(

@@ -41,7 +41,7 @@ import {
   ModerationError,
   type ModerationActionValue
 } from "@/server/services/moderation-service";
-import { resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
 import { getModerationNotificationProfile, renderTelegramModerationNotification, renderTelegramTemplate, type ModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
@@ -211,19 +211,6 @@ const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand
 /** /unwarn is not a ModerationActionValue — it only takes a warning back locally. */
 type GroupModerationCommand = ModerationActionValue | "UNWARN";
 
-const TEMPLATE_FIELDS_BY_ACTION: Record<GroupModerationCommand, {
-  template: keyof ManualModerationSettingsValue;
-  deleteTarget: keyof ManualModerationSettingsValue;
-}> = {
-  WARNING: { template: "warnMessageTemplate", deleteTarget: "warnDeleteTargetMessage" },
-  UNWARN: { template: "unwarnMessageTemplate", deleteTarget: "unwarnDeleteTargetMessage" },
-  MUTE: { template: "muteMessageTemplate", deleteTarget: "muteDeleteTargetMessage" },
-  UNMUTE: { template: "unmuteMessageTemplate", deleteTarget: "unmuteDeleteTargetMessage" },
-  BAN: { template: "banMessageTemplate", deleteTarget: "banDeleteTargetMessage" },
-  UNBAN: { template: "unbanMessageTemplate", deleteTarget: "unbanDeleteTargetMessage" },
-  KICK: { template: "kickMessageTemplate", deleteTarget: "kickDeleteTargetMessage" }
-};
-
 const CHAT_PERMISSION_BY_ACTION: Record<GroupModerationCommand, ChatPermission> = {
   WARNING: "moderation.warn",
   UNWARN: "moderation.warn",
@@ -233,6 +220,10 @@ const CHAT_PERMISSION_BY_ACTION: Record<GroupModerationCommand, ChatPermission> 
   UNBAN: "moderation.ban",
   KICK: "moderation.kick"
 };
+
+const COMMAND_KEY_BY_ACTION = {
+  WARNING: "warn", UNWARN: "unwarn", MUTE: "mute", UNMUTE: "unmute", BAN: "ban", UNBAN: "unban", KICK: "kick"
+} as const;
 
 function telegramDisplayName(user: { first_name?: string; last_name?: string; username?: string; id: number }) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
@@ -248,7 +239,7 @@ function formatMinutes(minutes: number) {
 }
 
 /** `adminOnly` keeps internal diagnostics (e.g. a failed auto-punishment) out of the public chat announcement — only the admin who ran the command needs to see them. */
-type ModerationOutcomeLine = { text: string; textEntities?: TelegramMessageEntity[]; publicText?: string; publicEntities?: TelegramMessageEntity[]; adminOnly?: boolean };
+type ModerationOutcomeLine = { text: string; textEntities?: TelegramMessageEntity[]; publicText?: string; publicEntities?: TelegramMessageEntity[]; targetText?: string; targetEntities?: TelegramMessageEntity[]; adminOnly?: boolean };
 
 function joinTelegramLines(lines: Array<{ text: string; entities?: TelegramMessageEntity[] }>) {
   const entities: TelegramMessageEntity[] = [];
@@ -272,17 +263,22 @@ async function applyModerationCommandToTarget(input: {
   durationMinutes: number | null;
   telegramActor: { telegramUserId: number; username?: string; displayName?: string };
   notificationProfile: ModerationNotificationProfile;
+  amount: number;
 }): Promise<ModerationOutcomeLine[]> {
   let warns = "";
   let warnsLimit = "";
   let escalation: ManualWarningEscalation | null = null;
 
   if (input.action === "UNWARN") {
-    const revoked = await executeTelegramActorWarningRevoke({
-      chatId: input.chatId,
-      targetTelegramUserId: input.target.telegramUserId,
-      telegramActor: input.telegramActor
-    });
+    const member = await prisma.chatMember.findFirst({ where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.target.telegramUserId) } }, select: { userId: true } });
+    if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+    const available = await prisma.moderationAction.count({ where: { chatId: input.chatId, affectedUserId: member.userId, type: "WARNING", status: "SUCCEEDED", revokedAt: null } });
+    if (input.amount > available) throw new ModerationError("INVALID_WARNING_AMOUNT", `Нельзя снять ${input.amount} предупреждения: у пользователя только ${available}`, 409);
+    let revoked: Awaited<ReturnType<typeof executeTelegramActorWarningRevoke>> | null = null;
+    for (let index = 0; index < input.amount; index += 1) {
+      revoked = await executeTelegramActorWarningRevoke({ chatId: input.chatId, targetTelegramUserId: input.target.telegramUserId, telegramActor: input.telegramActor, suppressTargetNotification: true });
+    }
+    if (!revoked) throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
     const remaining = await describeWarningStanding({
       chatId: revoked.chatId,
       affectedUserId: revoked.affectedUserId
@@ -297,7 +293,8 @@ async function applyModerationCommandToTarget(input: {
       reason: input.reason,
       muteDurationMinutes: input.action === "MUTE" ? input.durationMinutes : null,
       banDurationMinutes: input.action === "BAN" ? input.durationMinutes : null,
-      telegramActor: input.telegramActor
+      telegramActor: input.telegramActor,
+      suppressTargetNotification: true
     });
 
     if (input.action === "WARNING") {
@@ -318,13 +315,17 @@ async function applyModerationCommandToTarget(input: {
     reason: input.reason ?? "",
     duration: (input.action === "MUTE" || input.action === "BAN") && input.durationMinutes ? formatMinutes(input.durationMinutes) : "",
     warns,
-    warnsLimit
+    warnsLimit,
+    amount: String(input.amount)
   };
   // Rendered unconditionally — the admin running the command always gets a
   // private confirmation that the action went through, even when public
   // chat announcements are switched off (silent moderation is the default;
   // "silent" means the chat stays quiet, not that the admin is left guessing).
   const lines: ModerationOutcomeLine[] = [];
+  const targetNotification = input.notificationProfile.channels.OFFENDER.enabled
+    ? renderTelegramModerationNotification(input.notificationProfile.channels.OFFENDER, "MANUAL", placeholders)
+    : null;
   if (input.notificationProfile.channels.MODERATOR.enabled) {
     const moderator = renderTelegramModerationNotification(input.notificationProfile.channels.MODERATOR, "MANUAL", placeholders);
     const publicNotification = input.notificationProfile.channels.PUBLIC.enabled
@@ -333,11 +334,14 @@ async function applyModerationCommandToTarget(input: {
     lines.push({
       text: moderator.text,
       textEntities: moderator.entities,
-      ...(publicNotification ? { publicText: publicNotification.text, publicEntities: publicNotification.entities } : {})
+      ...(publicNotification ? { publicText: publicNotification.text, publicEntities: publicNotification.entities } : {}),
+      ...(targetNotification ? { targetText: targetNotification.text, targetEntities: targetNotification.entities } : {})
     });
   } else if (input.notificationProfile.channels.PUBLIC.enabled) {
     const publicNotification = renderTelegramModerationNotification(input.notificationProfile.channels.PUBLIC, "MANUAL", placeholders);
-    lines.push({ text: "", publicText: publicNotification.text, publicEntities: publicNotification.entities });
+    lines.push({ text: "", publicText: publicNotification.text, publicEntities: publicNotification.entities, ...(targetNotification ? { targetText: targetNotification.text, targetEntities: targetNotification.entities } : {}) });
+  } else if (targetNotification) {
+    lines.push({ text: "", targetText: targetNotification.text, targetEntities: targetNotification.entities });
   }
 
   // The warning that crossed the threshold also triggered a punishment — say so
@@ -373,6 +377,26 @@ async function applyModerationCommandToTarget(input: {
   return lines;
 }
 
+async function deleteTargetMessagesFromCurrentChat(input: { chatId: string; telegramChatId: number; targetTelegramUserId: number; repliedMessageId: number; client: ReturnType<typeof getTelegramClient> }) {
+  const user = await prisma.telegramUser.findUnique({ where: { telegramUserId: BigInt(input.targetTelegramUserId) }, select: { id: true } });
+  const stored = user ? await prisma.message.findMany({ where: { chatId: input.chatId, senderUserId: user.id, deletedAt: null }, select: { id: true, telegramMessageId: true } }) : [];
+  const storedIds = new Map(stored.map((message) => [Number(message.telegramMessageId), message.id]));
+  const messageIds = Array.from(new Set([input.repliedMessageId, ...stored.map((message) => Number(message.telegramMessageId))]));
+  let deleted = 0;
+  let failed = 0;
+  for (let offset = 0; offset < messageIds.length; offset += 20) {
+    const batch = messageIds.slice(offset, offset + 20);
+    const results = await Promise.allSettled(batch.map((messageId) => input.client.deleteMessage(input.telegramChatId, messageId)));
+    const databaseIds: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") { deleted += 1; const id = storedIds.get(batch[index]!); if (id) databaseIds.push(id); }
+      else failed += 1;
+    });
+    if (databaseIds.length) await prisma.message.updateMany({ where: { id: { in: databaseIds } }, data: { deletedAt: new Date() } });
+  }
+  return { deleted, failed };
+}
+
 async function processGroupModerationCommand(input: {
   chatId: string;
   telegramChatId: number;
@@ -391,8 +415,26 @@ async function processGroupModerationCommand(input: {
   if (!config) return false;
   const { action, allowDuration, requireDurationUnit } = config;
 
+  const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
+  const commandProfile = settings.commands.find((profile) => profile.command === COMMAND_KEY_BY_ACTION[action])!;
+  let commandArguments = commandMatch[2]?.trim() ?? "";
+  let amount = 1;
+  let amountError: string | null = null;
+  if (action === "UNWARN" && commandProfile.allowAmount && commandArguments) {
+    const parts = commandArguments.split(/\s+/);
+    const last = parts.at(-1) ?? "";
+    const invalidStandaloneAmount = /^[+-]?(?:0|\d+[.,]\d+)$/.test(last);
+    if ((Boolean(input.message.reply_to_message) || parts.length > 1 || invalidStandaloneAmount) && /^[+-]?\d+(?:[.,]\d+)?$/.test(last)) {
+      const parsedAmount = Number(last.replace(",", "."));
+      if (!Number.isInteger(parsedAmount) || parsedAmount < 1) amountError = "Количество должно быть целым числом от 1.";
+      else amount = parsedAmount;
+      parts.pop();
+      commandArguments = parts.join(" ");
+    }
+  }
+
   const { targetTokens, durationMinutes, reason } = parseModerationCommandArguments(
-    commandMatch[2] ?? "",
+    commandArguments,
     { allowDuration, requireDurationUnit }
   );
 
@@ -407,7 +449,7 @@ async function processGroupModerationCommand(input: {
   // The command text itself (e.g. "/warn спам") never belongs in the chat —
   // delete it immediately, before any validation, so it disappears whether
   // the command succeeds, fails permission/format checks, or errors out.
-  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+  if (commandProfile.deleteCommandMessage) await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
 
   const allowed = await hasChatPermission({
     chatId: input.chatId,
@@ -419,6 +461,7 @@ async function processGroupModerationCommand(input: {
     await privateReply("❌ У вас нет прав администратора в этом чате.");
     return true;
   }
+  if (amountError) { await privateReply(amountError); return true; }
 
   let targets: ResolvedModerationTarget[] = [];
   let unresolvedUsernames: string[] = [];
@@ -453,11 +496,15 @@ async function processGroupModerationCommand(input: {
     displayName: [from.first_name, from.last_name].filter(Boolean).join(" ").trim() || undefined
   };
 
-  const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
   const notificationProfile = await getModerationNotificationProfile(action);
+  for (const [recipient, channel] of [["TARGET", "OFFENDER"], ["PUBLIC", "PUBLIC"], ["MODERATOR", "MODERATOR"]] as const) {
+    const configured = commandProfile.notifications[recipient];
+    notificationProfile.channels[channel] = { enabled: configured.enabled, templates: { ...notificationProfile.channels[channel].templates, MANUAL: configured.template } };
+  }
   // Only meaningful in reply mode — target-token commands (@username/ID) have
   // no "message this was a reply to" to delete.
-  if (settings[TEMPLATE_FIELDS_BY_ACTION[action].deleteTarget] && input.message.reply_to_message) {
+  const massDelete = (action === "MUTE" || action === "BAN") && commandProfile.deleteTargetMessage && commandProfile.deleteAllTargetMessages && input.message.reply_to_message && targets.length === 1;
+  if (commandProfile.deleteTargetMessage && input.message.reply_to_message && !massDelete) {
     await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
   }
 
@@ -466,6 +513,7 @@ async function processGroupModerationCommand(input: {
   // when the moderator disabled ordinary success confirmations.
   const publicLines: Array<{ text: string; entities?: TelegramMessageEntity[] }> = [];
   const adminSummaryLines: Array<{ text: string; entities?: TelegramMessageEntity[] }> = [];
+  let actionSucceeded = false;
   for (const target of targets) {
     try {
       const outcomes = await applyModerationCommandToTarget({
@@ -475,13 +523,16 @@ async function processGroupModerationCommand(input: {
         reason,
         durationMinutes,
         telegramActor,
-        notificationProfile
+        notificationProfile,
+        amount
       });
+      actionSucceeded = true;
       for (const outcome of outcomes) {
         const prefix = targets.length > 1 ? `${target.displayName}: ` : "";
         const prefixEntity = prefix ? [{ type: "text_link", offset: 0, length: target.displayName.length, url: `tg://user?id=${target.telegramUserId}` }] : [];
         if (outcome.text) adminSummaryLines.push({ text: prefix + outcome.text, entities: [...prefixEntity, ...(outcome.textEntities ?? []).map((entity) => ({ ...entity, offset: entity.offset + prefix.length }))] });
         if (outcome.publicText && !outcome.adminOnly) publicLines.push({ text: prefix + outcome.publicText, entities: [...prefixEntity, ...(outcome.publicEntities ?? []).map((entity) => ({ ...entity, offset: entity.offset + prefix.length }))] });
+        if (outcome.targetText && !outcome.adminOnly) await input.client.sendMessage({ chatId: input.telegramChatId, text: outcome.targetText, entities: outcome.targetEntities, receiverUserId: target.telegramUserId }).catch(() => undefined);
       }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
@@ -494,6 +545,10 @@ async function processGroupModerationCommand(input: {
 
   if (publicLines.length > 0) {
     await input.client.sendMessage({ chatId: input.telegramChatId, ...joinTelegramLines(publicLines) }).catch(() => undefined);
+  }
+  if (massDelete && actionSucceeded && input.message.reply_to_message) {
+    const result = await deleteTargetMessagesFromCurrentChat({ chatId: input.chatId, telegramChatId: input.telegramChatId, targetTelegramUserId: targets[0]!.telegramUserId, repliedMessageId: input.message.reply_to_message.message_id, client: input.client });
+    adminSummaryLines.push({ text: result.failed ? `Удалено сообщений: ${result.deleted}. Не удалось удалить: ${result.failed}` : `Удалено сообщений: ${result.deleted}` });
   }
   if (adminSummaryLines.length > 0) {
     const summary = joinTelegramLines(adminSummaryLines);

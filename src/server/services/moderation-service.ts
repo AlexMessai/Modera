@@ -202,6 +202,7 @@ async function recordWarning(input: {
   reason: string | null;
   metadata?: Prisma.InputJsonObject;
   notificationAdmin?: TelegramActor;
+  suppressTargetNotification?: boolean;
 }) {
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -237,7 +238,7 @@ async function recordWarning(input: {
     return { action, membership };
   });
 
-  await notifyPunishmentAppealOption({
+  if (!input.suppressTargetNotification) await notifyPunishmentAppealOption({
     moderationActionId: result.action.id,
     chatId: input.member.chatId,
     telegramChatId: input.member.chat.telegramChatId,
@@ -377,6 +378,7 @@ async function executeTelegramBackedAction(input: {
   metadata?: Prisma.InputJsonObject;
   escalationWarningCount?: number;
   notificationAdmin?: TelegramActor;
+  suppressTargetNotification?: boolean;
 }) {
   const member = input.member;
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -478,7 +480,7 @@ async function executeTelegramBackedAction(input: {
       return { membership, completedAction };
     });
 
-    if (input.action === "MUTE" || input.action === "BAN") {
+    if (!input.suppressTargetNotification && (input.action === "MUTE" || input.action === "BAN")) {
       await notifyPunishmentAppealOption({
         moderationActionId: updated.completedAction.id,
         chatId: member.chatId,
@@ -495,7 +497,7 @@ async function executeTelegramBackedAction(input: {
           displayName: input.notificationAdmin.displayName ?? input.notificationAdmin.username ?? "Администратор"
         } : undefined
       }).catch(() => undefined);
-    } else if (input.action === "UNMUTE" || input.action === "UNBAN" || input.action === "KICK") {
+    } else if (!input.suppressTargetNotification && (input.action === "UNMUTE" || input.action === "UNBAN" || input.action === "KICK")) {
       await notifyModerationTarget({
         chatId: member.chatId,
         telegramChatId: member.chat.telegramChatId,
@@ -604,6 +606,7 @@ export async function executeTelegramActorModerationAction(input: {
   muteDurationMinutes?: number | null;
   banDurationMinutes?: number | null;
   telegramActor: TelegramActor;
+  suppressTargetNotification?: boolean;
 }) {
   const reason = normalizeReason(input.reason);
   if (requiresReason(input.action) && !reason) throw new ModerationError("REASON_REQUIRED", "Укажите причину действия модерации.", 400);
@@ -617,7 +620,7 @@ export async function executeTelegramActorModerationAction(input: {
   const metadata = telegramActorMetadata(input.telegramActor);
 
   if (input.action === "WARNING") {
-    return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata, notificationAdmin: input.telegramActor });
+    return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata, notificationAdmin: input.telegramActor, suppressTargetNotification: input.suppressTargetNotification });
   }
 
   const durationMinutes = input.action === "MUTE" ? input.muteDurationMinutes : input.action === "BAN" ? input.banDurationMinutes : null;
@@ -634,7 +637,8 @@ export async function executeTelegramActorModerationAction(input: {
     metadata: durationMinutes
       ? { ...metadata, ...(input.action === "MUTE" ? { muteDurationMinutes: durationMinutes } : { banDurationMinutes: durationMinutes }) }
       : metadata,
-    notificationAdmin: input.telegramActor
+    notificationAdmin: input.telegramActor,
+    suppressTargetNotification: input.suppressTargetNotification
   });
 }
 
@@ -651,6 +655,7 @@ async function recordWarningRevoke(input: {
   source: ActionSource;
   metadata?: Prisma.InputJsonObject;
   notificationAdmin?: TelegramActor;
+  suppressTargetNotification?: boolean;
 }) {
   const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -669,7 +674,7 @@ async function recordWarningRevoke(input: {
     throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
   }
 
-  await notifyModerationTarget({
+  if (!input.suppressTargetNotification) await notifyModerationTarget({
     chatId: member.chatId,
     telegramChatId: member.chat.telegramChatId,
     telegramUserId: member.user.telegramUserId,
@@ -708,6 +713,7 @@ export async function executeTelegramActorWarningRevoke(input: {
   chatId: string;
   targetTelegramUserId: number;
   telegramActor: TelegramActor;
+  suppressTargetNotification?: boolean;
 }) {
   const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -716,7 +722,8 @@ export async function executeTelegramActorWarningRevoke(input: {
     actingAdminId: null,
     source: "TELEGRAM",
     metadata: telegramActorMetadata(input.telegramActor),
-    notificationAdmin: input.telegramActor
+    notificationAdmin: input.telegramActor,
+    suppressTargetNotification: input.suppressTargetNotification
   });
 }
 

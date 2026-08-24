@@ -3,6 +3,7 @@ import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
   DEFAULT_MANUAL_MODERATION_SETTINGS,
+  DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS,
   DEFAULT_MANUAL_MODERATION_VISIBILITY,
   normalizeManualModerationSettings,
   renderManualModerationTemplate,
@@ -122,7 +123,7 @@ test("message templates are edited globally, not per chat -- a chat-local write 
 
     await prisma.globalManualModerationSettings.upsert({
       where: { id: "global" },
-      create: { id: "global", ...DEFAULT_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" },
+      create: { id: "global", ...DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS, banMessageTemplate: "GLOBAL BAN %target%" },
       update: { banMessageTemplate: "GLOBAL BAN %target%" }
     });
 
@@ -131,7 +132,7 @@ test("message templates are edited globally, not per chat -- a chat-local write 
   } finally {
     await prisma.globalManualModerationSettings.upsert({
       where: { id: "global" },
-      create: { id: "global", ...DEFAULT_MANUAL_MODERATION_SETTINGS },
+      create: { id: "global", ...DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS },
       update: { banMessageTemplate: DEFAULT_MANUAL_MODERATION_SETTINGS.banMessageTemplate }
     });
     await cleanup();

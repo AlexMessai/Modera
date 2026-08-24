@@ -496,6 +496,7 @@ model ChatManualModerationSettings {
   unbanDeleteTargetMessage   Boolean  @default(false)
   kickMessageTemplate        String   @default("👢 %target% исключён(а) из чата. %reason%") @db.VarChar(1000)
   kickDeleteTargetMessage    Boolean  @default(false)
+  commandProfiles            Json     @default("[]")
   createdAt                  DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
   chat                       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)

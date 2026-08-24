@@ -1,186 +1,91 @@
 "use client";
 
-import { useState } from "react";
-import { Check, ShieldCheck } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertTriangle, Check, ChevronDown, ShieldCheck } from "lucide-react";
 import { SettingsRow } from "@/components/settings-row";
 
-export type ManualModerationSettingsValue = {
-  warnMessageTemplate: string;
-  warnDeleteTargetMessage: boolean;
-  warnEphemeralMessageTemplate: string;
-  unwarnMessageTemplate: string;
-  unwarnDeleteTargetMessage: boolean;
-  muteMessageTemplate: string;
-  muteDeleteTargetMessage: boolean;
-  muteEphemeralMessageTemplate: string;
-  unmuteMessageTemplate: string;
-  unmuteDeleteTargetMessage: boolean;
-  banMessageTemplate: string;
-  banDeleteTargetMessage: boolean;
-  banEphemeralMessageTemplate: string;
-  unbanMessageTemplate: string;
-  unbanDeleteTargetMessage: boolean;
-  kickMessageTemplate: string;
-  kickDeleteTargetMessage: boolean;
-};
-
-// Single source of truth, global only -- see manual-moderation-settings-service.ts.
-export type ManualModerationVisibilitySettingsValue = {
-  publicPunishmentMessagesEnabled: boolean;
-  privatePunishmentMessagesEnabled: boolean;
-};
-
-type Props = {
-  chatId: string;
-  initial: ManualModerationSettingsValue;
-  /** Global-only visibility flags, shown here read-only for context (edited under Система → Уведомления). */
-  visibility: ManualModerationVisibilitySettingsValue;
-  canEdit: boolean;
-  onSaved?: (saved: ManualModerationSettingsValue) => void;
-};
-
 type CommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
+type Recipient = "TARGET" | "PUBLIC" | "MODERATOR";
+type CommandProfile = { command: CommandKey; allowAmount: boolean; deleteCommandMessage: boolean; deleteTargetMessage: boolean; deleteAllTargetMessages: boolean; notifications: Record<Recipient, { enabled: boolean; template: string }> };
 
-type CommandInfo = {
-  key: CommandKey;
-  command: string;
-  label: string;
+export type ManualModerationSettingsValue = {
+  warnMessageTemplate: string; warnDeleteTargetMessage: boolean; warnEphemeralMessageTemplate: string;
+  unwarnMessageTemplate: string; unwarnDeleteTargetMessage: boolean;
+  muteMessageTemplate: string; muteDeleteTargetMessage: boolean; muteEphemeralMessageTemplate: string;
+  unmuteMessageTemplate: string; unmuteDeleteTargetMessage: boolean;
+  banMessageTemplate: string; banDeleteTargetMessage: boolean; banEphemeralMessageTemplate: string;
+  unbanMessageTemplate: string; unbanDeleteTargetMessage: boolean;
+  kickMessageTemplate: string; kickDeleteTargetMessage: boolean; commands: CommandProfile[];
 };
+export type ManualModerationVisibilitySettingsValue = { publicPunishmentMessagesEnabled: boolean; privatePunishmentMessagesEnabled: boolean };
+type Props = { chatId: string; initial: ManualModerationSettingsValue; visibility?: ManualModerationVisibilitySettingsValue; canEdit: boolean; onSaved?: (saved: ManualModerationSettingsValue) => void };
 
-const COMMAND_SECTIONS: Array<{ title: string; commands: CommandInfo[] }> = [
-  {
-    title: "Предупреждения",
-    commands: [
-      { key: "warn", command: "/warn", label: "Предупреждение" },
-      { key: "unwarn", command: "/unwarn", label: "Снятие предупреждения" }
-    ]
-  },
-  {
-    title: "Mute",
-    commands: [
-      { key: "mute", command: "/mute", label: "Mute" },
-      { key: "unmute", command: "/unmute", label: "Снятие mute" }
-    ]
-  },
-  {
-    title: "Блокировка",
-    commands: [
-      { key: "ban", command: "/ban", label: "Блокировка" },
-      { key: "unban", command: "/unban", label: "Разблокировка" }
-    ]
-  },
-  {
-    title: "Кик",
-    commands: [
-      { key: "kick", command: "/kick", label: "Кик" }
-    ]
-  }
+const GROUPS: Array<{ key: string; title: string; commands: Array<{ key: CommandKey; tab: string }> }> = [
+  { key: "warnings", title: "Предупреждения", commands: [{ key: "warn", tab: "/warn · Выдать" }, { key: "unwarn", tab: "/unwarn · Снять" }] },
+  { key: "restrictions", title: "Ограничения", commands: [{ key: "mute", tab: "/mute · Ограничить" }, { key: "unmute", tab: "/unmute · Снять" }] },
+  { key: "blocks", title: "Блокировки", commands: [{ key: "ban", tab: "/ban · Заблокировать" }, { key: "unban", tab: "/unban · Снять" }] },
+  { key: "kick", title: "Исключение из чата", commands: [{ key: "kick", tab: "/kick" }] }
 ];
+const RECIPIENTS: Array<{ key: Recipient; title: string; description: string }> = [
+  { key: "TARGET", title: "Нарушителю", description: "Видит только получатель наказания внутри чата" },
+  { key: "PUBLIC", title: "Публично в чат", description: "Видят все участники" },
+  { key: "MODERATOR", title: "Модераторам", description: "Только модераторам" }
+];
+const VARIABLES = ["%target%", "%amount%", "%warns%", "%warns_limit%", "%admin%"];
+const renderPreview = (template: string) => template.replaceAll("%target%", "@alex_test").replaceAll("%amount%", "2").replaceAll("%warns_limit%", "3").replaceAll("%warns%", "1").replaceAll("%admin%", "Алексей").replace(/<[^>]+>/g, "");
 
-function deleteTargetKey(key: CommandKey) {
-  return `${key}DeleteTargetMessage` as const;
-}
-
-export function ManualModerationSettings({
-  chatId,
-  initial,
-  visibility,
-  canEdit,
-  onSaved
-}: Props) {
+export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: Props) {
   const [settings, setSettings] = useState(initial);
+  const [openGroup, setOpenGroup] = useState("warnings");
+  const [activeCommands, setActiveCommands] = useState<Record<string, CommandKey>>({ warnings: "unwarn", restrictions: "mute", blocks: "ban", kick: "kick" });
+  const [recipient, setRecipient] = useState<Recipient>("PUBLIC");
+  const [confirmCommand, setConfirmCommand] = useState<CommandKey | null>(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const fieldsDisabled = !canEdit || saving;
-
-  function setField<K extends keyof ManualModerationSettingsValue>(field: K, value: ManualModerationSettingsValue[K]) {
-    setSettings((current) => ({ ...current, [field]: value }) as ManualModerationSettingsValue);
-  }
+  const [feedback, setFeedback] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const updateCommand = (key: CommandKey, change: (profile: CommandProfile) => CommandProfile) => setSettings((current) => ({ ...current, commands: current.commands.map((profile) => profile.command === key ? change(profile) : profile) }));
 
   async function save() {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
+    setSaving(true); setFeedback(null);
     try {
-      const response = await fetch(`/api/chats/${chatId}/manual-moderation`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(settings)
-      });
+      const response = await fetch(`/api/chats/${chatId}/manual-moderation`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(settings) });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки ручной модерации.");
-
-      const savedSettings = payload.data as ManualModerationSettingsValue;
-      setSettings(savedSettings);
-      setSuccess("Настройки этого чата сохранены.");
-      onSaved?.(savedSettings);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки ручной модерации.");
-    } finally {
-      setSaving(false);
-    }
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки.");
+      setSettings(payload.data); onSaved?.(payload.data); setFeedback({ kind: "success", text: "Настройки этого чата сохранены." });
+    } catch (error) { setFeedback({ kind: "error", text: error instanceof Error ? error.message : "Не удалось сохранить настройки." }); }
+    finally { setSaving(false); }
   }
 
-  return (
-    <div className="automod-settings">
-      {!canEdit ? (
-        <div className="moderation-readonly">
-          <ShieldCheck size={18} />
-          <div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div>
-        </div>
-      ) : null}
+  function insertVariable(command: CommandKey, variable: string) {
+    const editor = editorRef.current;
+    const text = settings.commands.find((item) => item.command === command)!.notifications[recipient].template;
+    const start = editor?.selectionStart ?? text.length;
+    const end = editor?.selectionEnd ?? start;
+    updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [recipient]: { ...current.notifications[recipient], template: `${text.slice(0, start)}${variable}${text.slice(end)}` } } }));
+    requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(start + variable.length, start + variable.length); });
+  }
 
-      <div className="settings-section">
-        <span className="settings-section-title">Видимость (общая для всех чатов)</span>
-        <SettingsRow
-          title="Публичные сообщения о наказаниях"
-          description="Показывать сообщения о действиях модераторов в общем чате. Единая настройка для /warn, /unwarn, /mute, /unmute, /ban, /unban и /kick."
-          checked={visibility.publicPunishmentMessagesEnabled}
-          disabled
-          onChange={() => undefined}
-        />
-        <SettingsRow
-          title="Приватные сообщения о наказаниях"
-          description="Личное уведомление наказанному участнику — сообщение в чате, видимое только ему. Не зависит от публичных сообщений выше."
-          checked={visibility.privatePunishmentMessagesEnabled}
-          disabled
-          onChange={() => undefined}
-        />
-        <small className="hint-note">Тексты и видимость этих сообщений редактируются в «Система» → «Уведомления».</small>
-      </div>
-
-      <div className="settings-section">
-        <span className="settings-section-title">Независимые настройки команд</span>
-        <small className="hint-note">Команды выполняются ответом (Reply) на сообщение участника. Сообщение с самой командой (например, «/warn спам») бот удаляет из чата всегда, сразу после обработки — независимо от результата.</small>
-        {COMMAND_SECTIONS.map((section) => (
-          <div key={section.title}>
-            <span className="manual-mod-group-label">{section.title}</span>
-            {section.commands.map((commandInfo) => (
-              <SettingsRow
-                key={commandInfo.key}
-                title={<span className="manual-mod-field-label"><code className="manual-mod-command-chip">{commandInfo.command}</code>Удалять сообщение участника — {commandInfo.label}</span>}
-                ariaLabel={`Удалять сообщение участника — ${commandInfo.label} (${commandInfo.command})`}
-                description="Удалять исходное сообщение при применении наказания."
-                checked={settings[deleteTargetKey(commandInfo.key)]}
-                disabled={fieldsDisabled}
-                onChange={(checked) => setField(deleteTargetKey(commandInfo.key), checked)}
-              />
-            ))}
+  return <div className="automod-settings manual-mod-settings">
+    {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div></div> : null}
+    <div className="manual-mod-accordions">{GROUPS.map((group) => {
+      const expanded = openGroup === group.key;
+      const command = activeCommands[group.key] ?? group.commands[0]!.key;
+      const profile = settings.commands.find((item) => item.command === command)!;
+      const selectedChannel = profile.notifications[recipient];
+      return <section className={`manual-mod-accordion${expanded ? " is-open" : ""}`} key={group.key}>
+        <button className="manual-mod-accordion-head" type="button" aria-expanded={expanded} onClick={() => setOpenGroup(group.key)}><span>{group.title}</span><ChevronDown size={18} /></button>
+        {expanded ? <div className="manual-mod-accordion-body">
+          <div className="manual-mod-tabs" role="tablist">{group.commands.map((item) => <button key={item.key} type="button" role="tab" aria-selected={command === item.key} className={command === item.key ? "is-active" : ""} onClick={() => { setActiveCommands((current) => ({ ...current, [group.key]: item.key })); setRecipient("PUBLIC"); }}>{item.tab}</button>)}</div>
+          {command === "unwarn" ? <><div className="manual-mod-block"><h4>Как использовать</h4><div className="manual-mod-usage"><code>/unwarn @username</code><span>снять одно предупреждение</span><code>/unwarn @username 2</code><span>снять указанное количество</span><code>/unwarn</code><span>ответом на сообщение</span><code>/unwarn 2</code><span>ответом и снять указанное количество</span></div></div><div className="manual-mod-block"><h4>Параметры команды</h4><SettingsRow title="Разрешить указывать количество" description="Если количество не указано, снимается одно предупреждение" checked={profile.allowAmount} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, allowAmount: checked }))} /><p className="manual-mod-note">Принимаются только целые числа от 1. Нельзя снять больше предупреждений, чем есть у пользователя.</p></div></> : null}
+          <div className="manual-mod-block"><h4>Кому отправить уведомление</h4><div className="manual-mod-recipients">{RECIPIENTS.map((item) => <div key={item.key} role="button" tabIndex={0} className={`manual-mod-recipient${recipient === item.key ? " is-selected" : ""}`} onClick={() => setRecipient(item.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setRecipient(item.key); } }}><div><strong>{item.title}</strong><span>{item.description}</span></div><button type="button" role="switch" aria-checked={profile.notifications[item.key].enabled} aria-label={`Уведомление: ${item.title}`} className={`switch${profile.notifications[item.key].enabled ? " switch--on" : ""}`} disabled={!canEdit || saving} onClick={(event) => { event.stopPropagation(); updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [item.key]: { ...current.notifications[item.key], enabled: !current.notifications[item.key].enabled } } })); }}><span className="switch-thumb" /></button></div>)}</div>
+            {selectedChannel.enabled ? <div className="manual-mod-editor"><label htmlFor={`manual-template-${command}-${recipient}`}>Шаблон сообщения</label><textarea ref={editorRef} id={`manual-template-${command}-${recipient}`} rows={4} value={selectedChannel.template} disabled={!canEdit || saving} onChange={(event) => updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [recipient]: { ...current.notifications[recipient], template: event.target.value } } }))} /><div className="manual-mod-variables">{VARIABLES.map((variable) => <button type="button" key={variable} onClick={() => insertVariable(command, variable)} disabled={!canEdit || saving}>{variable}</button>)}</div><div className="manual-mod-preview"><small>ПРЕДПРОСМОТР</small><p>{renderPreview(selectedChannel.template)}</p></div></div> : null}
           </div>
-        ))}
-      </div>
-
-      {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
-      {success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
-      {canEdit ? (
-        <div className="automod-actions">
-          <button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}>
-            <Check size={16} />{saving ? "Сохраняю…" : "Сохранить настройки"}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
+          <div className="manual-mod-block"><h4>После применения</h4><SettingsRow title="Удалить сообщение с командой" checked={profile.deleteCommandMessage} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, deleteCommandMessage: checked }))} /><SettingsRow title="Удалить сообщение, на которое ответили" description="Сработает, только если команда отправлена ответом" checked={profile.deleteTargetMessage} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, deleteTargetMessage: checked, deleteAllTargetMessages: checked ? current.deleteAllTargetMessages : false }))} />{(command === "mute" || command === "ban") && profile.deleteTargetMessage ? <div className="manual-mod-danger-setting"><SettingsRow title="Удалить все сообщения пользователя в чате" description="Бот удалит все доступные ему сообщения этого пользователя в текущем чате" checked={profile.deleteAllTargetMessages} disabled={!canEdit || saving} onChange={(checked) => checked ? setConfirmCommand(command) : updateCommand(command, (current) => ({ ...current, deleteAllTargetMessages: false }))} /></div> : null}</div>
+        </div> : null}
+      </section>;
+    })}</div>
+    {feedback ? <div className={`moderation-feedback moderation-feedback--${feedback.kind}`}>{feedback.text}</div> : null}
+    {canEdit ? <div className="automod-actions"><button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}><Check size={16} />{saving ? "Сохраняю…" : "Сохранить настройки"}</button></div> : null}
+    {confirmCommand ? <div className="automod-modal-backdrop" role="presentation"><div className="automod-modal manual-mod-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-all-title"><AlertTriangle size={22} /><h3 id="delete-all-title">Удалять все сообщения пользователя?</h3><p>После применения <code>/mute</code> или <code>/ban</code> бот попытается удалить все доступные сообщения пользователя в этом чате. Отменить удаление будет невозможно.</p><div className="automod-actions"><button className="button" type="button" onClick={() => setConfirmCommand(null)}>Отмена</button><button className="button button--danger" type="button" onClick={() => { updateCommand(confirmCommand, (current) => ({ ...current, deleteAllTargetMessages: true })); setConfirmCommand(null); }}>Включить удаление</button></div></div></div> : null}
+  </div>;
 }

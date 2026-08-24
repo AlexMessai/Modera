@@ -20,7 +20,43 @@ export type ManualModerationSettingsValue = {
   unbanDeleteTargetMessage: boolean;
   kickMessageTemplate: string;
   kickDeleteTargetMessage: boolean;
+  commands: ManualModerationCommandProfile[];
 };
+
+export type ManualModerationCommandKey = "warn" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
+export type ManualModerationRecipient = "TARGET" | "PUBLIC" | "MODERATOR";
+export type ManualModerationCommandProfile = {
+  command: ManualModerationCommandKey;
+  allowAmount: boolean;
+  deleteCommandMessage: boolean;
+  deleteTargetMessage: boolean;
+  deleteAllTargetMessages: boolean;
+  notifications: Record<ManualModerationRecipient, { enabled: boolean; template: string }>;
+};
+
+const COMMAND_KEYS: ManualModerationCommandKey[] = ["warn", "unwarn", "mute", "unmute", "ban", "unban", "kick"];
+const DEFAULT_TEMPLATES: Record<ManualModerationCommandKey, string> = {
+  warn: "%admin% выдал предупреждение %target%. Причина: %reason%",
+  unwarn: "У %target% снято предупреждений: %amount%. Осталось: %warns%/%warns_limit%",
+  mute: "%admin% ограничил %target% на %duration%. Причина: %reason%",
+  unmute: "%admin% снял ограничение с %target%.",
+  ban: "%admin% заблокировал %target%. Причина: %reason%",
+  unban: "%admin% разблокировал %target%.",
+  kick: "%admin% исключил %target% из чата. Причина: %reason%"
+};
+
+export const DEFAULT_MANUAL_COMMAND_PROFILES: ManualModerationCommandProfile[] = COMMAND_KEYS.map((command) => ({
+  command,
+  allowAmount: command === "unwarn",
+  deleteCommandMessage: true,
+  deleteTargetMessage: false,
+  deleteAllTargetMessages: false,
+  notifications: {
+    TARGET: { enabled: false, template: DEFAULT_TEMPLATES[command] },
+    PUBLIC: { enabled: true, template: DEFAULT_TEMPLATES[command] },
+    MODERATOR: { enabled: true, template: DEFAULT_TEMPLATES[command] }
+  }
+}));
 
 // Single source of truth, global only -- no per-chat or per-command override.
 // publicPunishmentMessagesEnabled gates the group-chat announcement for every
@@ -58,7 +94,8 @@ export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue =
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
   unbanDeleteTargetMessage: false,
   kickMessageTemplate: "👢 %target% исключён(а) из чата. %reason%",
-  kickDeleteTargetMessage: false
+  kickDeleteTargetMessage: false,
+  commands: DEFAULT_MANUAL_COMMAND_PROFILES
 };
 
 export const DEFAULT_MANUAL_MODERATION_VISIBILITY: ManualModerationVisibilitySettingsValue = {
@@ -71,6 +108,29 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 function normalizeTemplate(value: string, fallback: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 1000) : fallback;
+}
+
+function normalizeCommandProfiles(value: unknown): ManualModerationCommandProfile[] {
+  const raw = Array.isArray(value) ? value : [];
+  return DEFAULT_MANUAL_COMMAND_PROFILES.map((fallback) => {
+    const candidate = raw.find((item) => item && typeof item === "object" && (item as { command?: unknown }).command === fallback.command) as Partial<ManualModerationCommandProfile> | undefined;
+    const notifications = candidate?.notifications && typeof candidate.notifications === "object" ? candidate.notifications : {};
+    const channel = (recipient: ManualModerationRecipient) => {
+      const current = (notifications as Partial<ManualModerationCommandProfile["notifications"]>)[recipient];
+      return {
+        enabled: typeof current?.enabled === "boolean" ? current.enabled : fallback.notifications[recipient].enabled,
+        template: normalizeTemplate(typeof current?.template === "string" ? current.template : "", fallback.notifications[recipient].template)
+      };
+    };
+    return {
+      command: fallback.command,
+      allowAmount: typeof candidate?.allowAmount === "boolean" ? candidate.allowAmount : fallback.allowAmount,
+      deleteCommandMessage: typeof candidate?.deleteCommandMessage === "boolean" ? candidate.deleteCommandMessage : fallback.deleteCommandMessage,
+      deleteTargetMessage: typeof candidate?.deleteTargetMessage === "boolean" ? candidate.deleteTargetMessage : fallback.deleteTargetMessage,
+      deleteAllTargetMessages: (fallback.command === "mute" || fallback.command === "ban") && candidate?.deleteAllTargetMessages === true,
+      notifications: { TARGET: channel("TARGET"), PUBLIC: channel("PUBLIC"), MODERATOR: channel("MODERATOR") }
+    };
+  });
 }
 
 export function normalizeManualModerationSettings(input: ManualModerationSettingsValue): ManualModerationSettingsValue {
@@ -91,9 +151,18 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
     unbanMessageTemplate: normalizeTemplate(input.unbanMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.unbanMessageTemplate),
     unbanDeleteTargetMessage: Boolean(input.unbanDeleteTargetMessage),
     kickMessageTemplate: normalizeTemplate(input.kickMessageTemplate, DEFAULT_MANUAL_MODERATION_SETTINGS.kickMessageTemplate),
-    kickDeleteTargetMessage: Boolean(input.kickDeleteTargetMessage)
+    kickDeleteTargetMessage: Boolean(input.kickDeleteTargetMessage),
+    commands: normalizeCommandProfiles(input.commands)
   };
 }
+
+function legacySettingsData(settings: ManualModerationSettingsValue) {
+  const legacy: Partial<ManualModerationSettingsValue> = { ...settings };
+  delete legacy.commands;
+  return legacy as Omit<ManualModerationSettingsValue, "commands">;
+}
+
+export const DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS = legacySettingsData(DEFAULT_MANUAL_MODERATION_SETTINGS);
 
 export function normalizeManualModerationVisibility(input: ManualModerationVisibilitySettingsValue): ManualModerationVisibilitySettingsValue {
   return {
@@ -102,7 +171,7 @@ export function normalizeManualModerationVisibility(input: ManualModerationVisib
   };
 }
 
-export function serializeManualModerationSettings(settings: ManualModerationSettingsValue): ManualModerationSettingsValue {
+export function serializeManualModerationSettings(settings: Omit<ManualModerationSettingsValue, "commands"> & { commands?: unknown; commandProfiles?: unknown }): ManualModerationSettingsValue {
   return {
     warnMessageTemplate: settings.warnMessageTemplate,
     warnDeleteTargetMessage: settings.warnDeleteTargetMessage,
@@ -120,7 +189,8 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
     unbanMessageTemplate: settings.unbanMessageTemplate,
     unbanDeleteTargetMessage: settings.unbanDeleteTargetMessage,
     kickMessageTemplate: settings.kickMessageTemplate,
-    kickDeleteTargetMessage: settings.kickDeleteTargetMessage
+    kickDeleteTargetMessage: settings.kickDeleteTargetMessage,
+    commands: normalizeCommandProfiles(settings.commands ?? settings.commandProfiles)
   };
 }
 
@@ -152,7 +222,7 @@ export async function updateManualModerationVisibility(input: {
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.globalManualModerationSettings.upsert({
       where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
-      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...DEFAULT_MANUAL_MODERATION_SETTINGS, ...normalizedVisibility },
+      create: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID, ...legacySettingsData(DEFAULT_MANUAL_MODERATION_SETTINGS), ...normalizedVisibility },
       update: normalizedVisibility
     });
     await tx.auditLog.create({
@@ -241,11 +311,12 @@ export async function updateChatManualModerationProfile(input: {
   const chat = await prisma.chat.findUnique({ where: { id: input.chatId }, select: { id: true } });
   if (!chat) return null;
   const normalized = normalizeManualModerationSettings(input.settings);
+  const storedData = { ...legacySettingsData(normalized), commandProfiles: normalized.commands };
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatManualModerationSettings.upsert({
       where: { chatId: input.chatId },
-      create: { chatId: input.chatId, ...normalized },
-      update: normalized
+      create: { chatId: input.chatId, ...storedData },
+      update: storedData
     });
     await tx.auditLog.create({
       data: {
@@ -280,6 +351,7 @@ export function renderManualModerationTemplate(
     duration?: string;
     warns?: string;
     warnsLimit?: string;
+    amount?: string;
     chat?: string;
     contact?: string;
   }
@@ -291,6 +363,7 @@ export function renderManualModerationTemplate(
     .replaceAll("%duration%", placeholders.duration ?? "")
     .replaceAll("%warns_limit%", placeholders.warnsLimit ?? "")
     .replaceAll("%warns%", placeholders.warns ?? "")
+    .replaceAll("%amount%", placeholders.amount ?? "")
     .replaceAll("%chat%", placeholders.chat ?? "")
     .replaceAll("%contact%", placeholders.contact ?? "");
 }
