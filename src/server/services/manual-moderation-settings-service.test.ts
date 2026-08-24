@@ -36,6 +36,15 @@ test("blank templates fall back to defaults, toggles are coerced to booleans", (
   assert.equal(normalized.muteDeleteTargetMessage, true);
 });
 
+test("command message deletion is normalized as one setting for every admin command", () => {
+  const commands = DEFAULT_MANUAL_MODERATION_SETTINGS.commands.map((profile) => ({
+    ...profile,
+    deleteCommandMessage: profile.command !== "mute"
+  }));
+  const normalized = normalizeManualModerationSettings({ ...DEFAULT_MANUAL_MODERATION_SETTINGS, commands });
+  assert.equal(normalized.commands.every((profile) => profile.deleteCommandMessage === false), true);
+});
+
 test("template rendering replaces every placeholder and tolerates repeats", () => {
   const text = renderManualModerationTemplate("%admin% -> %target%: %reason% (%duration%) %target%", {
     admin: "Admin",

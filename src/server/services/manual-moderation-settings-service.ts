@@ -112,7 +112,7 @@ function normalizeTemplate(value: string, fallback: string) {
 
 function normalizeCommandProfiles(value: unknown): ManualModerationCommandProfile[] {
   const raw = Array.isArray(value) ? value : [];
-  return DEFAULT_MANUAL_COMMAND_PROFILES.map((fallback) => {
+  const profiles = DEFAULT_MANUAL_COMMAND_PROFILES.map((fallback) => {
     const candidate = raw.find((item) => item && typeof item === "object" && (item as { command?: unknown }).command === fallback.command) as Partial<ManualModerationCommandProfile> | undefined;
     const notifications = candidate?.notifications && typeof candidate.notifications === "object" ? candidate.notifications : {};
     const channel = (recipient: ManualModerationRecipient) => {
@@ -131,6 +131,8 @@ function normalizeCommandProfiles(value: unknown): ManualModerationCommandProfil
       notifications: { TARGET: channel("TARGET"), PUBLIC: channel("PUBLIC"), MODERATOR: channel("MODERATOR") }
     };
   });
+  const deleteCommandMessages = profiles.every((profile) => profile.deleteCommandMessage);
+  return profiles.map((profile) => ({ ...profile, deleteCommandMessage: deleteCommandMessages }));
 }
 
 export function normalizeManualModerationSettings(input: ManualModerationSettingsValue): ManualModerationSettingsValue {

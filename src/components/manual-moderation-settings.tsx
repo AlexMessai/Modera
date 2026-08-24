@@ -36,7 +36,7 @@ const renderPreview = (template: string) => template.replaceAll("%target%", "@al
 
 export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: Props) {
   const [settings, setSettings] = useState(initial);
-  const [openGroup, setOpenGroup] = useState("warnings");
+  const [openGroup, setOpenGroup] = useState<string | null>("warnings");
   const [activeCommands, setActiveCommands] = useState<Record<string, CommandKey>>({ warnings: "unwarn", restrictions: "mute", blocks: "ban", kick: "kick" });
   const [recipient, setRecipient] = useState<Recipient>("PUBLIC");
   const [confirmCommand, setConfirmCommand] = useState<CommandKey | null>(null);
@@ -44,6 +44,11 @@ export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: 
   const [feedback, setFeedback] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const updateCommand = (key: CommandKey, change: (profile: CommandProfile) => CommandProfile) => setSettings((current) => ({ ...current, commands: current.commands.map((profile) => profile.command === key ? change(profile) : profile) }));
+  const deleteCommandMessages = settings.commands.every((profile) => profile.deleteCommandMessage);
+
+  function setDeleteCommandMessages(checked: boolean) {
+    setSettings((current) => ({ ...current, commands: current.commands.map((profile) => ({ ...profile, deleteCommandMessage: checked })) }));
+  }
 
   async function save() {
     setSaving(true); setFeedback(null);
@@ -67,20 +72,21 @@ export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: 
 
   return <div className="automod-settings manual-mod-settings">
     {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div></div> : null}
+    <div className="manual-mod-global-setting"><SettingsRow title="Автоматически удалять команды бота" description="Применяется ко всем командам ручной модерации в этом чате" checked={deleteCommandMessages} disabled={!canEdit || saving} onChange={setDeleteCommandMessages} /><div className="manual-mod-command-list">/warn · /unwarn · /mute · /unmute · /ban · /unban · /kick</div></div>
     <div className="manual-mod-accordions">{GROUPS.map((group) => {
       const expanded = openGroup === group.key;
       const command = activeCommands[group.key] ?? group.commands[0]!.key;
       const profile = settings.commands.find((item) => item.command === command)!;
       const selectedChannel = profile.notifications[recipient];
       return <section className={`manual-mod-accordion${expanded ? " is-open" : ""}`} key={group.key}>
-        <button className="manual-mod-accordion-head" type="button" aria-expanded={expanded} onClick={() => setOpenGroup(group.key)}><span>{group.title}</span><ChevronDown size={18} /></button>
+        <button className="manual-mod-accordion-head" type="button" aria-expanded={expanded} onClick={() => setOpenGroup((current) => current === group.key ? null : group.key)}><span><strong>{group.title}</strong><small>{group.commands.map((item) => item.key === "warn" ? "/warn" : `/${item.key}`).join(" · ")}</small></span><ChevronDown size={18} /></button>
         {expanded ? <div className="manual-mod-accordion-body">
           <div className="manual-mod-tabs" role="tablist">{group.commands.map((item) => <button key={item.key} type="button" role="tab" aria-selected={command === item.key} className={command === item.key ? "is-active" : ""} onClick={() => { setActiveCommands((current) => ({ ...current, [group.key]: item.key })); setRecipient("PUBLIC"); }}>{item.tab}</button>)}</div>
           {command === "unwarn" ? <><div className="manual-mod-block"><h4>Как использовать</h4><div className="manual-mod-usage"><code>/unwarn @username</code><span>снять одно предупреждение</span><code>/unwarn @username 2</code><span>снять указанное количество</span><code>/unwarn</code><span>ответом на сообщение</span><code>/unwarn 2</code><span>ответом и снять указанное количество</span></div></div><div className="manual-mod-block"><h4>Параметры команды</h4><SettingsRow title="Разрешить указывать количество" description="Если количество не указано, снимается одно предупреждение" checked={profile.allowAmount} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, allowAmount: checked }))} /><p className="manual-mod-note">Принимаются только целые числа от 1. Нельзя снять больше предупреждений, чем есть у пользователя.</p></div></> : null}
           <div className="manual-mod-block"><h4>Кому отправить уведомление</h4><div className="manual-mod-recipients">{RECIPIENTS.map((item) => <div key={item.key} role="button" tabIndex={0} className={`manual-mod-recipient${recipient === item.key ? " is-selected" : ""}`} onClick={() => setRecipient(item.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setRecipient(item.key); } }}><div><strong>{item.title}</strong><span>{item.description}</span></div><button type="button" role="switch" aria-checked={profile.notifications[item.key].enabled} aria-label={`Уведомление: ${item.title}`} className={`switch${profile.notifications[item.key].enabled ? " switch--on" : ""}`} disabled={!canEdit || saving} onClick={(event) => { event.stopPropagation(); updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [item.key]: { ...current.notifications[item.key], enabled: !current.notifications[item.key].enabled } } })); }}><span className="switch-thumb" /></button></div>)}</div>
             {selectedChannel.enabled ? <div className="manual-mod-editor"><label htmlFor={`manual-template-${command}-${recipient}`}>Шаблон сообщения</label><textarea ref={editorRef} id={`manual-template-${command}-${recipient}`} rows={4} value={selectedChannel.template} disabled={!canEdit || saving} onChange={(event) => updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [recipient]: { ...current.notifications[recipient], template: event.target.value } } }))} /><div className="manual-mod-variables">{VARIABLES.map((variable) => <button type="button" key={variable} onClick={() => insertVariable(command, variable)} disabled={!canEdit || saving}>{variable}</button>)}</div><div className="manual-mod-preview"><small>ПРЕДПРОСМОТР</small><p>{renderPreview(selectedChannel.template)}</p></div></div> : null}
           </div>
-          <div className="manual-mod-block"><h4>После применения</h4><SettingsRow title="Удалить сообщение с командой" checked={profile.deleteCommandMessage} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, deleteCommandMessage: checked }))} /><SettingsRow title="Удалить сообщение, на которое ответили" description="Сработает, только если команда отправлена ответом" checked={profile.deleteTargetMessage} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, deleteTargetMessage: checked, deleteAllTargetMessages: checked ? current.deleteAllTargetMessages : false }))} />{(command === "mute" || command === "ban") && profile.deleteTargetMessage ? <div className="manual-mod-danger-setting"><SettingsRow title="Удалить все сообщения пользователя в чате" description="Бот удалит все доступные ему сообщения этого пользователя в текущем чате" checked={profile.deleteAllTargetMessages} disabled={!canEdit || saving} onChange={(checked) => checked ? setConfirmCommand(command) : updateCommand(command, (current) => ({ ...current, deleteAllTargetMessages: false }))} /></div> : null}</div>
+          <div className="manual-mod-block"><h4>После применения</h4><SettingsRow title="Удалить сообщение, на которое ответили" description="Сработает, только если команда отправлена ответом" checked={profile.deleteTargetMessage} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, deleteTargetMessage: checked, deleteAllTargetMessages: checked ? current.deleteAllTargetMessages : false }))} />{(command === "mute" || command === "ban") && profile.deleteTargetMessage ? <div className="manual-mod-danger-setting"><SettingsRow title="Удалить все сообщения пользователя в чате" description="Бот удалит все доступные ему сообщения этого пользователя в текущем чате" checked={profile.deleteAllTargetMessages} disabled={!canEdit || saving} onChange={(checked) => checked ? setConfirmCommand(command) : updateCommand(command, (current) => ({ ...current, deleteAllTargetMessages: false }))} /></div> : null}</div>
         </div> : null}
       </section>;
     })}</div>

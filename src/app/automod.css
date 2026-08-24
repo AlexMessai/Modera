@@ -94,8 +94,13 @@
 .manual-mod-group-label { display: block; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .02em; margin: 10px 0 2px; }
 .manual-mod-group-label:first-child { margin-top: 0; }
 .manual-mod-accordions { display: grid; gap: 8px; }
+.manual-mod-global-setting { margin-bottom: 12px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.manual-mod-command-list { padding: 0 0 10px; color: var(--muted); font: 600 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .manual-mod-accordion { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
-.manual-mod-accordion-head { width: 100%; min-height: 54px; padding: 0 16px; border: 0; background: var(--surface-2); display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: var(--text); cursor: pointer; }
+.manual-mod-accordion-head { width: 100%; min-height: 58px; padding: 0 16px; border: 0; background: var(--surface-2); display: flex; align-items: center; justify-content: space-between; color: var(--text); cursor: pointer; text-align: left; }
+.manual-mod-accordion-head strong,.manual-mod-accordion-head small { display: block; }
+.manual-mod-accordion-head strong { font-size: 13px; }
+.manual-mod-accordion-head small { margin-top: 4px; color: var(--muted); font: 600 10px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .manual-mod-accordion-head svg { color: var(--muted); transition: transform .15s ease; }
 .manual-mod-accordion.is-open .manual-mod-accordion-head svg { transform: rotate(180deg); }
 .manual-mod-accordion-body { padding: 14px; display: grid; gap: 12px; border-top: 1px solid var(--line); }
