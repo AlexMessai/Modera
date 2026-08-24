@@ -62,13 +62,20 @@ function sanitizeEditorHtml(source: string) {
   }
 
   appendChildren(parsed.body, output);
-  return output.textContent || output.querySelector("br") ? output.innerHTML : "";
+  return output.textContent ? output.innerHTML : "";
 }
 
 function closestElement(node: Node | null, selector: string) {
   const element = node instanceof Element ? node : node?.parentElement;
   return element?.closest(selector) ?? null;
 }
+
+const INLINE_FORMATS = [
+  { key: "bold", command: "bold", selector: "b, strong" },
+  { key: "italic", command: "italic", selector: "i, em" },
+  { key: "underline", command: "underline", selector: "u, ins" },
+  { key: "strike", command: "strikeThrough", selector: "s, strike, del" }
+] as const;
 
 export function FormattedTextarea({
   value,
@@ -102,6 +109,7 @@ export function FormattedTextarea({
     lastEmittedRef.current = value;
     if (autoFocus) editor.focus();
     document.execCommand("defaultParagraphSeparator", false, "br");
+    document.execCommand("styleWithCSS", false, "false");
   // The initial value is loaded once; subsequent external updates are handled above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -114,10 +122,9 @@ export function FormattedTextarea({
       return;
     }
     const next = new Set<string>();
-    if (document.queryCommandState("bold")) next.add("bold");
-    if (document.queryCommandState("italic")) next.add("italic");
-    if (document.queryCommandState("underline")) next.add("underline");
-    if (document.queryCommandState("strikeThrough")) next.add("strike");
+    for (const format of INLINE_FORMATS) {
+      if (closestElement(selection.anchorNode, format.selector)) next.add(format.key);
+    }
     if (closestElement(selection.anchorNode, "blockquote")) next.add("quote");
     if (closestElement(selection.anchorNode, "code")) next.add("code");
     if (closestElement(selection.anchorNode, "pre")) next.add("pre");
@@ -139,6 +146,16 @@ export function FormattedTextarea({
       editor.innerHTML = sanitizeEditorHtml(lastEmittedRef.current);
       return;
     }
+    if (!next && editor.innerHTML) {
+      editor.innerHTML = "";
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      resetPendingFormatting();
+    }
     lastEmittedRef.current = next;
     onChange(next);
     updateActiveFormats();
@@ -149,6 +166,18 @@ export function FormattedTextarea({
     editorRef.current?.focus();
     document.execCommand(command, false, commandValue);
     emitChange();
+  }
+
+  function resetPendingFormatting() {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.anchorNode || !editor.contains(selection.anchorNode)) return;
+    for (const format of INLINE_FORMATS) {
+      if (!closestElement(selection.anchorNode, format.selector) && document.queryCommandState(format.command)) {
+        document.execCommand(format.command, false);
+      }
+    }
+    setActive(new Set());
   }
 
   function toggleElement(tag: "code" | "pre" | "tg-spoiler") {
@@ -238,6 +267,11 @@ export function FormattedTextarea({
       className="formatted-textarea-editor"
       data-placeholder={placeholder ?? ""}
       style={{ minHeight: `${Math.max(rows, 2) * 22 + 22}px` }}
+      onFocus={() => {
+        document.execCommand("styleWithCSS", false, "false");
+        resetPendingFormatting();
+        updateActiveFormats();
+      }}
       onInput={emitChange}
       onBlur={() => {
         const editor = editorRef.current;
