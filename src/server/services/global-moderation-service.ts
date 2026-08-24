@@ -40,9 +40,12 @@ export type MediaFilterType = (typeof MEDIA_FILTER_TYPES)[number];
 export type MediaFilterRuleValue = {
   type: MediaFilterType;
   enabled: boolean;
-  /** Counts this violation toward the member's warning/escalation chain -- only takes effect when the chat's autoEscalationEnabled is also on (AND, not OR: a per-type override can only narrow, never widen, the chat's escalation policy). */
+  deleteMessage: boolean;
+  punishmentEnabled: boolean;
+  punishmentAction: AutomodPunishmentAction;
+  muteDurationMinutes: number;
+  /** Legacy mirror retained while older stored JSON and the system-messages API are migrated. */
   warnOnTrigger: boolean;
-  /** Post a chat announcement immediately on deletion, independent of warnOnTrigger/escalation. */
   notifyEnabled: boolean;
   notifyText: string;
 };
@@ -77,14 +80,16 @@ function defaultAutomodRuleActions(punishmentEnabled: boolean): AutomodRuleActio
   }));
 }
 
-const DEFAULT_MEDIA_FILTER_NOTIFY_TEXT = "🚫 Этот тип контента запрещён в этом чате.";
-
 export const DEFAULT_MEDIA_FILTERS: MediaFilterRuleValue[] = MEDIA_FILTER_TYPES.map((type) => ({
   type,
   enabled: false,
+  deleteMessage: true,
+  punishmentEnabled: false,
+  punishmentAction: "WARN",
+  muteDurationMinutes: DEFAULT_AUTOMOD_MUTE_DURATION_MINUTES,
   warnOnTrigger: false,
   notifyEnabled: false,
-  notifyText: DEFAULT_MEDIA_FILTER_NOTIFY_TEXT
+  notifyText: ""
 }));
 
 const MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH = 1000;
@@ -239,12 +244,22 @@ export function normalizeMediaFilters(input: unknown): MediaFilterRuleValue[] {
       const candidate = raw as Partial<MediaFilterRuleValue>;
       if (!isMediaFilterType(candidate.type)) continue;
       const notifyText = typeof candidate.notifyText === "string" ? candidate.notifyText.trim() : "";
+      const punishmentEnabled = typeof candidate.punishmentEnabled === "boolean"
+        ? candidate.punishmentEnabled
+        : Boolean(candidate.warnOnTrigger);
+      const punishmentAction = candidate.punishmentAction === "MUTE" ? "MUTE" : "WARN";
       byType.set(candidate.type, {
         type: candidate.type,
         enabled: Boolean(candidate.enabled),
-        warnOnTrigger: Boolean(candidate.warnOnTrigger),
+        deleteMessage: candidate.deleteMessage !== false,
+        punishmentEnabled,
+        punishmentAction,
+        muteDurationMinutes: candidate.muteDurationMinutes === undefined
+          ? DEFAULT_AUTOMOD_MUTE_DURATION_MINUTES
+          : boundedInteger(Number(candidate.muteDurationMinutes), 15, MAX_AUTOMOD_MUTE_DURATION_MINUTES),
+        warnOnTrigger: punishmentEnabled && punishmentAction === "WARN",
         notifyEnabled: Boolean(candidate.notifyEnabled),
-        notifyText: (notifyText ? notifyText.slice(0, MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH) : DEFAULT_MEDIA_FILTER_NOTIFY_TEXT)
+        notifyText: notifyText.slice(0, MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH)
       });
     }
   }
@@ -349,26 +364,18 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
 const GLOBAL_MODERATION_MESSAGES_ID = "global";
 
 /**
- * Action-texts (escalation announcements, media-filter notify text) are edited in one place --
- * Система → Уведомления, see system-messages-service.ts -- not per chat. Every other field
- * (thresholds, toggles, escalation rules, allow/block lists) stays chat-owned. Overlaying instead
- * of a hard split keeps this function's return shape unchanged, so every runtime caller
- * (automod-service.ts, update-handler.ts, moderation-escalation-service.ts, ...) needed no changes.
+ * Escalation announcements remain global. Filter messages are chat-owned and
+ * edited next to the rule outcome, matching the Automod rule model.
  */
 async function overlayGlobalModerationText(settings: ModerationSettingsValue): Promise<ModerationSettingsValue> {
   const global = await prisma.globalModerationSettings.findUnique({
     where: { id: GLOBAL_MODERATION_MESSAGES_ID },
-    select: { escalationMuteMessageTemplate: true, escalationBanMessageTemplate: true, mediaFilters: true }
+    select: { escalationMuteMessageTemplate: true, escalationBanMessageTemplate: true }
   });
-  const globalMediaFilters = normalizeMediaFilters(global?.mediaFilters ?? DEFAULT_MEDIA_FILTERS);
   return {
     ...settings,
     escalationMuteMessageTemplate: global?.escalationMuteMessageTemplate ?? DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate,
-    escalationBanMessageTemplate: global?.escalationBanMessageTemplate ?? DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate,
-    mediaFilters: settings.mediaFilters.map((rule) => ({
-      ...rule,
-      notifyText: globalMediaFilters.find((globalRule) => globalRule.type === rule.type)?.notifyText ?? rule.notifyText
-    }))
+    escalationBanMessageTemplate: global?.escalationBanMessageTemplate ?? DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate
   };
 }
 

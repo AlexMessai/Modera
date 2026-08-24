@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronRight, Link2, ListFilter, MessageSquareText, Plus, Repeat2, ShieldCheck, SlidersHorizontal, TimerReset, Trash2, TriangleAlert, X, Zap } from "lucide-react";
 
 export type MediaFilterType = "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE" | "DOCUMENT" | "STICKER" | "POLL" | "LOCATION" | "CONTACT";
-export type MediaFilterRuleValue = { type: MediaFilterType; enabled: boolean; warnOnTrigger: boolean; notifyEnabled: boolean; notifyText: string };
+export type MediaFilterRuleValue = { type: MediaFilterType; enabled: boolean; deleteMessage: boolean; punishmentEnabled: boolean; punishmentAction: "WARN" | "MUTE"; muteDurationMinutes: number; warnOnTrigger: boolean; notifyEnabled: boolean; notifyText: string };
 export const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = { PHOTO: "Изображения", VIDEO: "Видео", ANIMATION: "GIF", VOICE: "Голосовые сообщения", AUDIO: "Аудиофайлы", VIDEO_NOTE: "Видеосообщения", DICE: "Анимированные кости", DOCUMENT: "Файлы", STICKER: "Стикеры", POLL: "Опросы", LOCATION: "Геолокация", CONTACT: "Контакты" };
 export const MEDIA_FILTER_ORDER: MediaFilterType[] = ["PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE", "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"];
 
@@ -37,7 +37,7 @@ const RULES: RuleDefinition[] = [
   { key: "DUPLICATE", title: "Повторяющиеся сообщения", description: "Находит одинаковые сообщения за выбранный период.", icon: Repeat2, enabled: (s) => s.duplicateEnabled, setEnabled: (s, enabled) => ({ ...s, duplicateEnabled: enabled }) },
   { key: "MENTIONS", title: "Массовые упоминания", description: "Ограничивает число упоминаний в одном сообщении.", icon: MessageSquareText, enabled: (s) => s.massMentionsEnabled, setEnabled: (s, enabled) => ({ ...s, massMentionsEnabled: enabled }) }
 ];
-const MUTE_DURATIONS = [[15, "15 минут"], [60, "1 час"], [360, "6 часов"], [720, "12 часов"], [1440, "1 день"], [4320, "3 дня"], [10080, "7 дней"], [43200, "30 дней"]] as const;
+export const MUTE_DURATIONS = [[15, "15 минут"], [60, "1 час"], [360, "6 часов"], [720, "12 часов"], [1440, "1 день"], [4320, "3 дня"], [10080, "7 дней"], [43200, "30 дней"]] as const;
 const PRESETS = {
   LOW: { spamWindowSeconds: 20, spamMaxMessages: 10, duplicateWindowSeconds: 120, duplicateMaxMessages: 5, maxMentions: 10 },
   NORMAL: { spamWindowSeconds: 10, spamMaxMessages: 5, duplicateWindowSeconds: 60, duplicateMaxMessages: 2, maxMentions: 5 },

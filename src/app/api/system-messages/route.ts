@@ -10,9 +10,13 @@ export const dynamic = "force-dynamic";
 const mediaFilterRuleSchema = z.object({
   type: z.enum(MEDIA_FILTER_TYPES),
   enabled: z.boolean(),
+  deleteMessage: z.boolean().default(true),
+  punishmentEnabled: z.boolean().default(false),
+  punishmentAction: z.enum(["WARN", "MUTE"]).default("WARN"),
+  muteDurationMinutes: z.number().int().min(15).max(43200).default(60),
   warnOnTrigger: z.boolean(),
   notifyEnabled: z.boolean(),
-  notifyText: z.string().min(1).max(1000)
+  notifyText: z.string().max(1000)
 });
 
 const settingsSchema = z.object({

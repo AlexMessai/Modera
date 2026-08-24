@@ -50,6 +50,7 @@ export async function getChatModerationProfile(chatId: string) {
             "AUTOMOD_DUPLICATE_DELETED",
             "AUTOMOD_LINK_TRIGGERED",
             "AUTOMOD_TERM_TRIGGERED",
+            "AUTOMOD_MEDIA_TRIGGERED",
             "AUTOMOD_MENTIONS_TRIGGERED",
             "AUTOMOD_DUPLICATE_TRIGGERED",
             "AUTOMOD_SPAM_TRIGGERED",

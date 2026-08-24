@@ -36,26 +36,6 @@ type Props = {
   canEdit: boolean;
 };
 
-const MEDIA_FILTER_LABELS: Record<MediaFilterType, string> = {
-  PHOTO: "Изображения",
-  VIDEO: "Видео",
-  ANIMATION: "GIF",
-  VOICE: "Голосовые сообщения",
-  AUDIO: "Аудиофайлы",
-  VIDEO_NOTE: "Видеосообщения",
-  DICE: "Анимированные кости",
-  DOCUMENT: "Файлы",
-  STICKER: "Стикеры",
-  POLL: "Опросы",
-  LOCATION: "Геолокация",
-  CONTACT: "Контакты"
-};
-
-const MEDIA_FILTER_ORDER: MediaFilterType[] = [
-  "PHOTO", "VIDEO", "ANIMATION", "VOICE", "AUDIO", "VIDEO_NOTE", "DICE",
-  "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"
-];
-
 export function SystemMessagesSettings({ initial, canEdit }: Props) {
   const [messages, setMessages] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -66,16 +46,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
 
   function setAutomodField<K extends keyof SystemMessagesValue["automod"]>(key: K, value: SystemMessagesValue["automod"][K]) {
     setMessages((current) => ({ ...current, automod: { ...current.automod, [key]: value } }));
-  }
-
-  function setMediaFilterText(type: MediaFilterType, notifyText: string) {
-    setMessages((current) => ({
-      ...current,
-      automod: {
-        ...current.automod,
-        mediaFilters: current.automod.mediaFilters.map((rule) => (rule.type === type ? { ...rule, notifyText } : rule))
-      }
-    }));
   }
 
   function setAppealField<K extends keyof SystemMessagesValue["appeals"]>(key: K, value: SystemMessagesValue["appeals"][K]) {
@@ -125,21 +95,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
           <textarea rows={2} value={messages.automod.escalationBanMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setAutomodField("escalationBanMessageTemplate", event.target.value)} />
           <small>Доступны %target%, %warns%, %warns_limit%.</small>
         </label>
-      </div>
-
-      <div className="settings-section">
-        <span className="settings-section-title">Automod — Фильтры контента</span>
-        <small className="hint-note">Текст отправляется, когда включена «Отправлять сообщение при срабатывании» для этого типа (настраивается по каждому чату отдельно).</small>
-        {MEDIA_FILTER_ORDER.map((type) => {
-          const rule = messages.automod.mediaFilters.find((item) => item.type === type);
-          if (!rule) return null;
-          return (
-            <label className="automod-field" key={type}>
-              <span>{MEDIA_FILTER_LABELS[type]}</span>
-              <textarea rows={2} value={rule.notifyText} disabled={fieldsDisabled} onChange={(event) => setMediaFilterText(type, event.target.value)} />
-            </label>
-          );
-        })}
       </div>
 
       <div className="settings-section">

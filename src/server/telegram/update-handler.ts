@@ -62,6 +62,7 @@ const RULE_BY_AUTOMOD_RESULT: Record<string, string> = {
   DELETED_SPAM: "SPAM",
   TRIGGERED_LINK: "LINK",
   TRIGGERED_TERM: "TERM",
+  TRIGGERED_MEDIA: "MEDIA",
   TRIGGERED_MENTIONS: "MENTIONS",
   TRIGGERED_DUPLICATE: "DUPLICATE",
   TRIGGERED_SPAM: "SPAM"
@@ -95,19 +96,41 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   const rule = RULE_BY_AUTOMOD_RESULT[result.result];
   if (!rule) return;
 
-  // A Filters-managed media type (global-moderation-service.ts's
-  // MediaFilterRuleValue) can opt out of the shared warning/escalation
-  // behavior every other automod rule uses, and/or post its own chat
-  // announcement independent of whether it warns.
+  // Filters use the same independent outcome model as Automod rules.
   if (result.mediaFilterRule) {
-    if (result.mediaFilterRule.notifyEnabled) {
+    if (result.mediaFilterRule.notifyEnabled && result.mediaFilterRule.notifyText) {
       const text = renderManualModerationTemplate(result.mediaFilterRule.notifyText, {
         target: telegramDisplayName(input.message.from),
         chat: input.message.chat.title ?? ""
       });
       await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
     }
-    if (!result.mediaFilterRule.warnOnTrigger) return;
+    if (!result.mediaFilterRule.punishmentEnabled) return;
+
+    const escalation = await applyAutomodRulePunishment({
+      chatId: input.chatId,
+      telegramUserId: input.message.from.id,
+      rule: `MEDIA:${result.mediaFilterRule.type}`,
+      telegramMessageId: String(input.message.message_id),
+      action: result.mediaFilterRule.punishmentAction,
+      muteDurationMinutes: result.mediaFilterRule.muteDurationMinutes
+    }).catch(() => undefined);
+    if (!escalation?.escalated || !escalation.action || result.mediaFilterRule.punishmentAction === "MUTE") return;
+
+    const { settings } = await resolveEffectiveModerationSettings(input.chatId);
+    if (!settings.announceEscalationEnabled) return;
+    const template = escalation.action === "MUTE" ? settings.escalationMuteMessageTemplate : settings.escalationBanMessageTemplate;
+    const text = renderManualModerationTemplate(template, {
+      admin: "Modera",
+      target: telegramDisplayName(input.message.from),
+      chat: input.message.chat.title ?? "",
+      reason: "",
+      duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
+      warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
+      warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""
+    });
+    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+    return;
   }
 
   const ruleAction = "ruleAction" in result ? result.ruleAction : null;
