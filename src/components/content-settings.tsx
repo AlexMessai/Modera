@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronRight, MessageSquareText, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronDown, MessageSquareText, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { FormattedTextarea } from "@/components/formatted-textarea";
 
 export type WelcomeButtonValue = { text: string; url: string };
@@ -30,25 +30,12 @@ function ProtectionToggle({ title, description, checked, disabled, onChange }: {
 
 export function ContentSettings({ chatId, initial, canEdit, onSaved }: Props) {
   const [settings, setSettings] = useState(initial);
-  const [draft, setDraft] = useState<ContentSettingsValue | null>(null);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const disabled = !canEdit || saving;
 
-  useEffect(() => {
-    if (!welcomeOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) { setWelcomeOpen(false); setDraft(null); } };
-    document.addEventListener("keydown", close);
-    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", close); };
-  }, [welcomeOpen, saving]);
-
-  function openWelcome(next = settings) { setDraft(structuredClone(next)); setWelcomeOpen(true); setError(null); }
-  function closeWelcome() { setWelcomeOpen(false); setDraft(null); }
-  async function save(next: ContentSettingsValue, closeAfter = false) {
+  async function save(next: ContentSettingsValue) {
     setSaving(true); setError(null); setSuccess(null);
     try {
       const response = await fetch(`/api/chats/${chatId}/content`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(next) });
@@ -56,23 +43,28 @@ export function ContentSettings({ chatId, initial, canEdit, onSaved }: Props) {
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить настройки новых пользователей.");
       const saved = payload.data as ContentSettingsValue;
       setSettings(saved); setSuccess("Настройки новых пользователей сохранены."); onSaved?.(saved);
-      if (closeAfter) closeWelcome();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки новых пользователей."); }
     finally { setSaving(false); }
   }
 
   function toggleWelcome(checked: boolean) {
-    const next = { ...settings, welcomeEnabled: checked };
-    setSettings(next);
-    if (checked) openWelcome(next);
+    setSettings((current) => ({ ...current, welcomeEnabled: checked }));
+    setError(null);
   }
 
   return <div className="automod-settings new-user-settings">
     {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div></div> : null}
     <article className={`automod-rule-card ${settings.welcomeEnabled ? "" : "automod-rule-card--disabled"}`}>
-      <button type="button" className="automod-rule-open" onClick={() => openWelcome()}><span className="automod-rule-icon"><MessageSquareText size={19} /></span><span className="automod-rule-copy"><strong>Приветствие новых участников</strong><small>{settings.welcomeEnabled ? `${settings.welcomeButtons.length ? `${settings.welcomeButtons.length} кнопок · ` : ""}Текст настроен` : "Выключено"}</small></span><span className="automod-rule-chevron"><ChevronRight size={17} /></span></button>
+      <div className="automod-rule-open"><span className="automod-rule-icon"><MessageSquareText size={19} /></span><span className="automod-rule-copy"><strong>Приветствие новых участников</strong><small>{settings.welcomeEnabled ? `${settings.welcomeButtons.length ? `${settings.welcomeButtons.length} кнопок · ` : ""}Текст настроен` : "Выключено"}</small></span></div>
       <Toggle checked={settings.welcomeEnabled} disabled={disabled} label="Приветствие новых участников" onChange={toggleWelcome} />
     </article>
+
+    {settings.welcomeEnabled ? <div className="new-user-inline-settings">
+      <label className="automod-field"><span>Текст приветствия</span><FormattedTextarea rows={7} maxLength={2000} value={settings.welcomeMessageTemplate} disabled={disabled} variables={["{name}", "{username}", "{group}", "{member_count}"]} onChange={(value) => setSettings((current) => ({ ...current, welcomeMessageTemplate: value }))} /><small>{"{name} · {username} · {group} · {member_count}"}</small></label>
+      <div className="welcome-buttons"><div className="welcome-buttons-header"><div><strong>Кнопки</strong><small>Ссылки появятся под приветствием в одной строке.</small></div><button type="button" className="button" disabled={disabled || settings.welcomeButtons.length >= 8} onClick={() => setSettings((current) => ({ ...current, welcomeButtons: [...current.welcomeButtons, { text: "", url: "" }] }))}><Plus size={15} />Добавить кнопку</button></div>
+        {settings.welcomeButtons.map((button, index) => <div className="welcome-button-row" key={index}><label><span>Название</span><input value={button.text} maxLength={64} disabled={disabled} onChange={(event) => setSettings((current) => ({ ...current, welcomeButtons: current.welcomeButtons.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} /></label><label><span>Ссылка</span><input type="url" value={button.url} maxLength={500} placeholder="https://example.com" disabled={disabled} onChange={(event) => setSettings((current) => ({ ...current, welcomeButtons: current.welcomeButtons.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item) }))} /></label><button type="button" className="icon-button" aria-label="Удалить кнопку" disabled={disabled} onClick={() => setSettings((current) => ({ ...current, welcomeButtons: current.welcomeButtons.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={16} /></button></div>)}
+      </div>
+    </div> : null}
 
     <details className="new-user-advanced" open>
       <summary><span><ChevronDown size={17} />Расширенные настройки</span><small>Проверки применяются при вступлении.</small></summary>
@@ -88,16 +80,7 @@ export function ContentSettings({ chatId, initial, canEdit, onSaved }: Props) {
       </div>
     </details>
 
-    {error && !welcomeOpen ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}{success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
+    {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}{success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
     {canEdit ? <div className="automod-actions"><button className="button button--primary" type="button" disabled={saving} onClick={() => void save(settings)}><Check size={16} />{saving ? "Сохраняю…" : "Сохранить настройки"}</button></div> : null}
-
-    {welcomeOpen && draft ? <div className="automod-modal-backdrop" role="presentation" onMouseDown={(event) => { if (!saving && event.target === event.currentTarget) closeWelcome(); }}><div className="automod-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title"><div className="automod-modal-header"><div className="automod-modal-heading"><span><MessageSquareText size={19} /></span><div><h3 id="welcome-modal-title">Приветствие новых участников</h3><p>Сообщение отправляется сразу после вступления.</p></div></div><button className="icon-button" type="button" aria-label="Закрыть" disabled={saving} onClick={closeWelcome}><X size={18} /></button></div><div className="automod-modal-body">
-      <div className="automod-outcome-stack"><ProtectionToggle title="Отправлять приветствие" checked={draft.welcomeEnabled} disabled={disabled} onChange={(checked) => setDraft((current) => current ? { ...current, welcomeEnabled: checked } : current)} />
-        <label className="automod-field"><span>Текст приветствия</span><FormattedTextarea rows={7} maxLength={2000} value={draft.welcomeMessageTemplate} disabled={disabled} variables={["{name}", "{username}", "{group}", "{member_count}"]} onChange={(value) => setDraft((current) => current ? { ...current, welcomeMessageTemplate: value } : current)} /><small>{"{name} · {username} · {group} · {member_count}"}</small></label>
-        <div className="welcome-buttons"><div className="welcome-buttons-header"><div><strong>Кнопки</strong><small>Ссылки появятся под приветствием в одной строке.</small></div><button type="button" className="button" disabled={disabled || draft.welcomeButtons.length >= 8} onClick={() => setDraft((current) => current ? { ...current, welcomeButtons: [...current.welcomeButtons, { text: "", url: "" }] } : current)}><Plus size={15} />Добавить кнопку</button></div>
-          {draft.welcomeButtons.map((button, index) => <div className="welcome-button-row" key={index}><label><span>Название</span><input value={button.text} maxLength={64} disabled={disabled} onChange={(event) => setDraft((current) => current ? { ...current, welcomeButtons: current.welcomeButtons.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) } : current)} /></label><label><span>Ссылка</span><input type="url" value={button.url} maxLength={500} placeholder="https://example.com" disabled={disabled} onChange={(event) => setDraft((current) => current ? { ...current, welcomeButtons: current.welcomeButtons.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item) } : current)} /></label><button type="button" className="icon-button" aria-label="Удалить кнопку" disabled={disabled} onClick={() => setDraft((current) => current ? { ...current, welcomeButtons: current.welcomeButtons.filter((_, itemIndex) => itemIndex !== index) } : current)}><Trash2 size={16} /></button></div>)}
-        </div>
-      </div>{error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
-    </div><div className="automod-modal-footer"><button className="button" type="button" disabled={saving} onClick={closeWelcome}>Отмена</button>{canEdit ? <button className="button button--primary" type="button" disabled={saving} onClick={() => void save(draft, true)}><Check size={16} />{saving ? "Сохраняю…" : "Сохранить"}</button> : null}</div></div></div> : null}
   </div>;
 }
