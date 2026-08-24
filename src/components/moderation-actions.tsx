@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Ban, Check, DoorOpen, LockKeyhole, RotateCcw, ShieldAlert, TriangleAlert, UnlockKeyhole } from "lucide-react";
+import { Ban, Check, DoorOpen, LockKeyhole, RotateCcw, ShieldAlert, ShieldOff, TriangleAlert, UnlockKeyhole } from "lucide-react";
 
-type ActionName = "warning" | "mute" | "unmute" | "ban" | "unban" | "kick";
+type ActionName = "warning" | "unwarn" | "mute" | "unmute" | "ban" | "unban" | "kick";
 type Props = {
   membershipId: string;
   userDisplayName: string;
@@ -15,15 +15,17 @@ type Props = {
   adminCanModerate: boolean;
   botStatus: string;
   storedBotCanRestrict: boolean;
+  warningCount: number;
 };
 
 const ACTIONS: Record<ActionName, { label: string; confirmLabel: string; description: string; requiresReason: boolean; tone: "default" | "danger" }> = {
-  warning: { label: "Предупредить", confirmLabel: "Выдать предупреждение", description: "Добавит предупреждение в профиль и журнал модерации.", requiresReason: true, tone: "default" },
-  mute: { label: "Mute", confirmLabel: "Ограничить отправку сообщений", description: "Telegram ограничит отправку сообщений на выбранный срок или до ручного снятия mute.", requiresReason: true, tone: "default" },
+  warning: { label: "Предупредить", confirmLabel: "Выдать предупреждение", description: "Добавит предупреждение в профиль и журнал модерации.", requiresReason: false, tone: "default" },
+  mute: { label: "Mute", confirmLabel: "Ограничить отправку сообщений", description: "Telegram ограничит отправку сообщений на выбранный срок или до ручного снятия mute.", requiresReason: false, tone: "default" },
   unmute: { label: "Снять mute", confirmLabel: "Снять ограничения", description: "Telegram снимет индивидуальные ограничения участника.", requiresReason: false, tone: "default" },
-  ban: { label: "Заблокировать", confirmLabel: "Заблокировать участника", description: "Участник будет удалён из чата и не сможет вернуться до разблокировки.", requiresReason: true, tone: "danger" },
+  ban: { label: "Заблокировать", confirmLabel: "Заблокировать участника", description: "Участник будет удалён из чата и не сможет вернуться до разблокировки.", requiresReason: false, tone: "danger" },
   unban: { label: "Разблокировать", confirmLabel: "Разблокировать участника", description: "Пользователь сможет снова вступить в чат, но Telegram не добавит его обратно автоматически.", requiresReason: false, tone: "default" },
-  kick: { label: "Кикнуть", confirmLabel: "Исключить из чата", description: "Участник будет удалён из чата без блокировки — сможет вернуться по ссылке-приглашению.", requiresReason: true, tone: "danger" }
+  kick: { label: "Кикнуть", confirmLabel: "Исключить из чата", description: "Участник будет удалён из чата без блокировки — сможет вернуться по ссылке-приглашению.", requiresReason: false, tone: "danger" },
+  unwarn: { label: "Снять предупреждение", confirmLabel: "Снять предупреждение", description: "Уменьшит счётчик предупреждений участника на одно.", requiresReason: false, tone: "default" }
 };
 
 const MUTE_DURATIONS = [
@@ -60,23 +62,20 @@ export function ModerationActions(props: Props) {
   const banned = props.status === "BANNED" || props.punishmentState === "BANNED";
   const visibleActions = useMemo(() => {
     const actions: ActionName[] = ["warning"];
+    if (props.warningCount > 0) actions.push("unwarn");
     if (!protectedTarget && !props.userIsBot) {
       if (props.chatType === "supergroup" && !banned) actions.push(muted ? "unmute" : "mute");
       actions.push(banned ? "unban" : "ban");
       if (!banned && props.status !== "LEFT") actions.push("kick");
     }
     return actions;
-  }, [banned, muted, protectedTarget, props.chatType, props.status, props.userIsBot]);
+  }, [banned, muted, protectedTarget, props.chatType, props.status, props.userIsBot, props.warningCount]);
 
   if (!props.adminCanModerate) return <div className="moderation-readonly"><ShieldAlert size={18} /><div><strong>Только просмотр</strong><p>Ваша роль не позволяет выполнять действия модерации.</p></div></div>;
   if (props.userIsBot) return <div className="moderation-readonly"><ShieldAlert size={18} /><div><strong>Telegram-бот</strong><p>Ручные действия модерации для аккаунтов ботов отключены.</p></div></div>;
 
   function prepare(action: ActionName) {
     setError(null); setSuccess(null);
-    if (ACTIONS[action].requiresReason && reason.trim().length < 3) {
-      setError("Укажите понятную причину — минимум 3 символа.");
-      return;
-    }
     setConfirming(action);
   }
 
@@ -150,6 +149,7 @@ export function ModerationActions(props: Props) {
 function ActionIcon({ action }: { action: ActionName }) {
   switch (action) {
     case "warning": return <TriangleAlert size={16} />;
+    case "unwarn": return <ShieldOff size={16} />;
     case "mute": return <LockKeyhole size={16} />;
     case "unmute": return <UnlockKeyhole size={16} />;
     case "ban": return <Ban size={16} />;

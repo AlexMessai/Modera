@@ -183,6 +183,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           adminCanModerate={canModerate(effectiveRole)}
           botStatus={moderation.botStatus}
           storedBotCanRestrict={moderation.storedBotCanRestrict}
+          warningCount={member.warningCount}
         />
       </section>
 

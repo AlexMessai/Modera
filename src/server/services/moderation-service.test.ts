@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  executeAdminWarningRevoke,
   executeModerationAction,
   executeTelegramActorModerationAction,
   executeTelegramActorWarningRevoke,
@@ -51,10 +52,10 @@ test("moderation command metadata is explicit", () => {
   assert.equal(isModerationAction("UNBAN"), true);
   assert.equal(isModerationAction("KICK"), true);
   assert.equal(isModerationAction("DELETE"), false);
-  assert.equal(requiresReason("WARNING"), true);
-  assert.equal(requiresReason("MUTE"), true);
-  assert.equal(requiresReason("BAN"), true);
-  assert.equal(requiresReason("KICK"), true);
+  assert.equal(requiresReason("WARNING"), false);
+  assert.equal(requiresReason("MUTE"), false);
+  assert.equal(requiresReason("BAN"), false);
+  assert.equal(requiresReason("KICK"), false);
   assert.equal(requiresReason("UNMUTE"), false);
   assert.equal(requiresReason("UNBAN"), false);
   assert.equal(isProtectedMemberStatus("CREATOR"), true);
@@ -286,7 +287,55 @@ test("Telegram-actor warning revoke decrements warningCount and rejects once it'
   }
 });
 
-test("Telegram-actor action rejects a missing reason and an unknown member", async () => {
+test("Admin (Web Admin) warning revoke decrements warningCount, mirroring the Telegram-actor path", async () => {
+  const telegramChatId = -1009000000304n;
+  const telegramUserId = 900000304n;
+  const email = "moderation-unwarn-admin-ci@example.com";
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+  await prisma.adminUser.deleteMany({ where: { email } });
+
+  const admin = await prisma.adminUser.create({
+    data: { email, displayName: "CI Moderator", passwordHash: "not-used-in-test", role: "MODERATOR" }
+  });
+  const chat = await prisma.chat.create({
+    data: { telegramChatId, title: "Admin Unwarn CI", type: "supergroup" }
+  });
+  const user = await prisma.telegramUser.create({
+    data: { telegramUserId, firstName: "Target", displayName: "Target User" }
+  });
+  const membership = await prisma.chatMember.create({
+    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 1, lastAutoEscalationWarningCount: 1 }
+  });
+
+  try {
+    const revoked = await executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id });
+    assert.equal(revoked.warningCount, 0);
+    assert.equal(revoked.chatId, chat.id);
+    assert.equal(revoked.affectedUserId, user.id);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { affectedUserId: user.id, action: "MODERATION_UNWARN" }
+    });
+    assert.equal(audit.source, "ADMIN");
+    assert.equal(audit.actingAdminId, admin.id);
+
+    await assert.rejects(
+      executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id }),
+      (error: unknown) => error instanceof ModerationError && error.code === "NO_WARNINGS"
+    );
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { affectedUserId: user.id } });
+    await prisma.chatMember.deleteMany({ where: { id: membership.id } });
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+    await prisma.adminUser.delete({ where: { id: admin.id } });
+  }
+});
+
+test("Telegram-actor action accepts a missing reason and rejects an unknown member", async () => {
   const telegramChatId = -1009000000302n;
   await prisma.chat.deleteMany({ where: { telegramChatId } });
   const chat = await prisma.chat.create({
@@ -294,6 +343,9 @@ test("Telegram-actor action rejects a missing reason and an unknown member", asy
   });
 
   try {
+    // Reason is optional everywhere now -- a blank reason no longer throws
+    // REASON_REQUIRED, it falls straight through to the normal member lookup
+    // (and fails with MEMBER_NOT_FOUND here since this target doesn't exist).
     await assert.rejects(
       executeTelegramActorModerationAction({
         chatId: chat.id,
@@ -302,7 +354,7 @@ test("Telegram-actor action rejects a missing reason and an unknown member", asy
         reason: "   ",
         telegramActor: { telegramUserId: 555 }
       }),
-      (error: unknown) => error instanceof ModerationError && error.code === "REASON_REQUIRED"
+      (error: unknown) => error instanceof ModerationError && error.code === "MEMBER_NOT_FOUND"
     );
 
     await assert.rejects(

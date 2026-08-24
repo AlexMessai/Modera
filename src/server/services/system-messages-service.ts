@@ -11,6 +11,7 @@ import {
 } from "@/server/services/manual-moderation-settings-service";
 import { DEFAULT_CAPTCHA_SETTINGS } from "@/server/services/captcha-settings-service";
 import { DEFAULT_CONTENT_SETTINGS } from "@/server/services/content-settings-service";
+import { DEFAULT_APPEAL_MESSAGES, type AppealMessagesValue } from "@/server/services/appeal-notification-service";
 
 const GLOBAL_ID = "global";
 
@@ -39,6 +40,7 @@ export type SystemMessagesValue = {
   manualModeration: ManualModerationMessagesValue;
   captcha: { challengeMessageTemplate: string };
   content: { welcomeMessageTemplate: string };
+  appeals: AppealMessagesValue;
 };
 
 const DEFAULT_AUTOMOD_MESSAGES: AutomodMessagesValue = {
@@ -64,7 +66,8 @@ export const DEFAULT_SYSTEM_MESSAGES: SystemMessagesValue = {
   automod: DEFAULT_AUTOMOD_MESSAGES,
   manualModeration: DEFAULT_MANUAL_MODERATION_MESSAGES,
   captcha: { challengeMessageTemplate: DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate },
-  content: { welcomeMessageTemplate: DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate }
+  content: { welcomeMessageTemplate: DEFAULT_CONTENT_SETTINGS.welcomeMessageTemplate },
+  appeals: DEFAULT_APPEAL_MESSAGES
 };
 
 function normalizeTemplate(value: string, fallback: string, maxLength = 1000) {
@@ -73,7 +76,7 @@ function normalizeTemplate(value: string, fallback: string, maxLength = 1000) {
 }
 
 export async function getSystemMessages(): Promise<SystemMessagesValue> {
-  const [automod, manualModeration, captcha, content] = await Promise.all([
+  const [automod, manualModeration, captcha, content, appeals] = await Promise.all([
     prisma.globalModerationSettings.findUnique({
       where: { id: GLOBAL_ID },
       select: { escalationMuteMessageTemplate: true, escalationBanMessageTemplate: true, mediaFilters: true }
@@ -94,7 +97,16 @@ export async function getSystemMessages(): Promise<SystemMessagesValue> {
       }
     }),
     prisma.globalCaptchaSettings.findUnique({ where: { id: GLOBAL_ID }, select: { challengeMessageTemplate: true } }),
-    prisma.globalContentSettings.findUnique({ where: { id: GLOBAL_ID }, select: { welcomeMessageTemplate: true } })
+    prisma.globalContentSettings.findUnique({ where: { id: GLOBAL_ID }, select: { welcomeMessageTemplate: true } }),
+    prisma.globalAppealSettings.findUnique({
+      where: { id: GLOBAL_ID },
+      select: {
+        appealSubmittedMessageTemplate: true,
+        appealNotifyAdminsMessageTemplate: true,
+        appealApprovedMessageTemplate: true,
+        appealRejectedMessageTemplate: true
+      }
+    })
   ]);
 
   return {
@@ -105,7 +117,8 @@ export async function getSystemMessages(): Promise<SystemMessagesValue> {
     },
     manualModeration: manualModeration ?? DEFAULT_MANUAL_MODERATION_MESSAGES,
     captcha: { challengeMessageTemplate: captcha?.challengeMessageTemplate ?? DEFAULT_SYSTEM_MESSAGES.captcha.challengeMessageTemplate },
-    content: { welcomeMessageTemplate: content?.welcomeMessageTemplate ?? DEFAULT_SYSTEM_MESSAGES.content.welcomeMessageTemplate }
+    content: { welcomeMessageTemplate: content?.welcomeMessageTemplate ?? DEFAULT_SYSTEM_MESSAGES.content.welcomeMessageTemplate },
+    appeals: appeals ?? DEFAULT_APPEAL_MESSAGES
   };
 }
 
@@ -115,6 +128,7 @@ export async function updateSystemMessages(input: {
   manualModeration: ManualModerationMessagesValue;
   captcha: { challengeMessageTemplate: string };
   content: { welcomeMessageTemplate: string };
+  appeals: AppealMessagesValue;
 }): Promise<SystemMessagesValue> {
   const automod = {
     escalationMuteMessageTemplate: normalizeTemplate(input.automod.escalationMuteMessageTemplate, DEFAULT_AUTOMOD_MESSAGES.escalationMuteMessageTemplate),
@@ -135,6 +149,12 @@ export async function updateSystemMessages(input: {
   };
   const captcha = { challengeMessageTemplate: normalizeTemplate(input.captcha.challengeMessageTemplate, DEFAULT_SYSTEM_MESSAGES.captcha.challengeMessageTemplate) };
   const content = { welcomeMessageTemplate: normalizeTemplate(input.content.welcomeMessageTemplate, DEFAULT_SYSTEM_MESSAGES.content.welcomeMessageTemplate, 2000) };
+  const appeals: AppealMessagesValue = {
+    appealSubmittedMessageTemplate: normalizeTemplate(input.appeals.appealSubmittedMessageTemplate, DEFAULT_APPEAL_MESSAGES.appealSubmittedMessageTemplate),
+    appealNotifyAdminsMessageTemplate: normalizeTemplate(input.appeals.appealNotifyAdminsMessageTemplate, DEFAULT_APPEAL_MESSAGES.appealNotifyAdminsMessageTemplate),
+    appealApprovedMessageTemplate: normalizeTemplate(input.appeals.appealApprovedMessageTemplate, DEFAULT_APPEAL_MESSAGES.appealApprovedMessageTemplate),
+    appealRejectedMessageTemplate: normalizeTemplate(input.appeals.appealRejectedMessageTemplate, DEFAULT_APPEAL_MESSAGES.appealRejectedMessageTemplate)
+  };
 
   await prisma.$transaction(async (tx) => {
     await tx.globalModerationSettings.upsert({
@@ -157,16 +177,22 @@ export async function updateSystemMessages(input: {
       create: { id: GLOBAL_ID, ...content },
       update: content
     });
+    await tx.globalAppealSettings.upsert({
+      where: { id: GLOBAL_ID },
+      create: { id: GLOBAL_ID, ...appeals },
+      update: appeals
+    });
 
     await tx.auditLog.createMany({
       data: [
         { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_AUTOMOD_SETTINGS_UPDATED", metadata: automod },
         { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_MANUAL_MODERATION_SETTINGS_UPDATED", metadata: manualModeration },
         { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_CAPTCHA_SETTINGS_UPDATED", metadata: captcha },
-        { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_CONTENT_SETTINGS_UPDATED", metadata: content }
+        { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_CONTENT_SETTINGS_UPDATED", metadata: content },
+        { actingAdminId: input.actingAdminId, source: "ADMIN", action: "GLOBAL_APPEAL_SETTINGS_UPDATED", metadata: appeals }
       ]
     });
   });
 
-  return { automod, manualModeration, captcha, content };
+  return { automod, manualModeration, captcha, content, appeals };
 }

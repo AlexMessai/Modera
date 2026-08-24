@@ -11,8 +11,7 @@ export const dynamic = "force-dynamic";
 
 const visibilitySchema = z.object({
   publicPunishmentMessagesEnabled: z.boolean(),
-  privatePunishmentMessagesEnabled: z.boolean(),
-  proactiveDmNotificationsEnabled: z.boolean()
+  privatePunishmentMessagesEnabled: z.boolean()
 });
 
 export async function GET() {

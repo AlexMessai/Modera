@@ -3,12 +3,12 @@ import { requireAdminApi, requireChatAccess, resolveEffectiveChatRole } from "@/
 import { canModerate } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import { prisma } from "@/server/db/prisma";
-import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
+import { executeAdminWarningRevoke, executeModerationAction, ModerationError } from "@/server/services/moderation-service";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  action: z.enum(["warning", "mute", "unmute", "ban", "unban", "kick"]),
+  action: z.enum(["warning", "unwarn", "mute", "unmute", "ban", "unban", "kick"]),
   reason: z.string().trim().max(500).optional(),
   muteDurationMinutes: z.number().int().min(1).max(10080).nullable().optional(),
   banDurationMinutes: z.number().int().min(1).max(527040).nullable().optional()
@@ -53,14 +53,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    const result = await executeModerationAction({
-      membershipId: id,
-      actingAdminId: auth.admin.id,
-      action: actionMap[parsed.data.action],
-      reason: parsed.data.reason,
-      muteDurationMinutes: parsed.data.action === "mute" ? parsed.data.muteDurationMinutes : null,
-      banDurationMinutes: parsed.data.action === "ban" ? parsed.data.banDurationMinutes : null
-    });
+    const result = parsed.data.action === "unwarn"
+      ? await executeAdminWarningRevoke({ membershipId: id, actingAdminId: auth.admin.id })
+      : await executeModerationAction({
+          membershipId: id,
+          actingAdminId: auth.admin.id,
+          action: actionMap[parsed.data.action],
+          reason: parsed.data.reason,
+          muteDurationMinutes: parsed.data.action === "mute" ? parsed.data.muteDurationMinutes : null,
+          banDurationMinutes: parsed.data.action === "ban" ? parsed.data.banDurationMinutes : null
+        });
     return Response.json({ data: result });
   } catch (error) {
     if (error instanceof ModerationError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.httpStatus });

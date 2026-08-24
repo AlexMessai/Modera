@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
+import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -23,8 +24,55 @@ export function parseAppealCallbackData(data: string): { appealId: string; decis
   return { appealId, decision: decision as "APPROVE" | "REJECT" };
 }
 
-function telegramErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error";
+const GLOBAL_APPEAL_MESSAGES_ID = "global";
+
+// The three appeal-flow texts that used to be inline string literals here
+// and in update-handler.ts -- moved into the same editable-template system
+// every other moderation text already uses (see system-messages-service.ts /
+// system-messages-settings.tsx). Global-only, same as
+// GlobalCaptchaSettings.challengeMessageTemplate -- no per-chat override.
+export type AppealMessagesValue = {
+  appealSubmittedMessageTemplate: string;
+  appealNotifyAdminsMessageTemplate: string;
+  appealApprovedMessageTemplate: string;
+  appealRejectedMessageTemplate: string;
+};
+
+export const DEFAULT_APPEAL_MESSAGES: AppealMessagesValue = {
+  appealSubmittedMessageTemplate: "Апелляция отправлена администраторам. Дождитесь решения.",
+  appealNotifyAdminsMessageTemplate: "Новая апелляция от %user% по чату «%chat%» (%action%):\n%message%",
+  appealApprovedMessageTemplate: "Ваша апелляция по чату «%chat%» одобрена, наказание отменено.%comment%",
+  appealRejectedMessageTemplate: "Ваша апелляция по чату «%chat%» отклонена.%comment%"
+};
+
+export async function getAppealMessages(): Promise<AppealMessagesValue> {
+  const stored = await prisma.globalAppealSettings.findUnique({
+    where: { id: GLOBAL_APPEAL_MESSAGES_ID },
+    select: {
+      appealSubmittedMessageTemplate: true,
+      appealNotifyAdminsMessageTemplate: true,
+      appealApprovedMessageTemplate: true,
+      appealRejectedMessageTemplate: true
+    }
+  });
+  return {
+    appealSubmittedMessageTemplate: stored?.appealSubmittedMessageTemplate ?? DEFAULT_APPEAL_MESSAGES.appealSubmittedMessageTemplate,
+    appealNotifyAdminsMessageTemplate: stored?.appealNotifyAdminsMessageTemplate ?? DEFAULT_APPEAL_MESSAGES.appealNotifyAdminsMessageTemplate,
+    appealApprovedMessageTemplate: stored?.appealApprovedMessageTemplate ?? DEFAULT_APPEAL_MESSAGES.appealApprovedMessageTemplate,
+    appealRejectedMessageTemplate: stored?.appealRejectedMessageTemplate ?? DEFAULT_APPEAL_MESSAGES.appealRejectedMessageTemplate
+  };
+}
+
+function renderAppealTemplate(
+  template: string,
+  placeholders: { chat?: string; user?: string; action?: string; message?: string; comment?: string }
+) {
+  return template
+    .replaceAll("%chat%", placeholders.chat ?? "")
+    .replaceAll("%user%", placeholders.user ?? "")
+    .replaceAll("%action%", placeholders.action ?? "")
+    .replaceAll("%message%", placeholders.message ?? "")
+    .replaceAll("%comment%", placeholders.comment ?? "");
 }
 
 const EPHEMERAL_TEMPLATE_FIELD = {
@@ -33,13 +81,13 @@ const EPHEMERAL_TEMPLATE_FIELD = {
   BAN: "banEphemeralMessageTemplate"
 } as const;
 
-// Best-effort, in-chat companion to the DM below: an ephemeral message (Bot
-// API 10.2) is visible only to the punished member, posted right in the
+// The only remaining personal notice for a punishment: an ephemeral message
+// (Bot API 10.2) visible only to the punished member, posted right in the
 // group they're already in, so it doesn't depend on them ever having opened
-// a DM with the bot -- unlike the DM, which Telegram flatly refuses to
-// deliver first-contact (see docs/STAGE_3.md's "Отложенная доставка
-// уведомления"). Points at the DM rather than inviting a Reply here, since
-// the actual /appeal flow still matches replies by DM message id. Text is
+// a DM with the bot. A separate private DM used to also fire here, but it
+// was removed (see the moderation-notification simplification) -- if the
+// member knows /appeal, they can use it themselves; the ephemeral notice no
+// longer points at any specific "reply here" instruction. Text is
 // admin-editable (manual-moderation-settings-service.ts's per-action
 // *EphemeralMessageTemplate) even though this fires for any punishment
 // source, not just manual commands -- the per-action shape already matches.
@@ -67,8 +115,8 @@ async function notifyPunishmentEphemeral(input: {
     });
   } catch {
     // Silently ignored -- e.g. the member was just removed from the chat
-    // (BAN), or isn't a member yet. The DM/queued-notification path is the
-    // reliable fallback either way, so this is pure upside when it works.
+    // (BAN), or isn't a member yet. Best-effort, same as every other
+    // Telegram notification call in this codebase.
   }
 }
 
@@ -82,14 +130,11 @@ export async function notifyPunishmentAppealOption(input: {
   actionType: "WARNING" | "MUTE" | "BAN";
   reason: string | null;
 }) {
-  // Private punishment notices (ephemeral in-chat notice + this DM) are
-  // gated by their own global toggle, independent of the public group-chat
-  // announcement — see manual-moderation-settings-service.ts.
+  // Private punishment notice (ephemeral in-chat notice only -- the private
+  // DM leg was removed) is gated by its own global toggle, independent of
+  // the public group-chat announcement -- see manual-moderation-settings-service.ts.
   const { privatePunishmentMessagesEnabled } = await getManualModerationVisibility();
   if (!privatePunishmentMessagesEnabled) return { delivered: false as const };
-
-  const label = ACTION_LABELS[input.actionType] ?? input.actionType;
-  const text = `В чате «${input.chatTitle}» вам выдано: ${label}.${input.reason ? `\nПричина: ${input.reason}` : ""}\n\nЕсли вы не согласны, ответьте на это сообщение (Reply) командой /appeal и опишите причину одним сообщением, например:\n/appeal я не отправлял это сообщение`;
 
   await notifyPunishmentEphemeral({
     chatId: input.chatId,
@@ -100,127 +145,29 @@ export async function notifyPunishmentAppealOption(input: {
     reason: input.reason
   });
 
-  let dmMessageId: number | null = null;
-  try {
-    const sent = await getTelegramClient().sendMessage({
-      chatId: Number(input.telegramUserId),
-      text
-    });
-    dmMessageId = sent.message_id;
-  } catch (error) {
-    await prisma.auditLog.create({
-      data: {
-        chatId: input.chatId,
-        affectedUserId: input.userId,
-        source: "SYSTEM",
-        action: "APPEAL_NOTIFICATION_FAILED",
-        metadata: {
-          moderationActionId: input.moderationActionId,
-          error: telegramErrorMessage(error)
-        }
-      }
-    });
-    return { delivered: false as const };
-  }
-
-  try {
-    const current = await prisma.moderationAction.findUnique({
-      where: { id: input.moderationActionId },
-      select: { metadata: true }
-    });
-    const existingMetadata =
-      current?.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
-        ? current.metadata
-        : {};
-    await prisma.moderationAction.update({
-      where: { id: input.moderationActionId },
-      data: {
-        metadata: { ...existingMetadata, appealDmMessageId: dmMessageId }
-      }
-    });
-  } catch (error) {
-    await prisma.auditLog.create({
-      data: {
-        chatId: input.chatId,
-        affectedUserId: input.userId,
-        source: "SYSTEM",
-        action: "APPEAL_NOTIFICATION_FAILED",
-        metadata: {
-          moderationActionId: input.moderationActionId,
-          stage: "PERSIST_DM_MESSAGE_ID",
-          error: telegramErrorMessage(error)
-        }
-      }
-    }).catch(() => undefined);
-    return { delivered: true as const, dmMessageId: null };
-  }
-
-  return { delivered: true as const, dmMessageId };
-}
-
-const PENDING_NOTIFICATION_LIMIT = 3;
-
-function hasDeliveredDm(metadata: unknown) {
-  return Boolean(
-    metadata &&
-      typeof metadata === "object" &&
-      !Array.isArray(metadata) &&
-      "appealDmMessageId" in metadata &&
-      (metadata as { appealDmMessageId?: unknown }).appealDmMessageId
-  );
-}
-
-export async function deliverPendingAppealNotifications(telegramUserId: number) {
-  const user = await prisma.telegramUser.findUnique({
-    where: { telegramUserId: BigInt(telegramUserId) },
-    select: { id: true }
-  });
-  if (!user) return;
-
-  const candidates = await prisma.moderationAction.findMany({
-    where: {
-      affectedUserId: user.id,
-      type: { in: ["WARNING", "MUTE", "BAN"] },
-      status: "SUCCEEDED",
-      appeal: { is: null }
-    },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    include: { chat: { select: { id: true, title: true, telegramChatId: true } } }
-  });
-
-  const undelivered = candidates.filter((action) => !hasDeliveredDm(action.metadata)).slice(0, PENDING_NOTIFICATION_LIMIT);
-
-  for (const action of undelivered) {
-    await notifyPunishmentAppealOption({
-      moderationActionId: action.id,
-      chatId: action.chatId,
-      telegramChatId: action.chat.telegramChatId,
-      userId: user.id,
-      telegramUserId: BigInt(telegramUserId),
-      chatTitle: action.chat.title,
-      actionType: action.type as "WARNING" | "MUTE" | "BAN",
-      reason: action.reason
-    }).catch(() => undefined);
-  }
+  return { delivered: true as const };
 }
 
 export async function notifyAppealDecision(input: {
+  chatId: string;
   telegramUserId: bigint;
   chatTitle: string;
   decision: "APPROVED" | "REJECTED";
   comment: string | null;
 }) {
-  // A bot-initiated DM that isn't a direct reply to a command the user just
-  // sent in that DM (the appeal was decided by an admin, possibly minutes or
-  // hours later) — gated by the proactive-DM toggle, independent of the
-  // punishment-message toggles above.
-  const { proactiveDmNotificationsEnabled } = await getManualModerationVisibility();
-  if (!proactiveDmNotificationsEnabled) return { delivered: false as const };
+  // The user themself initiated /appeal -- this is the reply to their own
+  // action, not a proactive rescue -- gated per chat (replaces the old
+  // global proactiveDmNotificationsEnabled, now dropped from the schema; its
+  // only reader was this exact call).
+  const { settings } = await resolveEffectiveChatAppealSettings(input.chatId);
+  if (!settings.notifyUserOnDecision) return { delivered: false as const };
 
-  const text = input.decision === "APPROVED"
-    ? `Ваша апелляция по чату «${input.chatTitle}» одобрена, наказание отменено.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`
-    : `Ваша апелляция по чату «${input.chatTitle}» отклонена.${input.comment ? `\nКомментарий администратора: ${input.comment}` : ""}`;
+  const messages = await getAppealMessages();
+  const template = input.decision === "APPROVED" ? messages.appealApprovedMessageTemplate : messages.appealRejectedMessageTemplate;
+  const text = renderAppealTemplate(template, {
+    chat: input.chatTitle,
+    comment: input.comment ? `\nКомментарий администратора: ${input.comment}` : ""
+  });
 
   try {
     await getTelegramClient().sendMessage({ chatId: Number(input.telegramUserId), text });
@@ -231,12 +178,16 @@ export async function notifyAppealDecision(input: {
 }
 
 export async function notifyAdminsOfNewAppeal(input: {
+  chatId: string;
   appealId: string;
   chatTitle: string;
   userDisplayName: string;
   actionType: "WARNING" | "MUTE" | "BAN";
   message: string;
 }) {
+  const { settings } = await resolveEffectiveChatAppealSettings(input.chatId);
+  if (!settings.notifyAdminsOnSubmit) return;
+
   const admins = await prisma.adminUser.findMany({
     where: {
       isActive: true,
@@ -247,8 +198,14 @@ export async function notifyAdminsOfNewAppeal(input: {
   });
   if (admins.length === 0) return;
 
+  const messages = await getAppealMessages();
   const label = ACTION_LABELS[input.actionType] ?? input.actionType;
-  const text = `Новая апелляция от ${input.userDisplayName} по чату «${input.chatTitle}» (${label}):\n${input.message}`;
+  const text = renderAppealTemplate(messages.appealNotifyAdminsMessageTemplate, {
+    user: input.userDisplayName,
+    chat: input.chatTitle,
+    action: label,
+    message: input.message
+  });
   const client = getTelegramClient();
 
   for (const admin of admins) {

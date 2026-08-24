@@ -52,8 +52,15 @@ export function isModerationAction(value: string): value is ModerationActionValu
   return MODERATION_ACTIONS.includes(value as ModerationActionValue);
 }
 
+// Reason used to be required for WARNING/MUTE/BAN/KICK; per product decision
+// it's now optional everywhere (still recorded when given, just never
+// blocks the action). Kept as a function rather than deleted outright so
+// both call sites below stay a one-line no-op call instead of two separate
+// deletions, and so a future reason-required action has one obvious place
+// to wire back in.
 export function requiresReason(action: ModerationActionValue) {
-  return action === "WARNING" || action === "MUTE" || action === "BAN" || action === "KICK";
+  void action;
+  return false;
 }
 
 // Telegram's own banChatMember/restrictChatMember reject an until_date more
@@ -572,16 +579,19 @@ export async function executeTelegramActorModerationAction(input: {
 }
 
 /**
- * /unwarn — takes one warning back. Purely local: unlike mute/ban there is no
- * Telegram call to make, so this writes an audit trail rather than a
- * ModerationAction (same shape the appeal-approval path uses).
+ * /unwarn's shared core (mirrors recordWarning above, generic over
+ * source/actingAdminId, called from both the Telegram path and Web Admin).
+ * Purely local: unlike mute/ban there is no Telegram call to make, so this
+ * writes an audit trail rather than a ModerationAction (same shape the
+ * appeal-approval path uses).
  */
-export async function executeTelegramActorWarningRevoke(input: {
-  chatId: string;
-  targetTelegramUserId: number;
-  telegramActor: TelegramActor;
+async function recordWarningRevoke(input: {
+  membershipId: string;
+  actingAdminId: string | null;
+  source: ActionSource;
+  metadata?: Prisma.InputJsonObject;
 }) {
-  const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
+  const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
   if (member.warningCount <= 0) {
     throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
@@ -605,11 +615,11 @@ export async function executeTelegramActorWarningRevoke(input: {
       data: {
         chatId: member.chatId,
         affectedUserId: member.userId,
-        actingAdminId: null,
-        source: "TELEGRAM",
+        actingAdminId: input.actingAdminId,
+        source: input.source,
         action: "MODERATION_UNWARN",
         metadata: {
-          ...telegramActorMetadata(input.telegramActor),
+          ...(input.metadata ?? {}),
           warningCount: updated.warningCount
         }
       }
@@ -622,6 +632,32 @@ export async function executeTelegramActorWarningRevoke(input: {
     chatId: member.chatId,
     affectedUserId: member.userId
   };
+}
+
+export async function executeTelegramActorWarningRevoke(input: {
+  chatId: string;
+  targetTelegramUserId: number;
+  telegramActor: TelegramActor;
+}) {
+  const member = await loadMemberByTelegramUser(input.chatId, input.targetTelegramUserId);
+  if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+  return recordWarningRevoke({
+    membershipId: member.id,
+    actingAdminId: null,
+    source: "TELEGRAM",
+    metadata: telegramActorMetadata(input.telegramActor)
+  });
+}
+
+export async function executeAdminWarningRevoke(input: {
+  membershipId: string;
+  actingAdminId: string;
+}) {
+  return recordWarningRevoke({
+    membershipId: input.membershipId,
+    actingAdminId: input.actingAdminId,
+    source: "ADMIN"
+  });
 }
 
 export async function executeAutomatedModerationAction(input: {
