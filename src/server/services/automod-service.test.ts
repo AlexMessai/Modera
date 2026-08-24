@@ -130,6 +130,69 @@ test("flood threshold allows the configured count and flags the next message", (
   assert.equal(isFloodViolation(6, 5), true);
 });
 
+test("a rule can trigger punishment/notification flow without deleting the message", async () => {
+  const telegramChatId = -1009000000391n;
+  const telegramUserId = 900000391n;
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({ data: { telegramChatId, title: "Automod outcome CI", type: "supergroup" } });
+  const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "Outcome", displayName: "Outcome Target" } });
+  await prisma.chatMember.create({ data: { chatId: chat.id, userId: user.id, status: "MEMBER" } });
+  await prisma.chatModerationSettings.create({
+    data: {
+      chatId: chat.id,
+      blockedTermsEnabled: true,
+      blockedTerms: ["запрещено"],
+      ruleActions: [{
+        rule: "TERM",
+        deleteMessage: false,
+        punishmentEnabled: false,
+        punishmentAction: "WARN",
+        muteDurationMinutes: 60,
+        notifyEnabled: true,
+        notifyText: "Нарушение найдено"
+      }]
+    }
+  });
+  await prisma.message.create({
+    data: {
+      chatId: chat.id,
+      senderUserId: user.id,
+      telegramMessageId: 591n,
+      telegramDate: new Date(1_700_000_000_000),
+      text: "Это запрещено",
+      messageType: "TEXT"
+    }
+  });
+
+  try {
+    const result = await processAutomodMessage({
+      chatId: chat.id,
+      isEdited: false,
+      message: {
+        message_id: 591,
+        date: 1_700_000_000,
+        chat: { id: Number(telegramChatId), type: "supergroup", title: chat.title },
+        from: { id: Number(telegramUserId), is_bot: false, first_name: "Outcome" },
+        text: "Это запрещено"
+      }
+    });
+    assert.equal(result.result, "TRIGGERED_TERM");
+    assert.ok("ruleAction" in result && result.ruleAction?.notifyEnabled);
+
+    const [message, audit] = await Promise.all([
+      prisma.message.findUniqueOrThrow({ where: { chatId_telegramMessageId: { chatId: chat.id, telegramMessageId: 591n } } }),
+      prisma.auditLog.findFirstOrThrow({ where: { chatId: chat.id, action: "AUTOMOD_TERM_TRIGGERED" } })
+    ]);
+    assert.equal(message.deletedAt, null);
+    assert.equal(audit.affectedUserId, user.id);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
 test("same Telegram message revision is processed once and a later edit is a new revision", async () => {
   const telegramChatId = -1009000000301n;
   const telegramUserId = 900000301n;

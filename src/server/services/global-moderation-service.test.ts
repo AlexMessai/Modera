@@ -7,10 +7,32 @@ import {
   findTriggeredEscalationRule,
   lowestEscalationThreshold,
   MEDIA_FILTER_TYPES,
+  normalizeAutomodRuleActions,
   normalizeEscalationRules,
   normalizeMediaFilters,
   resolveEffectiveModerationSettings
 } from "./global-moderation-service";
+
+test("normalizeAutomodRuleActions preserves legacy escalation behavior and validates explicit outcomes", () => {
+  const legacy = normalizeAutomodRuleActions([], true);
+  assert.equal(legacy.length, 5);
+  assert.ok(legacy.every((rule) => rule.deleteMessage && rule.punishmentEnabled && rule.punishmentAction === "WARN"));
+
+  const explicit = normalizeAutomodRuleActions([{
+    rule: "SPAM",
+    deleteMessage: false,
+    punishmentEnabled: true,
+    punishmentAction: "MUTE",
+    muteDurationMinutes: 999999,
+    notifyEnabled: true,
+    notifyText: "  Слишком быстро  "
+  }]);
+  const spam = explicit.find((rule) => rule.rule === "SPAM")!;
+  assert.equal(spam.deleteMessage, false);
+  assert.equal(spam.punishmentAction, "MUTE");
+  assert.equal(spam.muteDurationMinutes, 43200);
+  assert.equal(spam.notifyText, "Слишком быстро");
+});
 
 test("findTriggeredEscalationRule picks the highest crossed-but-not-fired threshold", () => {
   const rules = [

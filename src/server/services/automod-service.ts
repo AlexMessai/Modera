@@ -2,7 +2,9 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 import {
   findEnabledMediaFilterRule,
+  getAutomodRuleAction,
   resolveEffectiveModerationSettings,
+  type AutomodActionRule,
   type LinkProtectionMode
 } from "@/server/services/global-moderation-service";
 import {
@@ -52,6 +54,14 @@ const RESULT_BY_RULE: Record<AutomodRule, string> = {
   SPAM: "DELETED_SPAM"
 };
 
+const TRIGGERED_RESULT_BY_RULE: Record<AutomodActionRule, string> = {
+  LINK: "TRIGGERED_LINK",
+  TERM: "TRIGGERED_TERM",
+  MENTIONS: "TRIGGERED_MENTIONS",
+  DUPLICATE: "TRIGGERED_DUPLICATE",
+  SPAM: "TRIGGERED_SPAM"
+};
+
 const AUDIT_BY_RULE: Record<AutomodRule, string> = {
   LINK: "AUTOMOD_LINK_DELETED",
   TERM: "AUTOMOD_TERM_DELETED",
@@ -59,6 +69,14 @@ const AUDIT_BY_RULE: Record<AutomodRule, string> = {
   MENTIONS: "AUTOMOD_MENTIONS_DELETED",
   DUPLICATE: "AUTOMOD_DUPLICATE_DELETED",
   SPAM: "AUTOMOD_SPAM_DELETED"
+};
+
+const TRIGGERED_AUDIT_BY_RULE: Record<AutomodActionRule, string> = {
+  LINK: "AUTOMOD_LINK_TRIGGERED",
+  TERM: "AUTOMOD_TERM_TRIGGERED",
+  MENTIONS: "AUTOMOD_MENTIONS_TRIGGERED",
+  DUPLICATE: "AUTOMOD_DUPLICATE_TRIGGERED",
+  SPAM: "AUTOMOD_SPAM_TRIGGERED"
 };
 
 const REASON_BY_RULE: Record<AutomodRule, string> = {
@@ -266,6 +284,34 @@ async function recordDeletion(input: {
   ]);
 }
 
+async function recordTriggerWithoutDeletion(input: {
+  messageId: string;
+  chatId: string;
+  affectedUserId: string;
+  rule: AutomodActionRule;
+  metadata: Prisma.InputJsonValue;
+}) {
+  await prisma.$transaction([
+    prisma.message.update({
+      where: { id: input.messageId },
+      data: {
+        automodResult: TRIGGERED_RESULT_BY_RULE[input.rule],
+        automodClaimedAt: null
+      }
+    }),
+    prisma.auditLog.create({
+      data: {
+        chatId: input.chatId,
+        affectedUserId: input.affectedUserId,
+        source: "SYSTEM",
+        action: TRIGGERED_AUDIT_BY_RULE[input.rule],
+        reason: REASON_BY_RULE[input.rule],
+        metadata: input.metadata
+      }
+    })
+  ]);
+}
+
 async function recordDeleteFailure(input: {
   messageId: string;
   chatId: string;
@@ -392,7 +438,7 @@ export async function processAutomodMessage(input: {
   const resolvedPolicy = await resolveEffectiveModerationSettings(input.chatId);
   const settings = resolvedPolicy.settings;
   const rulesEnabled = Boolean(
-    settings.linkProtectionMode !== "ALLOW_ALL" ||
+    (settings.linkEnabled && settings.linkProtectionMode !== "ALLOW_ALL") ||
       settings.spamEnabled ||
       settings.blockedTermsEnabled ||
       settings.massMentionsEnabled ||
@@ -422,7 +468,9 @@ export async function processAutomodMessage(input: {
     }
   }
 
-  const domains = settings.linkProtectionMode !== "ALLOW_ALL" ? extractLinkDomains(input.message) : [];
+  const domains = settings.linkEnabled && settings.linkProtectionMode !== "ALLOW_ALL"
+    ? extractLinkDomains(input.message)
+    : [];
   const blockedDomains = filterBlockedDomains({
     mode: settings.linkProtectionMode,
     domains,
@@ -493,6 +541,9 @@ export async function processAutomodMessage(input: {
     return { processed: true, result: "CLEAN" as const, mediaFilterRule: null };
   }
 
+  const actionRule: AutomodActionRule | null = rule === "MEDIA" ? null : rule;
+  const ruleAction = actionRule ? getAutomodRuleAction(settings.ruleActions, actionRule) : null;
+
   const metadata = {
     telegramMessageId: String(input.message.message_id),
     rule,
@@ -511,6 +562,22 @@ export async function processAutomodMessage(input: {
     spamMaxMessages: settings.spamMaxMessages,
     edited: input.isEdited
   } satisfies Prisma.InputJsonValue;
+
+  if (ruleAction && actionRule && !ruleAction.deleteMessage) {
+    await recordTriggerWithoutDeletion({
+      messageId: stored.id,
+      chatId: input.chatId,
+      affectedUserId: stored.senderUserId,
+      rule: actionRule,
+      metadata
+    });
+    return {
+      processed: true,
+      result: TRIGGERED_RESULT_BY_RULE[actionRule],
+      mediaFilterRule: null,
+      ruleAction
+    };
+  }
 
   try {
     await getTelegramClient().deleteMessage(
@@ -547,6 +614,7 @@ export async function processAutomodMessage(input: {
     // (update-handler.ts) decide whether to escalate/announce per the
     // matched type's own warnOnTrigger/notifyEnabled, instead of the
     // chat-wide default every other rule uses.
-    mediaFilterRule
+    mediaFilterRule,
+    ruleAction
   };
 }
