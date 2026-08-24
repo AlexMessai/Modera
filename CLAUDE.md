@@ -132,3 +132,17 @@ Telegram-API-driven limitations (e.g. a bot can't message a user who never start
 `unbanChatMember` doesn't return the user to the group). Read the relevant stage doc before
 extending a feature area — it usually explains a design constraint that isn't obvious from the code
 alone.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+
+## Продолжение предыдущей сессии
+
+Когда пользователь пишет «давай продолжать», **сначала полностью прочитай `HANDOFF_NOTES.md`**, особенно самый верхний раздел `CURRENT HANDOFF`. Он содержит актуальную точку остановки, последние изменения в `main`, принятые UX-решения и режим работы пользователя. Не начинай повторный аудит уже завершённой работы, если пользователь не попросил об этом явно.
