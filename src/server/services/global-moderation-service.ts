@@ -138,6 +138,18 @@ type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" |
   ruleActions: unknown;
 };
 
+function synchronizeAutomodRuleDeletion(input: ModerationSettingsInput) {
+  const enabledByRule: Record<AutomodActionRule, boolean> = {
+    LINK: Boolean(input.linkEnabled),
+    TERM: Boolean(input.blockedTermsEnabled),
+    SPAM: Boolean(input.spamEnabled),
+    DUPLICATE: Boolean(input.duplicateEnabled),
+    MENTIONS: Boolean(input.massMentionsEnabled)
+  };
+  return normalizeAutomodRuleActions(input.ruleActions, input.autoEscalationEnabled)
+    .map((action) => ({ ...action, deleteMessage: enabledByRule[action.rule] }));
+}
+
 /** The lowest configured threshold — the closest analog to the old single "warns_limit" number for chat-reply placeholders. */
 export function lowestEscalationThreshold(rules: EscalationRuleValue[]): number | null {
   if (rules.length === 0) return null;
@@ -329,7 +341,7 @@ export function normalizeModerationSettings(input: ModerationSettingsInput): Mod
     escalationMuteMessageTemplate: normalizeEscalationTemplate(input.escalationMuteMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate),
     escalationBanMessageTemplate: normalizeEscalationTemplate(input.escalationBanMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate),
     mediaFilters: normalizeMediaFilters(input.mediaFilters),
-    ruleActions: normalizeAutomodRuleActions(input.ruleActions, input.autoEscalationEnabled)
+    ruleActions: synchronizeAutomodRuleDeletion(input)
   };
 }
 
@@ -357,7 +369,7 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
     escalationMuteMessageTemplate: settings.escalationMuteMessageTemplate,
     escalationBanMessageTemplate: settings.escalationBanMessageTemplate,
     mediaFilters: normalizeMediaFilters(settings.mediaFilters),
-    ruleActions: normalizeAutomodRuleActions(settings.ruleActions, settings.autoEscalationEnabled)
+    ruleActions: synchronizeAutomodRuleDeletion(settings)
   };
 }
 

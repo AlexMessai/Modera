@@ -7,7 +7,7 @@ import {
   DEFAULT_MODERATION_SETTINGS,
   isLinkProtectionMode,
   normalizeEscalationRules,
-  normalizeAutomodRuleActions,
+  normalizeModerationSettings,
   normalizeMediaFilters,
   resolveEffectiveModerationSettings,
   serializeModerationSettings
@@ -165,7 +165,7 @@ export async function updateChatModerationSettings(input: {
   const warningExpiryDays = Math.min(3650, Math.max(0, Math.trunc(input.warningExpiryDays)));
   const escalationMuteMessageTemplate = input.escalationMuteMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate;
   const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
-  const values = {
+  const values = normalizeModerationSettings({
     linkEnabled: input.linkEnabled,
     linkProtectionMode,
     allowedDomains,
@@ -188,8 +188,8 @@ export async function updateChatModerationSettings(input: {
     escalationMuteMessageTemplate,
     escalationBanMessageTemplate,
     mediaFilters: normalizeMediaFilters(input.mediaFilters),
-    ruleActions: normalizeAutomodRuleActions(input.ruleActions, input.autoEscalationEnabled)
-  };
+    ruleActions: input.ruleActions
+  });
 
   const saved = await prisma.$transaction(async (tx) => {
     const settings = await tx.chatModerationSettings.upsert({

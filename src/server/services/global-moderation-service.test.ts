@@ -10,6 +10,7 @@ import {
   lowestEscalationThreshold,
   MEDIA_FILTER_TYPES,
   normalizeAutomodRuleActions,
+  normalizeModerationSettings,
   normalizeEscalationRules,
   normalizeMediaFilters,
   resolveEffectiveModerationSettings
@@ -34,6 +35,23 @@ test("normalizeAutomodRuleActions preserves legacy escalation behavior and valid
   assert.equal(spam.punishmentAction, "MUTE");
   assert.equal(spam.muteDurationMinutes, 43200);
   assert.equal(spam.notifyText, "Слишком быстро");
+});
+
+test("rule enabled flags and delete outcomes share one state", () => {
+  const inconsistent = {
+    ...DEFAULT_MODERATION_SETTINGS,
+    linkEnabled: false,
+    spamEnabled: true,
+    ruleActions: DEFAULT_MODERATION_SETTINGS.ruleActions.map((action) => action.rule === "LINK"
+      ? { ...action, deleteMessage: true }
+      : action.rule === "SPAM"
+        ? { ...action, deleteMessage: false }
+        : action)
+  };
+  const normalized = normalizeModerationSettings(inconsistent);
+
+  assert.equal(normalized.ruleActions.find((action) => action.rule === "LINK")?.deleteMessage, false);
+  assert.equal(normalized.ruleActions.find((action) => action.rule === "SPAM")?.deleteMessage, true);
 });
 
 test("findTriggeredEscalationRule picks the highest crossed-but-not-fired threshold", () => {
