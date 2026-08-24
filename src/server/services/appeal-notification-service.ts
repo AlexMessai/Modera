@@ -1,6 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
-import { getModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
+import { getModerationNotificationProfile, renderTelegramModerationNotification, type ModerationNotificationSource } from "@/server/services/moderation-notification-settings-service";
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
@@ -84,8 +83,8 @@ function renderAppealTemplate(
 // was removed (see the moderation-notification simplification) -- if the
 // member knows /appeal, they can use it themselves; the ephemeral notice no
 // longer points at any specific "reply here" instruction. Text is
-// admin-editable in the moderation notification center and shared across
-// manual commands, Web Admin and automatic moderation.
+// admin-editable in the moderation notification center with separate text
+// for Telegram commands and for Web Admin/automatic moderation.
 export async function notifyModerationTarget(input: {
   chatId: string;
   telegramChatId: bigint;
@@ -94,17 +93,21 @@ export async function notifyModerationTarget(input: {
   actionType: "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
   reason: string | null;
   warns?: string;
+  notificationSource: ModerationNotificationSource;
+  targetDisplayName?: string | null;
+  admin?: { telegramUserId: number; displayName: string };
 }) {
   try {
     const profile = await getModerationNotificationProfile(input.actionType);
     if (!profile.channels.OFFENDER.enabled) return { delivered: false as const };
     const botProfile = await getTelegramBotProfile();
     const contact = botProfile.username ? `@${botProfile.username}` : "мне в личные сообщения";
-    const template = profile.channels.OFFENDER.text;
     await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
-      text: renderManualModerationTemplate(template, {
+      ...renderTelegramModerationNotification(profile.channels.OFFENDER, input.notificationSource, {
+        admin: input.admin ? { text: input.admin.displayName, telegramUserId: input.admin.telegramUserId } : "",
+        target: { text: input.targetDisplayName ?? "Пользователь", telegramUserId: input.telegramUserId },
         chat: input.chatTitle,
         reason: input.reason ?? "",
         warns: input.warns ?? "",
@@ -129,6 +132,9 @@ export async function notifyPunishmentAppealOption(input: {
   chatTitle: string;
   actionType: "WARNING" | "MUTE" | "BAN";
   reason: string | null;
+  notificationSource: ModerationNotificationSource;
+  targetDisplayName?: string | null;
+  admin?: { telegramUserId: number; displayName: string };
 }) {
   // Private punishment notice (ephemeral in-chat notice only -- the private
   // DM leg was removed) is independently controlled for this event.
@@ -141,7 +147,10 @@ export async function notifyPunishmentAppealOption(input: {
     telegramUserId: input.telegramUserId,
     chatTitle: input.chatTitle,
     actionType: input.actionType,
-    reason: input.reason
+    reason: input.reason,
+    notificationSource: input.notificationSource,
+    targetDisplayName: input.targetDisplayName,
+    admin: input.admin
   });
 
   return { delivered: true as const };

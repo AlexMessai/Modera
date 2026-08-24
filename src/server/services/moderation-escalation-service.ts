@@ -143,7 +143,7 @@ export async function recordAutomodViolationAndEscalate(input: {
   const member = await prisma.chatMember.findFirst({
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
     include: {
-      user: { select: { isBot: true, telegramUserId: true } },
+      user: { select: { isBot: true, telegramUserId: true, displayName: true } },
       chat: { select: { title: true, telegramChatId: true } }
     }
   });
@@ -274,7 +274,9 @@ export async function recordAutomodViolationAndEscalate(input: {
     telegramUserId: member.user.telegramUserId,
     chatTitle: member.chat.title,
     actionType: "WARNING",
-    reason
+    reason,
+    notificationSource: "AUTOMATED",
+    targetDisplayName: member.user.displayName
   }).catch(() => undefined);
 
   if (!policy.autoEscalationEnabled) {

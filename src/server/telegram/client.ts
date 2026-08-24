@@ -5,6 +5,7 @@ import type {
   TelegramFile,
   TelegramInlineKeyboardMarkup,
   TelegramMessage,
+  TelegramMessageEntity,
   TelegramUserProfilePhotos,
   TelegramUser
 } from "@/server/telegram/types";
@@ -327,6 +328,7 @@ export class TelegramClient {
     chatId: number;
     text: string;
     replyMarkup?: TelegramInlineKeyboardMarkup;
+    entities?: TelegramMessageEntity[];
     // Bot API 10.2: sent by a chat administrator, makes the message visible
     // only to this one non-bot member instead of the whole chat.
     receiverUserId?: number;
@@ -334,6 +336,7 @@ export class TelegramClient {
     return this.call<TelegramMessage>("sendMessage", {
       chat_id: input.chatId,
       text: input.text,
+      ...(input.entities?.length ? { entities: input.entities } : {}),
       ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
       ...(input.receiverUserId ? { receiver_user_id: input.receiverUserId } : {})
     });

@@ -1,24 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BellRing, Check, MessageCircle, Radio, ShieldCheck, UserRound } from "lucide-react";
+import { BellRing, Bot, Check, MessageCircle, Radio, ShieldCheck, UserRound } from "lucide-react";
 import { SettingsRow } from "@/components/settings-row";
 
 export type ModerationNotificationEvent = "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
 export type ModerationNotificationAudience = "OFFENDER" | "PUBLIC" | "MODERATOR";
+export type ModerationNotificationSource = "MANUAL" | "AUTOMATED";
 export type ModerationNotificationProfile = {
   event: ModerationNotificationEvent;
-  channels: Record<ModerationNotificationAudience, { enabled: boolean; text: string }>;
+  channels: Record<ModerationNotificationAudience, { enabled: boolean; templates: Record<ModerationNotificationSource, string> }>;
 };
 
-const EVENT_META: Record<ModerationNotificationEvent, { label: string; description: string; sources: string[] }> = {
-  WARNING: { label: "Warn", description: "Выдача предупреждения", sources: ["Telegram", "Web Admin", "Automod"] },
-  UNWARN: { label: "Снятие Warn", description: "Отзыв предупреждения", sources: ["Telegram", "Web Admin", "Апелляция"] },
-  MUTE: { label: "Mute", description: "Временное ограничение", sources: ["Telegram", "Web Admin", "Automod"] },
-  UNMUTE: { label: "Unmute", description: "Снятие ограничения", sources: ["Telegram", "Web Admin", "Автоматически"] },
-  BAN: { label: "Ban", description: "Блокировка участника", sources: ["Telegram", "Web Admin", "Automod"] },
-  UNBAN: { label: "Unban", description: "Снятие блокировки", sources: ["Telegram", "Web Admin", "Автоматически"] },
-  KICK: { label: "Kick", description: "Исключение из чата", sources: ["Telegram", "Web Admin"] }
+const EVENT_META: Record<ModerationNotificationEvent, { label: string; description: string }> = {
+  WARNING: { label: "Warn", description: "Выдача предупреждения" },
+  UNWARN: { label: "Снятие Warn", description: "Отзыв предупреждения" },
+  MUTE: { label: "Mute", description: "Временное ограничение" },
+  UNMUTE: { label: "Unmute", description: "Снятие ограничения" },
+  BAN: { label: "Ban", description: "Блокировка участника" },
+  UNBAN: { label: "Unban", description: "Снятие блокировки" },
+  KICK: { label: "Kick", description: "Исключение из чата" }
 };
 
 const AUDIENCES: Array<{ key: ModerationNotificationAudience; label: string; description: string; icon: typeof UserRound }> = [
@@ -32,14 +33,24 @@ const SAMPLE: Record<string, string> = {
   "%duration%": "3 ч.", "%warns%": "2", "%warns_limit%": "3", "%chat%": "Modera Test", "%contact%": "@modera_bot"
 };
 
-function preview(text: string) {
-  return Object.entries(SAMPLE).reduce((result, [key, value]) => result.replaceAll(key, value), text);
+function preview(text: string, source: ModerationNotificationSource) {
+  const parts = text.split(/(%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%)/g);
+  return parts.map((part, index) => {
+    const value = SAMPLE[part];
+    if (!value) return part;
+    if (part === "%admin%" && source === "AUTOMATED") return "";
+    if (part === "%admin%" || part === "%target%") {
+      return <a href={part === "%admin%" ? "tg://user?id=111111111" : "tg://user?id=222222222"} key={`${part}-${index}`}>{value}</a>;
+    }
+    return value;
+  });
 }
 
 export function ModerationNotificationCenter({ initial, canEdit }: { initial: ModerationNotificationProfile[]; canEdit: boolean }) {
   const [profiles, setProfiles] = useState(initial);
   const [selectedEvent, setSelectedEvent] = useState<ModerationNotificationEvent>(initial[0]?.event ?? "WARNING");
   const [selectedAudience, setSelectedAudience] = useState<ModerationNotificationAudience>("OFFENDER");
+  const [selectedSource, setSelectedSource] = useState<ModerationNotificationSource>("MANUAL");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -71,6 +82,7 @@ export function ModerationNotificationCenter({ initial, canEdit }: { initial: Mo
   const meta = EVENT_META[selected.event];
   const channel = selected.channels[selectedAudience];
   const audienceMeta = AUDIENCES.find((item) => item.key === selectedAudience)!;
+  const template = channel.templates[selectedSource];
 
   return (
     <section className="notification-center">
@@ -88,14 +100,18 @@ export function ModerationNotificationCenter({ initial, canEdit }: { initial: Mo
           ); })}
         </nav>
         <div className="notification-editor">
-          <header className="notification-editor__header"><div><span className="eyebrow">Событие</span><h3>{meta.label}</h3><p>{meta.description}</p></div><div className="notification-source-list">{meta.sources.map((source) => <span key={source}>{source}</span>)}</div></header>
+          <header className="notification-editor__header"><div><span className="eyebrow">Событие</span><h3>{meta.label}</h3><p>{meta.description}</p></div></header>
+          <div className="notification-source-tabs" role="tablist" aria-label="Источник действия модерации">
+            <button type="button" role="tab" aria-selected={selectedSource === "MANUAL"} className={selectedSource === "MANUAL" ? "is-active" : ""} onClick={() => setSelectedSource("MANUAL")}><UserRound size={16} /><span><strong>Ручная модерация</strong><small>Команды администратора в Telegram</small></span></button>
+            <button type="button" role="tab" aria-selected={selectedSource === "AUTOMATED"} className={selectedSource === "AUTOMATED" ? "is-active" : ""} onClick={() => setSelectedSource("AUTOMATED")}><Bot size={16} /><span><strong>Automod и Web Admin</strong><small>Автоматические действия и веб-панель</small></span></button>
+          </div>
           <div className="notification-audience-tabs" role="tablist" aria-label="Получатель уведомления">
             {AUDIENCES.map(({ key, label, icon: Icon }) => <button type="button" role="tab" aria-selected={selectedAudience === key} className={selectedAudience === key ? "is-active" : ""} onClick={() => setSelectedAudience(key)} key={key}><Icon size={16} /><span>{label}</span><i className={selected.channels[key].enabled ? "is-on" : ""} /></button>)}
           </div>
           <div className="notification-channel">
             <SettingsRow title={`${audienceMeta.label}: уведомление`} description={audienceMeta.description} checked={channel.enabled} disabled={!canEdit || saving} onChange={(enabled) => updateChannel(selectedAudience, { enabled })} />
-            <label className="notification-template-field"><span>Текст сообщения</span><textarea rows={7} maxLength={1000} value={channel.text} disabled={!canEdit || saving} onChange={(event) => updateChannel(selectedAudience, { text: event.target.value })} /><small>%admin% · %target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%</small></label>
-            <div className="notification-preview"><span><MessageCircle size={14} /> Предпросмотр</span><p>{preview(channel.text)}</p></div>
+            <label className="notification-template-field"><span>Текст сообщения · {selectedSource === "MANUAL" ? "ручная модерация" : "Automod и Web Admin"}</span><textarea rows={7} maxLength={1000} value={template} disabled={!canEdit || saving} onChange={(event) => updateChannel(selectedAudience, { templates: { ...channel.templates, [selectedSource]: event.target.value } })} /><small>{selectedSource === "MANUAL" ? "%admin% · " : ""}%target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%<br />В Telegram пользователи из %admin% и %target% становятся ссылками на профили.</small></label>
+            <div className="notification-preview"><span><MessageCircle size={14} /> Предпросмотр</span><p>{preview(template, selectedSource)}</p></div>
           </div>
         </div>
       </div>

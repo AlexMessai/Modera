@@ -40,8 +40,8 @@ import {
   ModerationError,
   type ModerationActionValue
 } from "@/server/services/moderation-service";
-import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
-import { getModerationNotificationProfile, type ModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
+import { resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { getModerationNotificationProfile, renderTelegramModerationNotification, renderTelegramTemplate, type ModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
 import { completePendingLogChannelLink } from "@/server/services/log-channel-service";
@@ -50,7 +50,7 @@ import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/service
 import { parseDurationToken, parseModerationCommandArguments } from "@/server/telegram/command-parser";
 import { SILENCE_DEFAULT_MINUTES, SilenceError, startSilence, stopSilence } from "@/server/services/silence-service";
 import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
-import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramUpdate } from "@/server/telegram/types";
+import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramMessageEntity, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
 const RULE_BY_AUTOMOD_RESULT: Record<string, string> = {
@@ -99,11 +99,11 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   // Filters use the same independent outcome model as Automod rules.
   if (result.mediaFilterRule) {
     if (result.mediaFilterRule.notifyEnabled && result.mediaFilterRule.notifyText) {
-      const text = renderManualModerationTemplate(result.mediaFilterRule.notifyText, {
-        target: telegramDisplayName(input.message.from),
+      const notification = renderTelegramTemplate(result.mediaFilterRule.notifyText, {
+        target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
         chat: input.message.chat.title ?? ""
       });
-      await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+      await getTelegramClient().sendMessage({ chatId: input.message.chat.id, ...notification }).catch(() => undefined);
     }
     if (!result.mediaFilterRule.punishmentEnabled) return;
 
@@ -119,27 +119,28 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
 
     const { settings } = await resolveEffectiveModerationSettings(input.chatId);
     if (!settings.announceEscalationEnabled) return;
-    const template = escalation.action === "MUTE" ? settings.escalationMuteMessageTemplate : settings.escalationBanMessageTemplate;
-    const text = renderManualModerationTemplate(template, {
-      admin: "Modera",
-      target: telegramDisplayName(input.message.from),
+    const profile = await getModerationNotificationProfile(escalation.action);
+    if (!profile.channels.PUBLIC.enabled) return;
+    const notification = renderTelegramModerationNotification(profile.channels.PUBLIC, "AUTOMATED", {
+      admin: "",
+      target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
       chat: input.message.chat.title ?? "",
       reason: "",
       duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
       warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
       warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""
     });
-    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, ...notification }).catch(() => undefined);
     return;
   }
 
   const ruleAction = "ruleAction" in result ? result.ruleAction : null;
   if (ruleAction?.notifyEnabled && ruleAction.notifyText) {
-    const text = renderManualModerationTemplate(ruleAction.notifyText, {
-      target: telegramDisplayName(input.message.from),
+    const notification = renderTelegramTemplate(ruleAction.notifyText, {
+      target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
       chat: input.message.chat.title ?? ""
     });
-    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, ...notification }).catch(() => undefined);
   }
 
   if (ruleAction && !ruleAction.punishmentEnabled) return;
@@ -167,18 +168,17 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   const { settings } = await resolveEffectiveModerationSettings(input.chatId);
   if (!settings.announceEscalationEnabled) return;
 
-  const template = escalation.action === "MUTE"
-    ? settings.escalationMuteMessageTemplate
-    : settings.escalationBanMessageTemplate;
-  const text = renderManualModerationTemplate(template, {
-    admin: "Modera",
-    target: telegramDisplayName(input.message.from),
+  const profile = await getModerationNotificationProfile(escalation.action);
+  if (!profile.channels.PUBLIC.enabled) return;
+  const notification = renderTelegramModerationNotification(profile.channels.PUBLIC, "AUTOMATED", {
+    admin: "",
+    target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
     reason: "",
     duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
     warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
     warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""
   });
-  await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+  await getTelegramClient().sendMessage({ chatId: input.message.chat.id, ...notification }).catch(() => undefined);
 }
 
 // Telegram posts this into the group automatically right after someone adds
@@ -246,7 +246,19 @@ function formatMinutes(minutes: number) {
 }
 
 /** `adminOnly` keeps internal diagnostics (e.g. a failed auto-punishment) out of the public chat announcement — only the admin who ran the command needs to see them. */
-type ModerationOutcomeLine = { text: string; publicText?: string; adminOnly?: boolean };
+type ModerationOutcomeLine = { text: string; textEntities?: TelegramMessageEntity[]; publicText?: string; publicEntities?: TelegramMessageEntity[]; adminOnly?: boolean };
+
+function joinTelegramLines(lines: Array<{ text: string; entities?: TelegramMessageEntity[] }>) {
+  const entities: TelegramMessageEntity[] = [];
+  let text = "";
+  for (const line of lines) {
+    if (text) text += "\n";
+    const offset = text.length;
+    text += line.text;
+    entities.push(...(line.entities ?? []).map((entity) => ({ ...entity, offset: entity.offset + offset })));
+  }
+  return { text, entities };
+}
 
 /** Runs the moderation action against a single already-resolved target; used in a loop for multi-target commands. */
 async function applyModerationCommandToTarget(input: {
@@ -299,8 +311,8 @@ async function applyModerationCommandToTarget(input: {
   }
 
   const placeholders = {
-    admin: input.telegramActor.displayName ?? input.telegramActor.username ?? "Администратор",
-    target: input.target.displayName,
+    admin: { text: input.telegramActor.displayName ?? input.telegramActor.username ?? "Администратор", telegramUserId: input.telegramActor.telegramUserId },
+    target: { text: input.target.displayName, telegramUserId: input.target.telegramUserId },
     reason: input.reason ?? "",
     duration: (input.action === "MUTE" || input.action === "BAN") && input.durationMinutes ? formatMinutes(input.durationMinutes) : "",
     warns,
@@ -312,14 +324,18 @@ async function applyModerationCommandToTarget(input: {
   // "silent" means the chat stays quiet, not that the admin is left guessing).
   const lines: ModerationOutcomeLine[] = [];
   if (input.notificationProfile.channels.MODERATOR.enabled) {
+    const moderator = renderTelegramModerationNotification(input.notificationProfile.channels.MODERATOR, "MANUAL", placeholders);
+    const publicNotification = input.notificationProfile.channels.PUBLIC.enabled
+      ? renderTelegramModerationNotification(input.notificationProfile.channels.PUBLIC, "MANUAL", placeholders)
+      : null;
     lines.push({
-      text: renderManualModerationTemplate(input.notificationProfile.channels.MODERATOR.text, placeholders),
-      ...(input.notificationProfile.channels.PUBLIC.enabled
-        ? { publicText: renderManualModerationTemplate(input.notificationProfile.channels.PUBLIC.text, placeholders) }
-        : {})
+      text: moderator.text,
+      textEntities: moderator.entities,
+      ...(publicNotification ? { publicText: publicNotification.text, publicEntities: publicNotification.entities } : {})
     });
   } else if (input.notificationProfile.channels.PUBLIC.enabled) {
-    lines.push({ text: "", publicText: renderManualModerationTemplate(input.notificationProfile.channels.PUBLIC.text, placeholders) });
+    const publicNotification = renderTelegramModerationNotification(input.notificationProfile.channels.PUBLIC, "MANUAL", placeholders);
+    lines.push({ text: "", publicText: publicNotification.text, publicEntities: publicNotification.entities });
   }
 
   // The warning that crossed the threshold also triggered a punishment — say so
@@ -328,14 +344,17 @@ async function applyModerationCommandToTarget(input: {
     const escalationProfile = await getModerationNotificationProfile(escalation.action);
     const escalationPlaceholders = {
           ...placeholders,
-          admin: "Modera",
+          admin: "",
           reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
         };
     if (escalationProfile.channels.MODERATOR.enabled || escalationProfile.channels.PUBLIC.enabled) {
+      const moderator = escalationProfile.channels.MODERATOR.enabled ? renderTelegramModerationNotification(escalationProfile.channels.MODERATOR, "AUTOMATED", escalationPlaceholders) : null;
+      const publicNotification = escalationProfile.channels.PUBLIC.enabled ? renderTelegramModerationNotification(escalationProfile.channels.PUBLIC, "AUTOMATED", escalationPlaceholders) : null;
       lines.push({
-        text: escalationProfile.channels.MODERATOR.enabled ? renderManualModerationTemplate(escalationProfile.channels.MODERATOR.text, escalationPlaceholders) : "",
-        ...(escalationProfile.channels.PUBLIC.enabled ? { publicText: renderManualModerationTemplate(escalationProfile.channels.PUBLIC.text, escalationPlaceholders) } : {})
+        text: moderator?.text ?? "",
+        textEntities: moderator?.entities,
+        ...(publicNotification ? { publicText: publicNotification.text, publicEntities: publicNotification.entities } : {})
       });
     }
   } else if (escalation?.attemptedAction && escalation.error) {
@@ -380,8 +399,8 @@ async function processGroupModerationCommand(input: {
   // ephemeral (Bot API 10.2, visible only to `from`) rather than as a normal
   // chat message. Only the separately-sent public announcement (also below,
   // gated by the global public-punishment-messages toggle) is meant for the whole chat.
-  const privateReply = (replyText: string) =>
-    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+  const privateReply = (replyText: string, entities?: TelegramMessageEntity[]) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, entities, receiverUserId: from.id }).catch(() => undefined);
 
   // The command text itself (e.g. "/warn спам") never belongs in the chat —
   // delete it immediately, before any validation, so it disappears whether
@@ -443,8 +462,8 @@ async function processGroupModerationCommand(input: {
   // The notification center controls public and moderator-facing channels
   // independently for every action. Validation failures stay private even
   // when the moderator disabled ordinary success confirmations.
-  const publicLines: string[] = [];
-  const adminSummaryLines: string[] = [];
+  const publicLines: Array<{ text: string; entities?: TelegramMessageEntity[] }> = [];
+  const adminSummaryLines: Array<{ text: string; entities?: TelegramMessageEntity[] }> = [];
   for (const target of targets) {
     try {
       const outcomes = await applyModerationCommandToTarget({
@@ -457,24 +476,26 @@ async function processGroupModerationCommand(input: {
         notificationProfile
       });
       for (const outcome of outcomes) {
-        const line = targets.length > 1 ? `${target.displayName}: ${outcome.text}` : outcome.text;
-        if (outcome.text) adminSummaryLines.push(line);
-        if (outcome.publicText && !outcome.adminOnly) publicLines.push(targets.length > 1 ? `${target.displayName}: ${outcome.publicText}` : outcome.publicText);
+        const prefix = targets.length > 1 ? `${target.displayName}: ` : "";
+        const prefixEntity = prefix ? [{ type: "text_link", offset: 0, length: target.displayName.length, url: `tg://user?id=${target.telegramUserId}` }] : [];
+        if (outcome.text) adminSummaryLines.push({ text: prefix + outcome.text, entities: [...prefixEntity, ...(outcome.textEntities ?? []).map((entity) => ({ ...entity, offset: entity.offset + prefix.length }))] });
+        if (outcome.publicText && !outcome.adminOnly) publicLines.push({ text: prefix + outcome.publicText, entities: [...prefixEntity, ...(outcome.publicEntities ?? []).map((entity) => ({ ...entity, offset: entity.offset + prefix.length }))] });
       }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";
-      adminSummaryLines.push(`❌ ${target.displayName}: ${message}`);
+      adminSummaryLines.push({ text: `❌ ${target.displayName}: ${message}`, entities: [{ type: "text_link", offset: 2, length: target.displayName.length, url: `tg://user?id=${target.telegramUserId}` }] });
     }
   }
   if (unresolvedUsernames.length > 0) {
-    adminSummaryLines.push(`❌ Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}`);
+    adminSummaryLines.push({ text: `❌ Не найдены в чате: ${unresolvedUsernames.map((name) => `@${name}`).join(", ")}` });
   }
 
   if (publicLines.length > 0) {
-    await input.client.sendMessage({ chatId: input.telegramChatId, text: publicLines.join("\n") }).catch(() => undefined);
+    await input.client.sendMessage({ chatId: input.telegramChatId, ...joinTelegramLines(publicLines) }).catch(() => undefined);
   }
   if (adminSummaryLines.length > 0) {
-    await privateReply(adminSummaryLines.join("\n"));
+    const summary = joinTelegramLines(adminSummaryLines);
+    await privateReply(summary.text, summary.entities);
   }
 
   return true;

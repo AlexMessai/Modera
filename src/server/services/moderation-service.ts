@@ -20,6 +20,10 @@ export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
 type TelegramModerationAction = Exclude<ModerationActionValue, "WARNING">;
 type ActionSource = "ADMIN" | "SYSTEM" | "TELEGRAM";
 
+function notificationSource(source: ActionSource) {
+  return source === "TELEGRAM" ? "MANUAL" as const : "AUTOMATED" as const;
+}
+
 export type TelegramActor = {
   telegramUserId: number;
   username?: string | null;
@@ -197,6 +201,7 @@ async function recordWarning(input: {
   source: ActionSource;
   reason: string | null;
   metadata?: Prisma.InputJsonObject;
+  notificationAdmin?: TelegramActor;
 }) {
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -240,7 +245,13 @@ async function recordWarning(input: {
     telegramUserId: input.member.user.telegramUserId,
     chatTitle: input.member.chat.title,
     actionType: "WARNING",
-    reason: input.reason
+    reason: input.reason,
+    notificationSource: notificationSource(input.source),
+    targetDisplayName: input.member.user.displayName,
+    admin: input.notificationAdmin ? {
+      telegramUserId: input.notificationAdmin.telegramUserId,
+      displayName: input.notificationAdmin.displayName ?? input.notificationAdmin.username ?? "Администратор"
+    } : undefined
   }).catch(() => undefined);
 
   if (input.source === "ADMIN") {
@@ -248,6 +259,7 @@ async function recordWarning(input: {
       event: "WARNING",
       telegramChatId: input.member.chat.telegramChatId,
       target: input.member.user.displayName ?? input.member.user.telegramUserId.toString(),
+      targetTelegramUserId: input.member.user.telegramUserId,
       reason: input.reason,
       warns: String(result.membership.warningCount)
     }).catch(() => undefined);
@@ -364,6 +376,7 @@ async function executeTelegramBackedAction(input: {
   auditAction: string;
   metadata?: Prisma.InputJsonObject;
   escalationWarningCount?: number;
+  notificationAdmin?: TelegramActor;
 }) {
   const member = input.member;
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -474,7 +487,13 @@ async function executeTelegramBackedAction(input: {
         telegramUserId: member.user.telegramUserId,
         chatTitle: member.chat.title,
         actionType: input.action,
-        reason: input.reason
+        reason: input.reason,
+        notificationSource: notificationSource(input.source),
+        targetDisplayName: member.user.displayName,
+        admin: input.notificationAdmin ? {
+          telegramUserId: input.notificationAdmin.telegramUserId,
+          displayName: input.notificationAdmin.displayName ?? input.notificationAdmin.username ?? "Администратор"
+        } : undefined
       }).catch(() => undefined);
     } else if (input.action === "UNMUTE" || input.action === "UNBAN" || input.action === "KICK") {
       await notifyModerationTarget({
@@ -483,7 +502,13 @@ async function executeTelegramBackedAction(input: {
         telegramUserId: member.user.telegramUserId,
         chatTitle: member.chat.title,
         actionType: input.action,
-        reason: input.reason
+        reason: input.reason,
+        notificationSource: notificationSource(input.source),
+        targetDisplayName: member.user.displayName,
+        admin: input.notificationAdmin ? {
+          telegramUserId: input.notificationAdmin.telegramUserId,
+          displayName: input.notificationAdmin.displayName ?? input.notificationAdmin.username ?? "Администратор"
+        } : undefined
       }).catch(() => undefined);
     }
 
@@ -494,6 +519,7 @@ async function executeTelegramBackedAction(input: {
         event: input.action,
         telegramChatId: member.chat.telegramChatId,
         target: member.user.displayName ?? member.user.telegramUserId.toString(),
+        targetTelegramUserId: member.user.telegramUserId,
         reason: input.reason,
         duration
       }).catch(() => undefined);
@@ -591,7 +617,7 @@ export async function executeTelegramActorModerationAction(input: {
   const metadata = telegramActorMetadata(input.telegramActor);
 
   if (input.action === "WARNING") {
-    return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata });
+    return recordWarning({ membershipId: member.id, member, actingAdminId: null, source: "TELEGRAM", reason, metadata, notificationAdmin: input.telegramActor });
   }
 
   const durationMinutes = input.action === "MUTE" ? input.muteDurationMinutes : input.action === "BAN" ? input.banDurationMinutes : null;
@@ -607,7 +633,8 @@ export async function executeTelegramActorModerationAction(input: {
     auditAction: ACTION_AUDIT_LABELS[input.action],
     metadata: durationMinutes
       ? { ...metadata, ...(input.action === "MUTE" ? { muteDurationMinutes: durationMinutes } : { banDurationMinutes: durationMinutes }) }
-      : metadata
+      : metadata,
+    notificationAdmin: input.telegramActor
   });
 }
 
@@ -623,6 +650,7 @@ async function recordWarningRevoke(input: {
   actingAdminId: string | null;
   source: ActionSource;
   metadata?: Prisma.InputJsonObject;
+  notificationAdmin?: TelegramActor;
 }) {
   const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
@@ -648,7 +676,13 @@ async function recordWarningRevoke(input: {
     chatTitle: member.chat.title,
     actionType: "UNWARN",
     reason: "Предупреждение снято администратором.",
-    warns: String(revoked.remainingWarningCount)
+    warns: String(revoked.remainingWarningCount),
+    notificationSource: notificationSource(input.source),
+    targetDisplayName: member.user.displayName,
+    admin: input.notificationAdmin ? {
+      telegramUserId: input.notificationAdmin.telegramUserId,
+      displayName: input.notificationAdmin.displayName ?? input.notificationAdmin.username ?? "Администратор"
+    } : undefined
   }).catch(() => undefined);
 
   if (input.source === "ADMIN") {
@@ -656,6 +690,7 @@ async function recordWarningRevoke(input: {
       event: "UNWARN",
       telegramChatId: member.chat.telegramChatId,
       target: member.user.displayName ?? member.user.telegramUserId.toString(),
+      targetTelegramUserId: member.user.telegramUserId,
       reason: "Предупреждение снято администратором.",
       warns: String(revoked.remainingWarningCount)
     }).catch(() => undefined);
@@ -680,7 +715,8 @@ export async function executeTelegramActorWarningRevoke(input: {
     membershipId: member.id,
     actingAdminId: null,
     source: "TELEGRAM",
-    metadata: telegramActorMetadata(input.telegramActor)
+    metadata: telegramActorMetadata(input.telegramActor),
+    notificationAdmin: input.telegramActor
   });
 }
 

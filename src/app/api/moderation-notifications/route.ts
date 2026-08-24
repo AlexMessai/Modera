@@ -6,12 +6,17 @@ import {
   getModerationNotificationProfiles,
   MODERATION_NOTIFICATION_AUDIENCES,
   MODERATION_NOTIFICATION_EVENTS,
+  MODERATION_NOTIFICATION_SOURCES,
   updateModerationNotificationProfiles
 } from "@/server/services/moderation-notification-settings-service";
 
 export const dynamic = "force-dynamic";
 
-const channelSchema = z.object({ enabled: z.boolean(), text: z.string().trim().min(1).max(1000) });
+const templateSchema = z.string().trim().min(1).max(1000);
+const channelSchema = z.object({
+  enabled: z.boolean(),
+  templates: z.object(Object.fromEntries(MODERATION_NOTIFICATION_SOURCES.map((source) => [source, templateSchema])) as Record<(typeof MODERATION_NOTIFICATION_SOURCES)[number], typeof templateSchema>)
+});
 const profileSchema = z.object({
   event: z.enum(MODERATION_NOTIFICATION_EVENTS),
   channels: z.object(Object.fromEntries(MODERATION_NOTIFICATION_AUDIENCES.map((audience) => [audience, channelSchema])) as Record<(typeof MODERATION_NOTIFICATION_AUDIENCES)[number], typeof channelSchema>)
