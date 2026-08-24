@@ -54,9 +54,10 @@ const RESULT_BY_RULE: Record<AutomodRule, string> = {
   SPAM: "DELETED_SPAM"
 };
 
-const TRIGGERED_RESULT_BY_RULE: Record<AutomodActionRule, string> = {
+const TRIGGERED_RESULT_BY_RULE: Record<AutomodRule, string> = {
   LINK: "TRIGGERED_LINK",
   TERM: "TRIGGERED_TERM",
+  MEDIA: "TRIGGERED_MEDIA",
   MENTIONS: "TRIGGERED_MENTIONS",
   DUPLICATE: "TRIGGERED_DUPLICATE",
   SPAM: "TRIGGERED_SPAM"
@@ -71,9 +72,10 @@ const AUDIT_BY_RULE: Record<AutomodRule, string> = {
   SPAM: "AUTOMOD_SPAM_DELETED"
 };
 
-const TRIGGERED_AUDIT_BY_RULE: Record<AutomodActionRule, string> = {
+const TRIGGERED_AUDIT_BY_RULE: Record<AutomodRule, string> = {
   LINK: "AUTOMOD_LINK_TRIGGERED",
   TERM: "AUTOMOD_TERM_TRIGGERED",
+  MEDIA: "AUTOMOD_MEDIA_TRIGGERED",
   MENTIONS: "AUTOMOD_MENTIONS_TRIGGERED",
   DUPLICATE: "AUTOMOD_DUPLICATE_TRIGGERED",
   SPAM: "AUTOMOD_SPAM_TRIGGERED"
@@ -288,7 +290,7 @@ async function recordTriggerWithoutDeletion(input: {
   messageId: string;
   chatId: string;
   affectedUserId: string;
-  rule: AutomodActionRule;
+  rule: AutomodRule;
   metadata: Prisma.InputJsonValue;
 }) {
   await prisma.$transaction([
@@ -563,18 +565,19 @@ export async function processAutomodMessage(input: {
     edited: input.isEdited
   } satisfies Prisma.InputJsonValue;
 
-  if (ruleAction && actionRule && !ruleAction.deleteMessage) {
+  const shouldDelete = rule === "MEDIA" ? mediaFilterRule?.deleteMessage !== false : ruleAction?.deleteMessage !== false;
+  if (!shouldDelete) {
     await recordTriggerWithoutDeletion({
       messageId: stored.id,
       chatId: input.chatId,
       affectedUserId: stored.senderUserId,
-      rule: actionRule,
+      rule,
       metadata
     });
     return {
       processed: true,
-      result: TRIGGERED_RESULT_BY_RULE[actionRule],
-      mediaFilterRule: null,
+      result: TRIGGERED_RESULT_BY_RULE[rule],
+      mediaFilterRule,
       ruleAction
     };
   }

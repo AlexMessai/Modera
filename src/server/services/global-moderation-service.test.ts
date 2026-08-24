@@ -93,24 +93,35 @@ test("normalizeMediaFilters always returns all 12 types, defaulting anything mis
 
   const normalized = normalizeMediaFilters([
     { type: "PHOTO", enabled: true, warnOnTrigger: 1, notifyEnabled: "yes", notifyText: "  🚫 нельзя  " },
-    { type: "DICE", enabled: true, warnOnTrigger: false, notifyEnabled: false, notifyText: "" }
+    { type: "DICE", enabled: true, warnOnTrigger: false, notifyEnabled: false, notifyText: "" },
+    { type: "STICKER", enabled: true, deleteMessage: false, punishmentEnabled: true, punishmentAction: "MUTE", muteDurationMinutes: 1440, notifyEnabled: true, notifyText: "  без стикеров  " }
   ]);
   assert.equal(normalized.length, MEDIA_FILTER_TYPES.length);
   assert.equal(normalized.map((rule) => rule.type).join(","), MEDIA_FILTER_TYPES.join(","));
 
   const photo = normalized.find((rule) => rule.type === "PHOTO")!;
   assert.equal(photo.enabled, true);
+  assert.equal(photo.deleteMessage, true);
+  assert.equal(photo.punishmentEnabled, true);
+  assert.equal(photo.punishmentAction, "WARN");
+  assert.equal(photo.muteDurationMinutes, 60);
   assert.equal(photo.warnOnTrigger, true);
   assert.equal(photo.notifyEnabled, true);
   assert.equal(photo.notifyText, "🚫 нельзя");
 
   const dice = normalized.find((rule) => rule.type === "DICE")!;
   assert.equal(dice.enabled, true);
-  // Blank notifyText falls back to the default rather than saving empty.
-  assert.equal(dice.notifyText, DEFAULT_MEDIA_FILTERS[0].notifyText);
+  assert.equal(dice.notifyText, "");
 
   const video = normalized.find((rule) => rule.type === "VIDEO")!;
   assert.equal(video.enabled, false);
+
+  const sticker = normalized.find((rule) => rule.type === "STICKER")!;
+  assert.equal(sticker.deleteMessage, false);
+  assert.equal(sticker.punishmentEnabled, true);
+  assert.equal(sticker.punishmentAction, "MUTE");
+  assert.equal(sticker.muteDurationMinutes, 1440);
+  assert.equal(sticker.notifyText, "без стикеров");
 });
 
 test("findEnabledMediaFilterRule returns the rule only when its type is enabled", () => {

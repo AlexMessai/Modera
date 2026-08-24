@@ -45,6 +45,7 @@ const actionLabels: Record<string, string> = {
   AUTOMOD_LINK_DELETED: "Удалена запрещённая ссылка",
   AUTOMOD_TERM_DELETED: "Удалено запрещённое слово или фраза",
   AUTOMOD_MEDIA_DELETED: "Удалён запрещённый тип контента",
+  AUTOMOD_MEDIA_TRIGGERED: "Обнаружен запрещённый тип контента",
   AUTOMOD_MENTIONS_DELETED: "Удалено за массовые упоминания",
   AUTOMOD_DUPLICATE_DELETED: "Удалено повторяющееся сообщение",
   AUTOMOD_SPAM_DELETED: "Удалено за флуд",

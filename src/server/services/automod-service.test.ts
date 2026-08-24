@@ -340,6 +340,46 @@ test("mediaFilters (Filters module) enables automod for an enabled type", async 
   }
 });
 
+test("an enabled media filter can trigger without deleting the message", async () => {
+  const telegramChatId = -1009000000403n;
+  const telegramUserId = 900000403n;
+
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId } });
+
+  const chat = await prisma.chat.create({ data: { telegramChatId, title: "Automod Filters no-delete CI", type: "supergroup" } });
+  await prisma.chatModerationSettings.create({
+    data: {
+      chatId: chat.id,
+      useGlobalProfile: false,
+      mediaFilters: [{ type: "PHOTO", enabled: true, deleteMessage: false, punishmentEnabled: false, punishmentAction: "WARN", muteDurationMinutes: 60, warnOnTrigger: false, notifyEnabled: false, notifyText: "" }]
+    }
+  });
+  const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "Automod", displayName: "Automod Target" } });
+  await prisma.chatMember.create({ data: { chatId: chat.id, userId: user.id, status: "MEMBER" } });
+  await prisma.message.create({
+    data: { chatId: chat.id, senderUserId: user.id, telegramMessageId: 603n, telegramDate: new Date(1_700_000_000_000), messageType: "PHOTO" }
+  });
+
+  const message: TelegramMessage = {
+    message_id: 603,
+    date: 1_700_000_000,
+    chat: { id: Number(telegramChatId), type: "supergroup", title: "Automod Filters no-delete CI" },
+    from: { id: Number(telegramUserId), is_bot: false, first_name: "Automod" }
+  };
+
+  try {
+    const result = await processAutomodMessage({ chatId: chat.id, message, isEdited: false });
+    assert.equal(result.result, "TRIGGERED_MEDIA");
+    assert.equal(result.mediaFilterRule?.deleteMessage, false);
+    const stored = await prisma.message.findUnique({ where: { chatId_telegramMessageId: { chatId: chat.id, telegramMessageId: 603n } } });
+    assert.equal(stored?.deletedAt, null);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.telegramUser.delete({ where: { id: user.id } });
+  }
+});
+
 test("a disabled mediaFilters entry does not trigger automod for that type", async () => {
   const telegramChatId = -1009000000402n;
   const telegramUserId = 900000402n;

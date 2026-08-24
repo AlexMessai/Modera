@@ -356,7 +356,8 @@ model ChatModerationSettings {
   // list has been removed entirely) — MediaFilterRule[] from
   // global-moderation-service.ts: [{ type: "PHOTO"|"VIDEO"|"ANIMATION"|
   // "VOICE"|"AUDIO"|"VIDEO_NOTE"|"DICE"|"DOCUMENT"|"STICKER"|"POLL"|
-  // "LOCATION"|"CONTACT", enabled, warnOnTrigger, notifyEnabled, notifyText }].
+  // "LOCATION"|"CONTACT", enabled, deleteMessage, punishmentEnabled,
+  // punishmentAction, muteDurationMinutes, notifyEnabled, notifyText }].
   mediaFilters           Json     @default("[]")
   // Per-rule outcomes for LINK/TERM/SPAM/DUPLICATE/MENTIONS. Detection
   // settings stay in their existing typed columns; this JSON only controls
