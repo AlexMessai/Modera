@@ -28,20 +28,7 @@ async function setup() {
     data: { email: ADMIN_EMAIL, displayName: "CI Moderator", passwordHash: "not-used-in-test", role: "MODERATOR" }
   });
   const member = await prisma.chatMember.create({
-    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 2 }
-  });
-  await prisma.moderationAction.create({
-    data: {
-      chatId: chat.id,
-      affectedUserId: user.id,
-      actingAdminId: admin.id,
-      source: "ADMIN",
-      type: "WARNING",
-      status: "SUCCEEDED",
-      reason: "Предыдущее предупреждение",
-      completedAt: new Date(Date.now() - 60_000),
-      createdAt: new Date(Date.now() - 60_000)
-    }
+    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 1 }
   });
   const warningAction = await prisma.moderationAction.create({
     data: {
@@ -176,6 +163,26 @@ test("approving a WARNING appeal decrements warningCount without calling Telegra
   const { admin, member, warningAction } = await setup();
 
   try {
+    await prisma.$transaction([
+      prisma.moderationAction.create({
+        data: {
+          chatId: warningAction.chatId,
+          affectedUserId: warningAction.affectedUserId,
+          actingAdminId: admin.id,
+          source: "ADMIN",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          reason: "Предыдущее предупреждение",
+          completedAt: new Date(Date.now() - 60_000),
+          createdAt: new Date(Date.now() - 60_000)
+        }
+      }),
+      prisma.chatMember.update({
+        where: { id: member.id },
+        data: { warningCount: 2 }
+      })
+    ]);
+
     const appeal = await prisma.appeal.create({
       data: {
         chatId: warningAction.chatId,
