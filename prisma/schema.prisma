@@ -502,6 +502,10 @@ model GlobalManualModerationSettings {
   // no per-chat or per-command override (see manual-moderation-settings.tsx).
   publicPunishmentMessagesEnabled  Boolean @default(true)
   privatePunishmentMessagesEnabled Boolean @default(true)
+  // Unified event/channel profiles used by the moderation notification
+  // center. Empty means "derive from the legacy fields above/below" so the
+  // rollout preserves every installation's current behaviour.
+  notificationProfiles             Json    @default("[]")
   warnMessageTemplate         String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
   warnDeleteTargetMessage     Boolean  @default(false)
   warnEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)

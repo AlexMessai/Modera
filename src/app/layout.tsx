@@ -7,6 +7,7 @@ import "./journal.css";
 import "./messages.css";
 import "./moderation.css";
 import "./system.css";
+import "./notification-center.css";
 import "./settings.css";
 import "./join-requests.css";
 import "./dashboard.css";

@@ -18,13 +18,12 @@ test("getSystemMessages falls back to app defaults when no Global*Settings rows 
   assert.equal(typeof messages.automod.escalationMuteMessageTemplate, "string");
   assert.equal(typeof messages.automod.escalationBanMessageTemplate, "string");
   assert.equal(messages.automod.mediaFilters.length, 12);
-  assert.equal(typeof messages.manualModeration.warnMessageTemplate, "string");
   assert.equal(typeof messages.captcha.challengeMessageTemplate, "string");
   assert.equal(typeof messages.content.welcomeMessageTemplate, "string");
   assert.equal(typeof messages.appeals.appealSubmittedMessageTemplate, "string");
 });
 
-test("updateSystemMessages persists all 5 domains and getSystemMessages reads them back", async () => {
+test("updateSystemMessages persists the non-moderation message domains and reads them back", async () => {
   await cleanup();
   const admin = await prisma.adminUser.create({
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
@@ -40,7 +39,6 @@ test("updateSystemMessages persists all 5 domains and getSystemMessages reads th
         escalationBanMessageTemplate: "BAN %target%",
         mediaFilters: before.automod.mediaFilters.map((rule) => (rule.type === "PHOTO" ? { ...rule, notifyText: "no photos" } : rule))
       },
-      manualModeration: { ...before.manualModeration, warnMessageTemplate: "WARN %target%" },
       captcha: { challengeMessageTemplate: "prove you're human" },
       content: { welcomeMessageTemplate: "hi {name}" },
       appeals: { ...before.appeals, appealSubmittedMessageTemplate: "Appeal received" }
@@ -49,14 +47,12 @@ test("updateSystemMessages persists all 5 domains and getSystemMessages reads th
     assert.equal(saved.automod.escalationMuteMessageTemplate, "MUTE %target%");
     assert.equal(saved.automod.escalationBanMessageTemplate, "BAN %target%");
     assert.equal(saved.automod.mediaFilters.find((rule) => rule.type === "PHOTO")?.notifyText, "no photos");
-    assert.equal(saved.manualModeration.warnMessageTemplate, "WARN %target%");
     assert.equal(saved.captcha.challengeMessageTemplate, "prove you're human");
     assert.equal(saved.content.welcomeMessageTemplate, "hi {name}");
     assert.equal(saved.appeals.appealSubmittedMessageTemplate, "Appeal received");
 
     const reloaded = await getSystemMessages();
     assert.equal(reloaded.automod.escalationMuteMessageTemplate, "MUTE %target%");
-    assert.equal(reloaded.manualModeration.warnMessageTemplate, "WARN %target%");
     assert.equal(reloaded.captcha.challengeMessageTemplate, "prove you're human");
     assert.equal(reloaded.content.welcomeMessageTemplate, "hi {name}");
     assert.equal(reloaded.appeals.appealSubmittedMessageTemplate, "Appeal received");
@@ -66,7 +62,7 @@ test("updateSystemMessages persists all 5 domains and getSystemMessages reads th
   }
 });
 
-test("updateSystemMessages never touches GlobalManualModerationSettings' visibility flags", async () => {
+test("updateSystemMessages never touches moderation notification settings", async () => {
   await cleanup();
   const admin = await prisma.adminUser.create({
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
@@ -81,8 +77,7 @@ test("updateSystemMessages never touches GlobalManualModerationSettings' visibil
     const before = await getSystemMessages();
     await updateSystemMessages({
       actingAdminId: admin.id,
-      ...before,
-      manualModeration: { ...before.manualModeration, warnMessageTemplate: "WARN %target% v2" }
+      ...before
     });
 
     const visibility = await getManualModerationVisibility();
