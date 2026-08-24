@@ -502,6 +502,7 @@ export async function listMembers(input: {
   search?: string;
   chatId?: string;
   status?: MembershipStatusValue;
+  visibleChatIds?: string[] | null;
 }) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
@@ -518,7 +519,13 @@ export async function listMembers(input: {
     : undefined;
 
   const where: Prisma.ChatMemberWhereInput = {
-    ...(input.chatId ? { chatId: input.chatId } : {}),
+    ...(input.chatId
+      ? input.visibleChatIds !== null && input.visibleChatIds !== undefined && !input.visibleChatIds.includes(input.chatId)
+        ? { chatId: { in: [] } }
+        : { chatId: input.chatId }
+      : input.visibleChatIds !== null && input.visibleChatIds !== undefined
+        ? { chatId: { in: input.visibleChatIds } }
+        : {}),
     ...(input.status ? { status: input.status } : {}),
     ...(userWhere ? { user: userWhere } : {})
   };
@@ -581,17 +588,24 @@ export async function listMembers(input: {
   };
 }
 
-export async function getMemberProfile(membershipId: string) {
+export async function getMemberProfile(
+  membershipId: string,
+  visibleChatIds: string[] | null = null
+) {
   if (!UUID_PATTERN.test(membershipId)) return null;
 
-  const membership = await prisma.chatMember.findUnique({
-    where: { id: membershipId },
+  const membership = await prisma.chatMember.findFirst({
+    where: {
+      id: membershipId,
+      ...(visibleChatIds !== null ? { chatId: { in: visibleChatIds } } : {})
+    },
     include: {
       chat: true,
       memberTag: true,
       user: {
         include: {
           memberships: {
+            where: visibleChatIds !== null ? { chatId: { in: visibleChatIds } } : undefined,
             orderBy: { lastSeenAt: "desc" },
             include: {
               memberTag: true,
@@ -609,7 +623,10 @@ export async function getMemberProfile(membershipId: string) {
 
   const [auditLogs, deletedMessageCount, violationCount] = await Promise.all([
     prisma.auditLog.findMany({
-      where: { affectedUserId: membership.userId },
+      where: {
+        affectedUserId: membership.userId,
+        ...(visibleChatIds !== null ? { chatId: { in: visibleChatIds } } : {})
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {

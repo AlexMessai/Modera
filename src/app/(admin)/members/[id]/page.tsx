@@ -12,6 +12,7 @@ import { requireAdminPage, requireChatAccess, resolveEffectiveChatRole } from "@
 import { getMemberProfile } from "@/server/services/member-service";
 import { getMemberRisk } from "@/server/services/member-risk-service";
 import { getModerationContext } from "@/server/services/moderation-context";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,11 @@ function actionStatusClass(status: string) {
 export default async function MemberProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminPage();
   const { id } = await params;
-  const [member, moderation] = await Promise.all([getMemberProfile(id), getModerationContext(id)]);
+  const visibleChatIds = await listChatsForAdmin(admin.id);
+  const [member, moderation] = await Promise.all([
+    getMemberProfile(id, visibleChatIds),
+    getModerationContext(id)
+  ]);
   if (!member || !moderation) notFound();
   const access = await requireChatAccess(admin, member.chat.id);
   if (!access.ok) notFound();

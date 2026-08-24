@@ -1,4 +1,5 @@
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 import {
   isMessageState,
   isMessageType,
@@ -40,6 +41,11 @@ export async function GET(request: Request) {
   }
 
   const type = typeValue && isMessageType(typeValue) ? typeValue : undefined;
+  const visibleChatIds = await listChatsForAdmin(auth.admin.id);
+  if (chatId && visibleChatIds !== null) {
+    const access = await requireChatAccess(auth.admin, chatId);
+    if (!access.ok) return access.response;
+  }
 
   const data = await listMessages({
     page: Number.isFinite(page) ? page : 1,
@@ -50,7 +56,8 @@ export async function GET(request: Request) {
     type,
     state: stateValue,
     dateFrom: url.searchParams.get("dateFrom")?.trim() || undefined,
-    dateTo: url.searchParams.get("dateTo")?.trim() || undefined
+    dateTo: url.searchParams.get("dateTo")?.trim() || undefined,
+    visibleChatIds
   });
 
   return Response.json({ data });

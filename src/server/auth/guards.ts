@@ -81,6 +81,34 @@ export async function requireChatAccess(admin: CurrentAdmin, chatId: string) {
 }
 
 /**
+ * User-scoped resources such as Telegram avatars may be shown to a CHAT
+ * admin only when the user belongs to at least one chat visible to that
+ * admin. Returning the same honest 404 as requireChatAccess prevents UUID
+ * probing across tenants.
+ */
+export async function requireTelegramUserAccess(admin: CurrentAdmin, userId: string) {
+  if (admin.scope === "GLOBAL") return { ok: true as const };
+
+  const membership = await prisma.chatMember.findFirst({
+    where: {
+      userId,
+      chat: { adminAccess: { some: { adminId: admin.id } } }
+    },
+    select: { id: true }
+  });
+  if (!membership) {
+    return {
+      ok: false as const,
+      response: Response.json(
+        { error: { code: "NOT_FOUND", message: "Пользователь не найден." } },
+        { status: 404 }
+      )
+    };
+  }
+  return { ok: true as const };
+}
+
+/**
  * The role to evaluate `canManageChatSettings`/`canModerate` against for a
  * *specific chat*. GLOBAL admins pass through unchanged -- byte-for-byte the
  * same `admin.role` value used today, zero behavior change. CHAT admins get

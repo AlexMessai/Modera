@@ -30,6 +30,19 @@ async function setup() {
   const member = await prisma.chatMember.create({
     data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 2 }
   });
+  await prisma.moderationAction.create({
+    data: {
+      chatId: chat.id,
+      affectedUserId: user.id,
+      actingAdminId: admin.id,
+      source: "ADMIN",
+      type: "WARNING",
+      status: "SUCCEEDED",
+      reason: "Предыдущее предупреждение",
+      completedAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 60_000)
+    }
+  });
   const warningAction = await prisma.moderationAction.create({
     data: {
       chatId: chat.id,
@@ -183,12 +196,22 @@ test("approving a WARNING appeal decrements warningCount without calling Telegra
     const updatedMember = await prisma.chatMember.findUnique({ where: { id: member.id } });
     assert.equal(updatedMember?.warningCount, 1);
 
+    const revokedWarning = await prisma.moderationAction.findUniqueOrThrow({
+      where: { id: warningAction.id }
+    });
+    assert.ok(revokedWarning.revokedAt);
+    assert.equal(revokedWarning.revokedByAdminId, admin.id);
+    assert.equal(revokedWarning.revocationReason, "Апелляция одобрена: Разобрались, предупреждение снято");
+
     const updatedAppeal = await prisma.appeal.findUnique({ where: { id: appeal.id } });
     assert.equal(updatedAppeal?.status, "APPROVED");
     assert.equal(updatedAppeal?.resolutionComment, "Разобрались, предупреждение снято");
 
     const again = await resolveAppeal({ appealId: appeal.id, actingAdminId: admin.id, decision: "REJECT" });
     assert.equal(again.status, "APPROVED", "resolving an already-resolved appeal is a no-op");
+
+    const candidates = await listAppealCandidates(Number(TELEGRAM_USER_ID));
+    assert.equal(candidates.length, 1, "only the older, still-active warning remains appealable");
   } finally {
     await cleanup();
   }

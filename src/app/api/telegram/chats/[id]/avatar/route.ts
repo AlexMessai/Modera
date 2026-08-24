@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { getTelegramChatAvatar } from "@/server/services/telegram-chat-avatar-service";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,8 @@ export async function GET(
       { status: 400 }
     );
   }
+  const access = await requireChatAccess(auth.admin, id);
+  if (!access.ok) return access.response;
 
   const avatar = await getTelegramChatAvatar(id);
   if (!avatar) {

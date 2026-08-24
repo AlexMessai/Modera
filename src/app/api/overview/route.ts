@@ -1,4 +1,5 @@
 import { requireAdminApi } from "@/server/auth/guards";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 import {
   DASHBOARD_PERIODS,
   getDashboardData,
@@ -19,5 +20,6 @@ export async function GET(request: Request) {
   const rawPeriod = url.searchParams.get("period") ?? "7D";
   const period = isDashboardPeriod(rawPeriod) ? rawPeriod : "7D";
 
-  return Response.json({ data: await getDashboardData(period) });
+  const visibleChatIds = await listChatsForAdmin(auth.admin.id);
+  return Response.json({ data: await getDashboardData(period, visibleChatIds) });
 }

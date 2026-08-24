@@ -530,12 +530,19 @@ model ModerationAction {
   expiresAt      DateTime?              @db.Timestamptz(3)
   completedAt    DateTime?              @db.Timestamptz(3)
   telegramError  String?                @db.VarChar(500)
+  revokedAt      DateTime?               @db.Timestamptz(3)
+  revokedByAdminId String?               @db.Uuid
+  revocationReason String?               @db.VarChar(500)
+  triggeredPunishmentActionId String?    @unique @db.Uuid
   metadata       Json?
   createdAt      DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
   chat           Chat                   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   affectedUser   TelegramUser           @relation("ModeratedUser", fields: [affectedUserId], references: [id], onDelete: Cascade)
   actingAdmin    AdminUser?             @relation("ModerationActor", fields: [actingAdminId], references: [id], onDelete: Restrict)
+  revokedByAdmin AdminUser?             @relation("WarningRevoker", fields: [revokedByAdminId], references: [id], onDelete: SetNull)
+  triggeredPunishmentAction ModerationAction? @relation("WarningTriggeredPunishment", fields: [triggeredPunishmentActionId], references: [id], onDelete: SetNull)
+  triggeredByWarning ModerationAction?  @relation("WarningTriggeredPunishment")
   appeal         Appeal?
 
   @@index([chatId, createdAt(sort: Desc)])
@@ -544,6 +551,8 @@ model ModerationAction {
   @@index([source, status, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([type, createdAt(sort: Desc)])
+  @@index([chatId, affectedUserId, type, revokedAt, createdAt(sort: Desc)])
+  @@index([revokedByAdminId, revokedAt(sort: Desc)])
   @@index([expiresAt, status])
 }
 
@@ -788,6 +797,7 @@ model AdminUser {
   updatedAt                 DateTime           @updatedAt @db.Timestamptz(3)
   sessions                  AdminSession[]
   moderationActions         ModerationAction[] @relation("ModerationActor")
+  revokedWarnings           ModerationAction[] @relation("WarningRevoker")
   resolvedJoinRequests      JoinRequest[]       @relation("JoinRequestResolver")
   auditLogs                 AuditLog[]         @relation("ActingAdmin")
   resolvedAppeals           Appeal[]           @relation("AppealResolver")

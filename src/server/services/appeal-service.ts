@@ -3,6 +3,7 @@ import { notifyAdminsOfNewAppeal, notifyAppealDecision } from "@/server/services
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
+import { revokeWarningRecord } from "@/server/services/warning-service";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -47,9 +48,12 @@ export async function listAppealCandidates(telegramUserId: number): Promise<Appe
   const actions = await prisma.moderationAction.findMany({
     where: {
       affectedUserId: user.id,
-      type: { in: ["WARNING", "MUTE", "BAN"] },
       status: "SUCCEEDED",
-      appeal: { is: null }
+      appeal: { is: null },
+      OR: [
+        { type: { in: ["MUTE", "BAN"] } },
+        { type: "WARNING", revokedAt: null }
+      ]
     },
     orderBy: { createdAt: "desc" },
     include: { chat: { select: { id: true, title: true } } }
@@ -164,18 +168,32 @@ export async function listAppeals(input: {
   pageSize: number;
   status: "PENDING" | "APPROVED" | "REJECTED";
   chatId?: string;
+  visibleChatIds?: string[] | null;
 }) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
 
   const where: Prisma.AppealWhereInput = {
     status: input.status,
-    ...(input.chatId ? { chatId: input.chatId } : {})
+    ...(input.chatId
+      ? input.visibleChatIds !== null && input.visibleChatIds !== undefined && !input.visibleChatIds.includes(input.chatId)
+        ? { chatId: { in: [] } }
+        : { chatId: input.chatId }
+      : input.visibleChatIds !== null && input.visibleChatIds !== undefined
+        ? { chatId: { in: input.visibleChatIds } }
+        : {})
+  };
+
+  const pendingWhere: Prisma.AppealWhereInput = {
+    status: "PENDING",
+    ...(input.visibleChatIds !== null && input.visibleChatIds !== undefined
+      ? { chatId: { in: input.visibleChatIds } }
+      : {})
   };
 
   const [total, pendingCount, items] = await Promise.all([
     prisma.appeal.count({ where }),
-    prisma.appeal.count({ where: { status: "PENDING" } }),
+    prisma.appeal.count({ where: pendingWhere }),
     prisma.appeal.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -227,16 +245,29 @@ export async function listAppeals(input: {
   };
 }
 
-async function revertWarning(input: { chatId: string; userId: string; moderationActionId: string }) {
-  const membership = await prisma.chatMember.findUnique({
-    where: { chatId_userId: { chatId: input.chatId, userId: input.userId } },
-    select: { id: true, warningCount: true }
+async function revertWarning(input: {
+  chatId: string;
+  userId: string;
+  moderationActionId: string;
+  actingAdminId: string;
+  comment: string | null;
+}) {
+  const result = await revokeWarningRecord({
+    chatId: input.chatId,
+    affectedUserId: input.userId,
+    warningActionId: input.moderationActionId,
+    revokedByAdminId: input.actingAdminId,
+    revocationReason: input.comment
+      ? `Апелляция одобрена: ${input.comment}`
+      : "Апелляция одобрена."
   });
-  if (!membership) return;
-  await prisma.chatMember.update({
-    where: { id: membership.id },
-    data: { warningCount: Math.max(0, membership.warningCount - 1) }
-  });
+  if (result.outcome === "not_found") {
+    throw new AppealError(
+      "WARNING_NOT_FOUND",
+      "Связанное предупреждение не найдено.",
+      409
+    );
+  }
 }
 
 export async function resolveAppeal(input: {
@@ -303,7 +334,13 @@ export async function resolveAppeal(input: {
   if (!membership) throw new AppealError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
 
   if (appeal.moderationAction.type === "WARNING") {
-    await revertWarning({ chatId: appeal.chatId, userId: appeal.userId, moderationActionId: appeal.moderationActionId });
+    await revertWarning({
+      chatId: appeal.chatId,
+      userId: appeal.userId,
+      moderationActionId: appeal.moderationActionId,
+      actingAdminId: input.actingAdminId,
+      comment
+    });
   } else {
     const unwindAction = appeal.moderationAction.type === "MUTE" ? "UNMUTE" : "UNBAN";
     try {

@@ -53,6 +53,7 @@ export async function getMemberTagState(membershipId: string) {
     where: { id: membershipId },
     select: {
       id: true,
+      chatId: true,
       status: true,
       telegramCustomTitle: true,
       memberTag: { select: { tag: true, updatedAt: true } }
@@ -62,6 +63,7 @@ export async function getMemberTagState(membershipId: string) {
 
   return {
     membershipId: membership.id,
+    chatId: membership.chatId,
     status: membership.status,
     telegramCustomTitle: membership.telegramCustomTitle,
     tag: membership.memberTag?.tag ?? null,

@@ -200,6 +200,74 @@ test("warning expiry keeps history but excludes old warnings from escalation", a
   }
 });
 
+test("revoked warning records never count as active, with or without expiry", async () => {
+  const data = await fixture(14);
+  const now = new Date();
+  const recent = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const old = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  try {
+    await prisma.chatMember.update({
+      where: { id: data.member.id },
+      data: { warningCount: 2 }
+    });
+    await prisma.moderationAction.createMany({
+      data: [
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "ADMIN",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          completedAt: old,
+          createdAt: old
+        },
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "ADMIN",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          completedAt: recent,
+          createdAt: recent
+        },
+        {
+          chatId: data.chat.id,
+          affectedUserId: data.user.id,
+          source: "ADMIN",
+          type: "WARNING",
+          status: "SUCCEEDED",
+          completedAt: now,
+          revokedAt: now,
+          revocationReason: "CI revoke"
+        }
+      ]
+    });
+
+    assert.equal(
+      await countActiveWarnings({
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        warningExpiryDays: 0,
+        now
+      }),
+      2
+    );
+    assert.equal(
+      await countActiveWarnings({
+        chatId: data.chat.id,
+        affectedUserId: data.user.id,
+        warningExpiryDays: 30,
+        now
+      }),
+      1
+    );
+  } finally {
+    await prisma.chat.delete({ where: { id: data.chat.id } });
+    await prisma.telegramUser.delete({ where: { id: data.user.id } });
+  }
+});
+
 test("manual /warn shares automod's threshold: below it nothing is attempted, the 3rd warning tries to mute", async () => {
   const data = await fixture(4);
   try {

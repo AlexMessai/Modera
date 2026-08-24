@@ -225,7 +225,7 @@ async function applyModerationCommandToTarget(input: {
     warns = String(remaining.activeWarningCount);
     warnsLimit = remaining.warnsLimit !== null ? String(remaining.warnsLimit) : "";
   } else {
-    await executeTelegramActorModerationAction({
+    const actionResult = await executeTelegramActorModerationAction({
       chatId: input.chatId,
       targetTelegramUserId: input.target.telegramUserId,
       action: input.action,
@@ -239,7 +239,8 @@ async function applyModerationCommandToTarget(input: {
       escalation = await escalateAfterManualWarning({
         chatId: input.chatId,
         targetTelegramUserId: input.target.telegramUserId,
-        reason: input.reason ?? "Предупреждение от администратора чата"
+        reason: input.reason ?? "Предупреждение от администратора чата",
+        warningActionId: actionResult.id
       });
       warns = String(escalation.activeWarningCount);
       warnsLimit = escalation.warnsLimit !== null ? String(escalation.warnsLimit) : "";

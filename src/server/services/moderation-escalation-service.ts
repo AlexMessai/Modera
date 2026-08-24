@@ -11,6 +11,10 @@ import {
   isProtectedMemberStatus,
   ModerationError
 } from "@/server/services/moderation-service";
+import {
+  countActiveWarningRecords,
+  linkWarningToTriggeredPunishment
+} from "@/server/services/warning-service";
 
 type EscalationPolicy = Pick<ModerationSettingsValue, "escalationRules">;
 
@@ -119,29 +123,7 @@ export async function countActiveWarnings(input: {
   warningExpiryDays: number;
   now?: Date;
 }) {
-  if (input.warningExpiryDays <= 0) {
-    const member = await prisma.chatMember.findUnique({
-      where: {
-        chatId_userId: {
-          chatId: input.chatId,
-          userId: input.affectedUserId
-        }
-      },
-      select: { warningCount: true }
-    });
-    return member?.warningCount ?? 0;
-  }
-
-  const cutoff = warningCutoff(input.now ?? new Date(), input.warningExpiryDays);
-  return prisma.moderationAction.count({
-    where: {
-      chatId: input.chatId,
-      affectedUserId: input.affectedUserId,
-      type: "WARNING",
-      status: "SUCCEEDED",
-      createdAt: cutoff ? { gte: cutoff } : undefined
-    }
-  });
+  return countActiveWarningRecords(input);
 }
 
 export async function recordAutomodViolationAndEscalate(input: {
@@ -215,6 +197,7 @@ export async function recordAutomodViolationAndEscalate(input: {
             affectedUserId: member.userId,
             type: "WARNING",
             status: "SUCCEEDED",
+            revokedAt: null,
             createdAt: { gte: cutoff }
           }
         })
@@ -299,7 +282,8 @@ export async function recordAutomodViolationAndEscalate(input: {
     triggerRule: input.rule,
     warningCount: warning.warningCount,
     activeWarningCount: warning.activeWarningCount,
-    escalationMarker: warning.escalationMarker
+    escalationMarker: warning.escalationMarker,
+    warningActionId: warning.moderationActionId
   });
 }
 
@@ -316,6 +300,7 @@ export async function escalateAfterManualWarning(input: {
   chatId: string;
   targetTelegramUserId: number;
   reason: string;
+  warningActionId?: string;
 }): Promise<ManualWarningEscalation> {
   const resolved = await resolveEffectiveModerationSettings(input.chatId);
   const policy = resolved.settings;
@@ -334,14 +319,12 @@ export async function escalateAfterManualWarning(input: {
 
   const now = new Date();
   const cutoff = warningCutoff(now, policy.warningExpiryDays);
-  const activeWarningCount = cutoff
-    ? await countActiveWarnings({
-        chatId: input.chatId,
-        affectedUserId: member.user.id,
-        warningExpiryDays: policy.warningExpiryDays,
-        now
-      })
-    : member.warningCount;
+  const activeWarningCount = await countActiveWarnings({
+    chatId: input.chatId,
+    affectedUserId: member.user.id,
+    warningExpiryDays: policy.warningExpiryDays,
+    now
+  });
 
   const idle: ManualWarningEscalation = {
     activeWarningCount,
@@ -371,7 +354,8 @@ export async function escalateAfterManualWarning(input: {
     triggerRule: "MANUAL_WARN",
     warningCount: member.warningCount,
     activeWarningCount,
-    escalationMarker
+    escalationMarker,
+    warningActionId: input.warningActionId
   });
 
   return {
@@ -404,6 +388,7 @@ export async function applyWarningEscalation(input: {
   warningCount: number;
   activeWarningCount: number;
   escalationMarker: number;
+  warningActionId?: string;
 }): Promise<WarningEscalationResult> {
   const { policy } = input;
   const triggered = findTriggeredEscalationRule(policy.escalationRules, input.activeWarningCount, input.escalationMarker);
@@ -481,6 +466,9 @@ export async function applyWarningEscalation(input: {
       ...(action === "MUTE" ? { muteDurationMinutes: triggered.durationMinutes ?? undefined } : {}),
       ...(action === "BAN" ? { banDurationMinutes: triggered.durationMinutes ?? undefined } : {})
     });
+    if (input.warningActionId) {
+      await linkWarningToTriggeredPunishment(input.warningActionId, result.id);
+    }
     return {
       enabled: true,
       escalated: true,

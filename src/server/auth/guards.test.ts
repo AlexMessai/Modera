@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { resolveEffectiveChatRole } from "./guards";
+import { requireTelegramUserAccess, resolveEffectiveChatRole } from "./guards";
 
 const CHAT_ID = -1009000016001n;
 const GLOBAL_ADMIN_EMAIL = "guards-resolve-effective-role-ci@example.com";
 const CHAT_ADMIN_TELEGRAM_USER_ID = 900001601n;
 const NO_ACCESS_ADMIN_TELEGRAM_USER_ID = 900001602n;
+const MEMBER_TELEGRAM_USER_ID = 900001603n;
 
 async function cleanup() {
   await prisma.chat.deleteMany({ where: { telegramChatId: CHAT_ID } });
@@ -14,6 +15,7 @@ async function cleanup() {
   await prisma.adminUser.deleteMany({
     where: { telegramUserId: { in: [CHAT_ADMIN_TELEGRAM_USER_ID, NO_ACCESS_ADMIN_TELEGRAM_USER_ID] } }
   });
+  await prisma.telegramUser.deleteMany({ where: { telegramUserId: MEMBER_TELEGRAM_USER_ID } });
 }
 
 async function setup() {
@@ -46,7 +48,17 @@ async function setup() {
       telegramUserId: NO_ACCESS_ADMIN_TELEGRAM_USER_ID
     }
   });
-  return { chat, globalAdmin, chatAdmin, noAccessChatAdmin };
+  const memberUser = await prisma.telegramUser.create({
+    data: {
+      telegramUserId: MEMBER_TELEGRAM_USER_ID,
+      firstName: "Scoped",
+      displayName: "Scoped Member"
+    }
+  });
+  await prisma.chatMember.create({
+    data: { chatId: chat.id, userId: memberUser.id, status: "MEMBER" }
+  });
+  return { chat, globalAdmin, chatAdmin, noAccessChatAdmin, memberUser };
 }
 
 test("resolveEffectiveChatRole: a GLOBAL admin's role passes through completely unchanged", async () => {
@@ -81,6 +93,21 @@ test("resolveEffectiveChatRole: a CHAT admin with no ChatAdminAccess row for thi
   try {
     const resolved = await resolveEffectiveChatRole(noAccessChatAdmin, chat.id);
     assert.equal(resolved, "VIEWER");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("requireTelegramUserAccess hides users outside a CHAT admin's visible chats", async () => {
+  await cleanup();
+  const { globalAdmin, chatAdmin, noAccessChatAdmin, memberUser } = await setup();
+  try {
+    assert.equal((await requireTelegramUserAccess(globalAdmin, memberUser.id)).ok, true);
+    assert.equal((await requireTelegramUserAccess(chatAdmin, memberUser.id)).ok, true);
+
+    const denied = await requireTelegramUserAccess(noAccessChatAdmin, memberUser.id);
+    assert.equal(denied.ok, false);
+    if (!denied.ok) assert.equal(denied.response.status, 404);
   } finally {
     await cleanup();
   }

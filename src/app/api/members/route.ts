@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
+import { listChatsForAdmin } from "@/server/services/chat-admin-access-service";
 import {
   isMembershipStatus,
   listMembers
@@ -34,12 +35,19 @@ export async function GET(request: Request) {
     );
   }
 
+  const visibleChatIds = await listChatsForAdmin(auth.admin.id);
+  if (chatId && visibleChatIds !== null) {
+    const access = await requireChatAccess(auth.admin, chatId);
+    if (!access.ok) return access.response;
+  }
+
   const result = await listMembers({
     page: Number.isFinite(page) ? page : 1,
     pageSize: Number.isFinite(pageSize) ? pageSize : 25,
     search,
     chatId,
-    status: statusParam && isMembershipStatus(statusParam) ? statusParam : undefined
+    status: statusParam && isMembershipStatus(statusParam) ? statusParam : undefined,
+    visibleChatIds
   });
 
   return Response.json({ data: result });

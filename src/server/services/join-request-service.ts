@@ -184,6 +184,7 @@ export async function listJoinRequests(input: {
   status: JoinStatus;
   chatId?: string;
   search?: string;
+  visibleChatIds?: string[] | null;
 }) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
@@ -191,7 +192,13 @@ export async function listJoinRequests(input: {
 
   const where: Prisma.JoinRequestWhereInput = {
     status: input.status,
-    ...(input.chatId ? { chatId: input.chatId } : {}),
+    ...(input.chatId
+      ? input.visibleChatIds !== null && input.visibleChatIds !== undefined && !input.visibleChatIds.includes(input.chatId)
+        ? { chatId: { in: [] } }
+        : { chatId: input.chatId }
+      : input.visibleChatIds !== null && input.visibleChatIds !== undefined
+        ? { chatId: { in: input.visibleChatIds } }
+        : {}),
     ...(search
       ? {
           OR: [
@@ -204,9 +211,14 @@ export async function listJoinRequests(input: {
       : {})
   };
 
+  const visibleChatWhere =
+    input.visibleChatIds !== null && input.visibleChatIds !== undefined
+      ? { chatId: { in: input.visibleChatIds } }
+      : {};
+
   const [total, pendingCount, items, chats] = await Promise.all([
     prisma.joinRequest.count({ where }),
-    prisma.joinRequest.count({ where: { status: "PENDING" } }),
+    prisma.joinRequest.count({ where: { status: "PENDING", ...visibleChatWhere } }),
     prisma.joinRequest.findMany({
       where,
       orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
@@ -219,7 +231,12 @@ export async function listJoinRequests(input: {
       }
     }),
     prisma.chat.findMany({
-      where: { joinRequests: { some: {} } },
+      where: {
+        ...(input.visibleChatIds !== null && input.visibleChatIds !== undefined
+          ? { id: { in: input.visibleChatIds } }
+          : {}),
+        joinRequests: { some: {} }
+      },
       orderBy: { title: "asc" },
       take: 200,
       select: { id: true, title: true }

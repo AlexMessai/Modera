@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireTelegramUserAccess } from "@/server/auth/guards";
 import { getTelegramUserAvatar } from "@/server/services/telegram-avatar-service";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,8 @@ export async function GET(
       { status: 400 }
     );
   }
+  const access = await requireTelegramUserAccess(auth.admin, id);
+  if (!access.ok) return access.response;
 
   const avatar = await getTelegramUserAvatar(id);
   if (!avatar) {
