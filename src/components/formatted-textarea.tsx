@@ -118,6 +118,20 @@ function toEditorHtml(source: string) {
   return parsed.body.innerHTML;
 }
 
+function pointHitsRenderedText(root: HTMLElement, x: number, y: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.textContent) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const rect of Array.from(range.getClientRects())) {
+      if (x >= rect.left - 2 && x <= rect.right + 2 && y >= rect.top - 2 && y <= rect.bottom + 2) return true;
+    }
+  }
+  return false;
+}
+
 export function FormattedTextarea({
   value,
   onChange,
@@ -160,6 +174,16 @@ export function FormattedTextarea({
         role: "textbox",
         "aria-label": ariaLabel ?? "Редактор сообщения",
         "aria-multiline": "true"
+      },
+      handleDOMEvents: {
+        mousedown: (view, event) => {
+          if (pointHitsRenderedText(view.dom, event.clientX, event.clientY)) return false;
+          window.setTimeout(() => {
+            if (!view.state.selection.empty || document.activeElement !== view.dom) return;
+            view.dispatch(view.state.tr.setStoredMarks([]));
+          }, 0);
+          return false;
+        }
       }
     },
     onUpdate: ({ editor: currentEditor }) => {
