@@ -137,6 +137,7 @@ model Chat {
   autoResponseRules        AutoResponseRule[]
   customCommands           CustomCommand[]
   adminAccess              ChatAdminAccess[]
+  appealSettings           ChatAppealSettings?
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -496,10 +497,6 @@ model GlobalManualModerationSettings {
   // no per-chat or per-command override (see manual-moderation-settings.tsx).
   publicPunishmentMessagesEnabled  Boolean @default(true)
   privatePunishmentMessagesEnabled Boolean @default(true)
-  // Gates bot-initiated DMs that aren't a direct reply to a command the user
-  // just sent in that DM (e.g. the appeal-decision notice) -- independent of
-  // the two punishment-message toggles above.
-  proactiveDmNotificationsEnabled  Boolean @default(true)
   warnMessageTemplate         String   @default("⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%") @db.VarChar(1000)
   warnDeleteTargetMessage     Boolean  @default(false)
   warnEphemeralMessageTemplate String  @default("⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%") @db.VarChar(1000)
@@ -548,6 +545,38 @@ model ModerationAction {
   @@index([status, createdAt(sort: Desc)])
   @@index([type, createdAt(sort: Desc)])
   @@index([expiresAt, status])
+}
+
+// Per-chat toggle for the /appeal flow, plus its notification fan-out --
+// replaces the removed appealDmMessageId reply-matching mechanism and the
+// dropped GlobalManualModerationSettings.proactiveDmNotificationsEnabled
+// (that field's only reader is now this table's notifyUserOnDecision, scoped
+// per chat instead of globally). All three booleans default true so an
+// existing chat's behavior doesn't silently change when this table is
+// introduced -- no row yet means "on", same as before this feature existed.
+model ChatAppealSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  chatId                String   @unique @db.Uuid
+  enabled               Boolean  @default(true)
+  notifyAdminsOnSubmit  Boolean  @default(true)
+  notifyUserOnDecision  Boolean  @default(true)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+  chat                  Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+// Editable templates for the three appeal-flow texts that used to be inline
+// string literals (appeal-notification-service.ts / update-handler.ts) --
+// global-only, same as GlobalCaptchaSettings.challengeMessageTemplate: no
+// per-chat override, edited under Система → Уведомления.
+model GlobalAppealSettings {
+  id                                 String   @id @default("global")
+  appealSubmittedMessageTemplate     String   @default("Апелляция отправлена администраторам. Дождитесь решения.") @db.VarChar(1000)
+  appealNotifyAdminsMessageTemplate  String   @default("Новая апелляция от %user% по чату «%chat%» (%action%):\n%message%") @db.VarChar(1000)
+  appealApprovedMessageTemplate      String   @default("Ваша апелляция по чату «%chat%» одобрена, наказание отменено.%comment%") @db.VarChar(1000)
+  appealRejectedMessageTemplate      String   @default("Ваша апелляция по чату «%chat%» отклонена.%comment%") @db.VarChar(1000)
+  createdAt                          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                          DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Appeal {
