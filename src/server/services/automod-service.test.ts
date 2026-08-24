@@ -130,7 +130,7 @@ test("flood threshold allows the configured count and flags the next message", (
   assert.equal(isFloodViolation(6, 5), true);
 });
 
-test("a rule can trigger punishment/notification flow without deleting the message", async () => {
+test("an enabled rule reconciles a legacy no-delete action and attempts deletion", async () => {
   const telegramChatId = -1009000000391n;
   const telegramUserId = 900000391n;
   await prisma.chat.deleteMany({ where: { telegramChatId } });
@@ -178,12 +178,14 @@ test("a rule can trigger punishment/notification flow without deleting the messa
         text: "Это запрещено"
       }
     });
-    assert.equal(result.result, "TRIGGERED_TERM");
-    assert.ok("ruleAction" in result && result.ruleAction?.notifyEnabled);
+    // The rule toggle and deleteMessage now represent one shared state.
+    // CI has no Telegram token, so reaching DELETE_FAILED proves that the
+    // legacy inconsistent action was normalized and deletion was attempted.
+    assert.equal(result.result, "DELETE_FAILED");
 
     const [message, audit] = await Promise.all([
       prisma.message.findUniqueOrThrow({ where: { chatId_telegramMessageId: { chatId: chat.id, telegramMessageId: 591n } } }),
-      prisma.auditLog.findFirstOrThrow({ where: { chatId: chat.id, action: "AUTOMOD_TERM_TRIGGERED" } })
+      prisma.auditLog.findFirstOrThrow({ where: { chatId: chat.id, action: "AUTOMOD_DELETE_FAILED" } })
     ]);
     assert.equal(message.deletedAt, null);
     assert.equal(audit.affectedUserId, user.id);
