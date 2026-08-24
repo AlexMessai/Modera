@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { FormattedTextarea } from "@/components/formatted-textarea";
 
 export type CustomCommandValue = {
   id: string;
@@ -49,7 +50,7 @@ function CommandForm({
       </label>
       <label className="automod-field">
         <span>Текст ответа</span>
-        <textarea value={draft.responseText} maxLength={1000} disabled={saving} onChange={(event) => onChange({ ...draft, responseText: event.target.value })} placeholder="Актуальные цены смотрите на сайте: example.com/price" />
+        <FormattedTextarea value={draft.responseText} maxLength={1000} disabled={saving} onChange={(value) => onChange({ ...draft, responseText: value })} placeholder="Актуальные цены смотрите на сайте: example.com/price" />
       </label>
       <label className="automod-toggle-row automod-toggle-row--compact">
         <input type="checkbox" checked={draft.adminOnly} disabled={saving} onChange={(event) => onChange({ ...draft, adminOnly: event.target.checked })} />

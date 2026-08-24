@@ -3,6 +3,7 @@ import { getModerationNotificationProfile, renderTelegramModerationNotification,
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
+import { escapeTelegramHtml, parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 const ACTION_LABELS: Record<string, string> = {
   WARNING: "предупреждение",
@@ -69,11 +70,11 @@ function renderAppealTemplate(
   placeholders: { chat?: string; user?: string; action?: string; message?: string; comment?: string }
 ) {
   return template
-    .replaceAll("%chat%", placeholders.chat ?? "")
-    .replaceAll("%user%", placeholders.user ?? "")
-    .replaceAll("%action%", placeholders.action ?? "")
-    .replaceAll("%message%", placeholders.message ?? "")
-    .replaceAll("%comment%", placeholders.comment ?? "");
+    .replaceAll("%chat%", escapeTelegramHtml(placeholders.chat ?? ""))
+    .replaceAll("%user%", escapeTelegramHtml(placeholders.user ?? ""))
+    .replaceAll("%action%", escapeTelegramHtml(placeholders.action ?? ""))
+    .replaceAll("%message%", escapeTelegramHtml(placeholders.message ?? ""))
+    .replaceAll("%comment%", escapeTelegramHtml(placeholders.comment ?? ""));
 }
 
 // Personal moderation notice: an ephemeral message
@@ -178,7 +179,7 @@ export async function notifyAppealDecision(input: {
   });
 
   try {
-    await getTelegramClient().sendMessage({ chatId: Number(input.telegramUserId), text });
+    await getTelegramClient().sendMessage({ chatId: Number(input.telegramUserId), ...parseTelegramHtml(text) });
     return { delivered: true as const };
   } catch {
     return { delivered: false as const };
@@ -212,7 +213,7 @@ export async function notifyAdminsOfNewAppeal(input: {
   for (const telegramUserId of telegramModeratorIds) {
     await client.sendMessage({
       chatId: Number(telegramUserId),
-      text,
+      ...parseTelegramHtml(text),
       replyMarkup: {
         inline_keyboard: [
           [

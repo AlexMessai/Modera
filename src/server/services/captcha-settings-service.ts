@@ -8,11 +8,15 @@ import { prisma } from "@/server/db/prisma";
 export type CaptchaSettingsValue = {
   enabled: boolean;
   challengeMessageTemplate: string;
+  challengeButtonText: string;
+  deleteAfterVerification: boolean;
 };
 
 export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsValue = {
   enabled: false,
-  challengeMessageTemplate: "Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова)."
+  challengeMessageTemplate: "Подтвердите, что вы не бот — нажмите кнопку ниже. Пока не подтвердите, вы не сможете писать в этом чате; если долго не подтвердите, вас исключат (без блокировки — сможете зайти снова).",
+  challengeButtonText: "✅ Я не бот",
+  deleteAfterVerification: true
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,14 +29,18 @@ function normalizeTemplate(value: string, fallback: string) {
 export function normalizeCaptchaSettings(input: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
     enabled: Boolean(input.enabled),
-    challengeMessageTemplate: normalizeTemplate(input.challengeMessageTemplate, DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate)
+    challengeMessageTemplate: normalizeTemplate(input.challengeMessageTemplate, DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate),
+    challengeButtonText: normalizeTemplate(input.challengeButtonText, DEFAULT_CAPTCHA_SETTINGS.challengeButtonText).slice(0, 64),
+    deleteAfterVerification: Boolean(input.deleteAfterVerification)
   };
 }
 
 export function serializeCaptchaSettings(settings: CaptchaSettingsValue): CaptchaSettingsValue {
   return {
     enabled: settings.enabled,
-    challengeMessageTemplate: settings.challengeMessageTemplate
+    challengeMessageTemplate: settings.challengeMessageTemplate,
+    challengeButtonText: settings.challengeButtonText,
+    deleteAfterVerification: settings.deleteAfterVerification
   };
 }
 
@@ -103,28 +111,9 @@ export async function updateChatCaptchaProfile(input: {
   return serializeCaptchaSettings(saved);
 }
 
-const GLOBAL_CAPTCHA_MESSAGES_ID = "global";
-
-/**
- * The challenge text is edited in one place -- Система → Уведомления, see
- * system-messages-service.ts -- not per chat; `enabled` stays chat-owned. Overlaying instead of a
- * hard split keeps this function's return shape unchanged, so every runtime caller
- * (captcha-service.ts) needed no changes.
- */
-async function overlayGlobalCaptchaText(settings: CaptchaSettingsValue): Promise<CaptchaSettingsValue> {
-  const global = await prisma.globalCaptchaSettings.findUnique({
-    where: { id: GLOBAL_CAPTCHA_MESSAGES_ID },
-    select: { challengeMessageTemplate: true }
-  });
-  return {
-    ...settings,
-    challengeMessageTemplate: global?.challengeMessageTemplate ?? DEFAULT_CAPTCHA_SETTINGS.challengeMessageTemplate
-  };
-}
-
 export async function resolveEffectiveCaptchaSettings(chatId: string) {
   const local = await prisma.chatCaptchaSettings.findUnique({ where: { chatId } });
-  const settings = await overlayGlobalCaptchaText(serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS));
+  const settings = serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS);
   return {
     source: "CHAT" as const,
     useGlobalProfile: false,

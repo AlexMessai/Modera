@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BellRing, Bot, Check, MessageCircle, Radio, ShieldCheck, UserRound } from "lucide-react";
 import { SettingsRow } from "@/components/settings-row";
+import { FormattedTextarea } from "@/components/formatted-textarea";
 
 export type ModerationNotificationEvent = "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
 export type ModerationNotificationAudience = "OFFENDER" | "PUBLIC" | "MODERATOR";
@@ -110,7 +111,7 @@ export function ModerationNotificationCenter({ initial, canEdit }: { initial: Mo
           </div>
           <div className="notification-channel">
             <SettingsRow title={`${audienceMeta.label}: уведомление`} description={audienceMeta.description} checked={channel.enabled} disabled={!canEdit || saving} onChange={(enabled) => updateChannel(selectedAudience, { enabled })} />
-            <label className="notification-template-field"><span>Текст сообщения · {selectedSource === "MANUAL" ? "ручная модерация" : "Automod и Web Admin"}</span><textarea rows={7} maxLength={1000} value={template} disabled={!canEdit || saving} onChange={(event) => updateChannel(selectedAudience, { templates: { ...channel.templates, [selectedSource]: event.target.value } })} /><small>{selectedSource === "MANUAL" ? "%admin% · " : ""}%target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%<br />В Telegram пользователи из %admin% и %target% становятся ссылками на профили.</small></label>
+            <label className="notification-template-field"><span>Текст сообщения · {selectedSource === "MANUAL" ? "ручная модерация" : "Automod и Web Admin"}</span><FormattedTextarea rows={7} maxLength={1000} value={template} disabled={!canEdit || saving} variables={selectedSource === "MANUAL" ? ["%admin%", "%target%", "%reason%", "%duration%", "%warns%", "%warns_limit%", "%chat%", "%contact%"] : ["%target%", "%reason%", "%duration%", "%warns%", "%warns_limit%", "%chat%", "%contact%"]} onChange={(value) => updateChannel(selectedAudience, { templates: { ...channel.templates, [selectedSource]: value } })} /><small>{selectedSource === "MANUAL" ? "%admin% · " : ""}%target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%<br />В Telegram пользователи из %admin% и %target% становятся ссылками на профили.</small></label>
             <div className="notification-preview"><span><MessageCircle size={14} /> Предпросмотр</span><p>{preview(template, selectedSource)}</p></div>
           </div>
         </div>

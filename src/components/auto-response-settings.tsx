@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { FormattedTextarea } from "@/components/formatted-textarea";
 
 export type AutoResponseMatchType = "CONTAINS" | "EXACT";
 
@@ -60,7 +61,7 @@ function RuleForm({
       </div>
       <label className="automod-field">
         <span>Текст ответа</span>
-        <textarea value={draft.responseText} maxLength={1000} disabled={saving} onChange={(event) => onChange({ ...draft, responseText: event.target.value })} placeholder="Правила чата: /rules" />
+        <FormattedTextarea value={draft.responseText} maxLength={1000} disabled={saving} onChange={(value) => onChange({ ...draft, responseText: value })} placeholder="Правила чата: /rules" />
       </label>
       <label className="automod-toggle-row automod-toggle-row--compact">
         <input type="checkbox" checked={draft.enabled} disabled={saving} onChange={(event) => onChange({ ...draft, enabled: event.target.checked })} />

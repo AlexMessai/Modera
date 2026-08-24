@@ -3,6 +3,7 @@ import { prisma } from "@/server/db/prisma";
 import { DEFAULT_MANUAL_MODERATION_SETTINGS, renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
 import { getTelegramClient } from "@/server/telegram/client";
 import type { TelegramMessageEntity } from "@/server/telegram/types";
+import { escapeTelegramHtml, parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 export const MODERATION_NOTIFICATION_EVENTS = ["WARNING", "UNWARN", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationNotificationEvent = (typeof MODERATION_NOTIFICATION_EVENTS)[number];
@@ -228,23 +229,22 @@ export function renderTelegramTemplate(
     "%warns_limit%": "warnsLimit", "%warns%": "warns", "%chat%": "chat", "%contact%": "contact"
   };
   const tokenPattern = /%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%/g;
-  const entities: TelegramMessageEntity[] = [];
-  let text = "";
+  let formatted = "";
   let cursor = 0;
   for (const match of templateText.matchAll(tokenPattern)) {
     const index = match.index ?? 0;
-    text += templateText.slice(cursor, index);
+    formatted += templateText.slice(cursor, index);
     const value = placeholders[tokens[match[0]]];
     const replacement = typeof value === "object" && value ? value.text : value ?? "";
-    const offset = text.length;
-    text += replacement;
     if (typeof value === "object" && value && replacement) {
-      entities.push({ type: "text_link", offset, length: replacement.length, url: `tg://user?id=${value.telegramUserId}` });
+      formatted += `<a href="tg://user?id=${value.telegramUserId}">${escapeTelegramHtml(replacement)}</a>`;
+    } else {
+      formatted += escapeTelegramHtml(replacement);
     }
     cursor = index + match[0].length;
   }
-  text += templateText.slice(cursor);
-  return { text, entities };
+  formatted += templateText.slice(cursor);
+  return parseTelegramHtml(formatted);
 }
 
 export async function sendPublicModerationNotification(input: {

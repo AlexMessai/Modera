@@ -12,6 +12,7 @@ import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChal
 import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
+import { applyNewMemberProtection } from "@/server/services/new-member-protection-service";
 import {
   getInfoCardBasics,
   observeMember,
@@ -50,6 +51,7 @@ import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/service
 import { parseDurationToken, parseModerationCommandArguments } from "@/server/telegram/command-parser";
 import { SILENCE_DEFAULT_MINUTES, SilenceError, startSilence, stopSilence } from "@/server/services/silence-service";
 import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
+import { parseTelegramHtml } from "@/server/telegram/formatted-text";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramMessageEntity, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
@@ -744,7 +746,7 @@ async function processCustomCommand(input: {
     if (!allowed) return false;
   }
 
-  await input.client.sendMessage({ chatId: input.telegramChatId, text: command.responseText }).catch(() => undefined);
+  await input.client.sendMessage({ chatId: input.telegramChatId, ...parseTelegramHtml(command.responseText) }).catch(() => undefined);
   return true;
 }
 
@@ -1530,7 +1532,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
 
         const matchedRule = await findMatchingAutoResponse(syncedChat.id, groupMessageText).catch(() => null);
         if (matchedRule) {
-          await client.sendMessage({ chatId: chat.id, text: matchedRule.responseText }).catch(() => undefined);
+          await client.sendMessage({ chatId: chat.id, ...parseTelegramHtml(matchedRule.responseText) }).catch(() => undefined);
         }
       }
     }
@@ -1558,7 +1560,20 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       eventAt: new Date(update.chat_member.date * 1000)
     }).catch(() => undefined);
 
-    if (isNewMemberJoin(update.chat_member)) {
+    const joinedAt = new Date(update.chat_member.date * 1000);
+    const protection = isNewMemberJoin(update.chat_member)
+      ? await applyNewMemberProtection({
+          chatId: syncedChat.id,
+          membershipId: syncedMember.membership.id,
+          userId: syncedMember.user.id,
+          telegramChatId: BigInt(chat.id),
+          user: update.chat_member.new_chat_member.user,
+          joinedAt,
+          viaChatFolderInviteLink: update.chat_member.via_chat_folder_invite_link
+        }).catch(() => ({ outcome: "allowed" as const }))
+      : { outcome: "allowed" as const };
+
+    if (isNewMemberJoin(update.chat_member) && protection.outcome !== "blocked") {
       await sendWelcomeMessage({
         chatId: syncedChat.id,
         telegramChatId: chat.id,
@@ -1571,9 +1586,9 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
 
     if (
       isNewMemberJoin(update.chat_member) &&
+      protection.outcome !== "blocked" &&
       syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE
     ) {
-      const joinedAt = new Date(update.chat_member.date * 1000);
       await evaluateRaidOnJoin({ chatId: syncedChat.id, at: joinedAt }).catch(() => undefined);
       await maybeIssueCaptchaChallenge({
         chatId: syncedChat.id,
@@ -1628,7 +1643,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         // The captcha challenge is ephemeral (message_id is always 0 for
         // those) -- deleteMessage won't find it, deleteEphemeralMessage will.
         const ephemeralMessageId = update.callback_query.message.ephemeral_message_id;
-        if (ephemeralMessageId !== undefined) {
+        if (result.deleteAfterVerification && ephemeralMessageId !== undefined) {
           await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch((error) => {
             console.warn("[captcha] failed to delete ephemeral challenge after verification", {
               chatId: chat.id,
@@ -1636,7 +1651,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
               error: error instanceof Error ? error.message.slice(0, 300) : "Unknown Telegram error"
             });
           });
-        } else {
+        } else if (result.deleteAfterVerification) {
           console.warn("[captcha] verified callback had no ephemeral_message_id to delete", {
             chatId: chat.id,
             messageId: update.callback_query.message.message_id

@@ -102,6 +102,9 @@ export type TelegramChatMemberUpdated = {
   date: number;
   old_chat_member: TelegramChatMember;
   new_chat_member: TelegramChatMember;
+  invite_link?: { invite_link: string; name?: string; creates_join_request?: boolean };
+  via_join_request?: boolean;
+  via_chat_folder_invite_link?: boolean;
 };
 
 export type TelegramChatJoinRequest = {

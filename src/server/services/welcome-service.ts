@@ -1,5 +1,6 @@
 import { resolveEffectiveContentSettings, renderWelcomeTemplate } from "@/server/services/content-settings-service";
 import { getTelegramClient } from "@/server/telegram/client";
+import { parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 /** Best-effort, fire-and-forget -- called from update-handler.ts's new-member join block, alongside captcha/anti-raid. */
 export async function sendWelcomeMessage(input: {
@@ -21,7 +22,12 @@ export async function sendWelcomeMessage(input: {
       memberCount: input.memberCount !== null ? String(input.memberCount) : "—"
     });
 
-    await getTelegramClient().sendMessage({ chatId: input.telegramChatId, text });
+    const formatted = parseTelegramHtml(text);
+    await getTelegramClient().sendMessage({
+      chatId: input.telegramChatId,
+      ...formatted,
+      replyMarkup: settings.welcomeButtons.length ? { inline_keyboard: [settings.welcomeButtons.map((button) => ({ text: button.text, url: button.url }))] } : undefined
+    });
   } catch {
     // Best-effort: e.g. the bot lost posting rights right after the join event fired.
   }

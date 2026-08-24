@@ -11,7 +11,16 @@ export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
   welcomeEnabled: z.boolean(),
-  welcomeMessageTemplate: z.string().min(1).max(2000)
+  welcomeMessageTemplate: z.string().min(1).max(2000),
+  welcomeButtons: z.array(z.object({ text: z.string().min(1).max(64), url: z.string().url().max(500) })).max(8),
+  muteNewMembersMinutes: z.number().int().min(0).max(10080),
+  blockRtlNames: z.boolean(),
+  blockChatFolderJoins: z.boolean(),
+  blockInvitedBots: z.boolean(),
+  blockMissingUsername: z.boolean(),
+  maxNameLength: z.number().int().min(0).max(256),
+  blockedNamePatterns: z.array(z.string().min(1).max(200)).max(100),
+  checkExistingMembers: z.boolean()
 });
 
 export async function GET(

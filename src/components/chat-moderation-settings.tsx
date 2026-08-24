@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronRight, Link2, ListFilter, MessageSquareText, Plus, Repeat2, ShieldCheck, SlidersHorizontal, TimerReset, Trash2, TriangleAlert, X, Zap } from "lucide-react";
+import { useEffect, useState, type ComponentType } from "react";
+import { ArrowDown, ArrowUp, Check, ChevronRight, MessageSquareText, Plus, Repeat2, ShieldCheck, SlidersHorizontal, TimerReset, Trash2, TriangleAlert, X, Zap } from "lucide-react";
+import { FormattedTextarea } from "@/components/formatted-textarea";
 
 export type MediaFilterType = "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE" | "DOCUMENT" | "STICKER" | "POLL" | "LOCATION" | "CONTACT";
 export type MediaFilterRuleValue = { type: MediaFilterType; enabled: boolean; deleteMessage: boolean; punishmentEnabled: boolean; punishmentAction: "WARN" | "MUTE"; muteDurationMinutes: number; warnOnTrigger: boolean; notifyEnabled: boolean; notifyText: string };
@@ -31,24 +32,11 @@ type EditableRule = AutomodActionRule | "ESCALATION";
 type RuleDefinition = { key: AutomodActionRule; title: string; description: string; icon: ComponentType<{ size?: number }>; enabled: (value: ModerationSettingsValue) => boolean; setEnabled: (value: ModerationSettingsValue, enabled: boolean) => ModerationSettingsValue };
 
 const RULES: RuleDefinition[] = [
-  { key: "LINK", title: "Защита от ссылок", description: "Контролирует внешние ссылки и доменные списки.", icon: Link2, enabled: (s) => s.linkEnabled, setEnabled: (s, enabled) => ({ ...s, linkEnabled: enabled }) },
-  { key: "TERM", title: "Запрещённые слова и фразы", description: "Проверяет текст сообщений и подписи к медиа.", icon: ListFilter, enabled: (s) => s.blockedTermsEnabled, setEnabled: (s, enabled) => ({ ...s, blockedTermsEnabled: enabled }) },
   { key: "SPAM", title: "Антифлуд", description: "Срабатывает при превышении лимита сообщений.", icon: Zap, enabled: (s) => s.spamEnabled, setEnabled: (s, enabled) => ({ ...s, spamEnabled: enabled }) },
   { key: "DUPLICATE", title: "Повторяющиеся сообщения", description: "Находит одинаковые сообщения за выбранный период.", icon: Repeat2, enabled: (s) => s.duplicateEnabled, setEnabled: (s, enabled) => ({ ...s, duplicateEnabled: enabled }) },
   { key: "MENTIONS", title: "Массовые упоминания", description: "Ограничивает число упоминаний в одном сообщении.", icon: MessageSquareText, enabled: (s) => s.massMentionsEnabled, setEnabled: (s, enabled) => ({ ...s, massMentionsEnabled: enabled }) }
 ];
 export const MUTE_DURATIONS = [[15, "15 минут"], [60, "1 час"], [360, "6 часов"], [720, "12 часов"], [1440, "1 день"], [4320, "3 дня"], [10080, "7 дней"], [43200, "30 дней"]] as const;
-const PRESETS = {
-  LOW: { spamWindowSeconds: 20, spamMaxMessages: 10, duplicateWindowSeconds: 120, duplicateMaxMessages: 5, maxMentions: 10 },
-  NORMAL: { spamWindowSeconds: 10, spamMaxMessages: 5, duplicateWindowSeconds: 60, duplicateMaxMessages: 2, maxMentions: 5 },
-  STRICT: { spamWindowSeconds: 5, spamMaxMessages: 3, duplicateWindowSeconds: 30, duplicateMaxMessages: 1, maxMentions: 3 }
-} as const;
-type Preset = keyof typeof PRESETS;
-
-function matchingPreset(settings: ModerationSettingsValue): Preset | "CUSTOM" {
-  if (!settings.spamEnabled || !settings.duplicateEnabled || !settings.massMentionsEnabled) return "CUSTOM";
-  return (Object.keys(PRESETS) as Preset[]).find((key) => Object.entries(PRESETS[key]).every(([field, value]) => settings[field as keyof typeof PRESETS[typeof key]] === value)) ?? "CUSTOM";
-}
 function splitDraftLines(value: string) { return value.split(/\r?\n/); }
 function cleanLines(values: string[]) { return values.map((item) => item.trim()).filter(Boolean); }
 function renumber(rules: EscalationRuleValue[]) { return rules.map((rule, index) => ({ ...rule, order: index + 1 })); }
@@ -86,7 +74,6 @@ export function ChatModerationSettings({ chatId, initial, canEdit, botCanDeleteM
   const [success, setSuccess] = useState<string | null>(null);
   const disabled = !canEdit || saving;
   const activeCount = RULES.filter((rule) => rule.enabled(settings)).length + (settings.autoEscalationEnabled ? 1 : 0);
-  const activePreset = useMemo(() => matchingPreset(settings), [settings]);
   const anyDeleteEnabled = RULES.some((rule) => rule.enabled(settings) && actionFor(settings, rule.key).deleteMessage);
   const anyMuteEnabled = RULES.some((rule) => { const action = actionFor(settings, rule.key); return rule.enabled(settings) && action.punishmentEnabled && action.punishmentAction === "MUTE"; }) || settings.autoEscalationEnabled;
 
@@ -105,11 +92,6 @@ export function ChatModerationSettings({ chatId, initial, canEdit, botCanDeleteM
   function updateDraft(patch: Partial<ModerationSettingsValue>) { setDraft((current) => current ? { ...current, ...patch } : current); }
   function updateDraftAction(rule: AutomodActionRule, patch: Partial<AutomodRuleActionValue>) { setDraft((current) => current ? { ...current, ruleActions: current.ruleActions.map((action) => action.rule === rule ? { ...action, ...patch } : action) } : current); }
   function updateDraftRuleState(rule: AutomodActionRule, enabled: boolean) { setDraft((current) => current ? setRuleEnabled(current, rule, enabled) : current); }
-  function applyPreset(key: Preset) { setSettings((current) => {
-    let next: ModerationSettingsValue = { ...current, ...PRESETS[key] };
-    for (const rule of ["SPAM", "DUPLICATE", "MENTIONS"] as AutomodActionRule[]) next = setRuleEnabled(next, rule, true);
-    return next;
-  }); }
   async function save() {
     setSaving(true); setError(null); setSuccess(null);
     try {
@@ -139,7 +121,6 @@ export function ChatModerationSettings({ chatId, initial, canEdit, botCanDeleteM
       {!botCanRestrictMembers && anyMuteEnabled ? <div className="moderation-notice"><TriangleAlert size={16} /><span>У бота нет права ограничивать участников. Warn сохранится, но Mute будет завершаться ошибкой до выдачи права.</span></div> : null}
       {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>Изменять правила чата могут OWNER и ADMIN.</p></div></div> : null}
       <div className="automod-global-row"><div className="automod-global-icon"><ShieldCheck size={18} /></div><div><strong>Не применять правила к администраторам Telegram</strong><span>Единое исключение для всех правил Automod.</span></div><Toggle checked={settings.ignoreAdmins} disabled={disabled} label="Не применять правила к администраторам Telegram" onChange={(checked) => setSettings((current) => ({ ...current, ignoreAdmins: checked }))} /></div>
-      <div className="automod-preset-strip"><div><strong>Быстрая настройка антиспама</strong><span>Меняет лимиты антифлуда, повторов и упоминаний; детали остаются доступны в правилах.</span></div><div className="preset-row">{(["LOW", "NORMAL", "STRICT"] as Preset[]).map((key) => <button key={key} type="button" className={`preset-button ${activePreset === key ? "preset-button--active" : ""}`} disabled={disabled} onClick={() => applyPreset(key)}>{{ LOW: "Мягкий", NORMAL: "Обычный", STRICT: "Строгий" }[key]}</button>)}{activePreset === "CUSTOM" ? <span className="preset-button preset-button--status preset-button--active">Свой</span> : null}</div></div>
       <div className="automod-rule-list">
         {RULES.map((definition) => { const enabled = definition.enabled(settings); const Icon = definition.icon; return <article className={`automod-rule-card ${enabled ? "" : "automod-rule-card--disabled"}`} key={definition.key}><button type="button" className="automod-rule-open" onClick={() => openRule(definition.key)} aria-label={`Настроить: ${definition.title}`}><span className="automod-rule-icon"><Icon size={19} /></span><span className="automod-rule-copy"><strong>{definition.title}</strong><small>{enabled ? ruleSummary(settings, definition.key) : "Выключено"}</small></span><span className="automod-rule-chevron"><ChevronRight size={17} /></span></button><Toggle checked={enabled} disabled={disabled} label={`Включить: ${definition.title}`} onChange={(checked) => setSettings((current) => setRuleEnabled(current, definition.key, checked))} /></article>; })}
         <article className={`automod-rule-card ${settings.autoEscalationEnabled ? "" : "automod-rule-card--disabled"}`}><button type="button" className="automod-rule-open" onClick={() => openRule("ESCALATION")} aria-label="Настроить автоматическую эскалацию"><span className="automod-rule-icon"><TimerReset size={19} /></span><span className="automod-rule-copy"><strong>Автоматическая эскалация</strong><small>{settings.autoEscalationEnabled ? `${settings.escalationRules.length} уровней · история ${settings.warningExpiryDays ? `${settings.warningExpiryDays} дн.` : "без срока"}` : "Выключено"}</small></span><span className="automod-rule-chevron"><ChevronRight size={17} /></span></button><Toggle checked={settings.autoEscalationEnabled} disabled={disabled} label="Включить автоматическую эскалацию" onChange={(checked) => setSettings((current) => ({ ...current, autoEscalationEnabled: checked }))} /></article>
@@ -171,7 +152,7 @@ function MentionsRuleFields({ draft, disabled, updateDraft }: ModalFieldsProps) 
 
 function RuleOutcomeFields({ rule, draft, disabled, updateAction, updateRuleState }: { rule: AutomodActionRule; draft: ModerationSettingsValue; disabled: boolean; updateAction: (rule: AutomodActionRule, patch: Partial<AutomodRuleActionValue>) => void; updateRuleState: (rule: AutomodActionRule, enabled: boolean) => void }) {
   const action = actionFor(draft, rule);
-  return <div className="automod-outcome-stack"><BinarySetting title="Удалять сообщение" description={action.deleteMessage ? "Правило включено: нарушение будет удалено из чата." : "Правило выключено: сообщение останется в чате."} checked={action.deleteMessage} disabled={disabled} onChange={(checked) => updateRuleState(rule, checked)} /><div className="automod-conditional-block"><BinarySetting title="Выдать наказание" description={!action.punishmentEnabled ? "Наказание не применяется." : action.punishmentAction === "WARN" ? "Пользователь получит +1 Warn." : `Пользователь получит Mute на ${durationLabel(action.muteDurationMinutes)}.`} checked={action.punishmentEnabled} disabled={disabled} onChange={(checked) => updateAction(rule, { punishmentEnabled: checked })} />{action.punishmentEnabled ? <div className="automod-conditional-grid"><label className="automod-field"><span>Тип наказания</span><select value={action.punishmentAction} disabled={disabled} onChange={(event) => updateAction(rule, { punishmentAction: event.target.value as "WARN" | "MUTE" })}><option value="WARN">Warn</option><option value="MUTE">Mute</option></select></label>{action.punishmentAction === "MUTE" ? <label className="automod-field"><span>Срок наказания</span><select value={action.muteDurationMinutes} disabled={disabled} onChange={(event) => updateAction(rule, { muteDurationMinutes: Number(event.target.value) })}>{MUTE_DURATIONS.map(([minutes, label]) => <option key={minutes} value={minutes}>{label}</option>)}</select></label> : null}</div> : null}</div><div className="automod-conditional-block"><BinarySetting title="Отправлять сообщение при срабатывании" description={action.notifyEnabled ? "Modera отправит указанный ниже текст." : "Дополнительное сообщение не отправляется."} checked={action.notifyEnabled} disabled={disabled} onChange={(checked) => updateAction(rule, { notifyEnabled: checked })} />{action.notifyEnabled ? <label className="automod-field automod-message-editor"><span>Текст сообщения</span><textarea rows={5} value={action.notifyText} disabled={disabled} onChange={(event) => updateAction(rule, { notifyText: event.target.value })} placeholder="Введите текст сообщения…" /><small>Поле пустое по умолчанию. Доступны переменные %target% и %chat%.</small></label> : null}</div></div>;
+  return <div className="automod-outcome-stack"><BinarySetting title="Удалять сообщение" description={action.deleteMessage ? "Правило включено: нарушение будет удалено из чата." : "Правило выключено: сообщение останется в чате."} checked={action.deleteMessage} disabled={disabled} onChange={(checked) => updateRuleState(rule, checked)} /><div className="automod-conditional-block"><BinarySetting title="Выдать наказание" description={!action.punishmentEnabled ? "Наказание не применяется." : action.punishmentAction === "WARN" ? "Пользователь получит +1 Warn." : `Пользователь получит Mute на ${durationLabel(action.muteDurationMinutes)}.`} checked={action.punishmentEnabled} disabled={disabled} onChange={(checked) => updateAction(rule, { punishmentEnabled: checked })} />{action.punishmentEnabled ? <div className="automod-conditional-grid"><label className="automod-field"><span>Тип наказания</span><select value={action.punishmentAction} disabled={disabled} onChange={(event) => updateAction(rule, { punishmentAction: event.target.value as "WARN" | "MUTE" })}><option value="WARN">Warn</option><option value="MUTE">Mute</option></select></label>{action.punishmentAction === "MUTE" ? <label className="automod-field"><span>Срок наказания</span><select value={action.muteDurationMinutes} disabled={disabled} onChange={(event) => updateAction(rule, { muteDurationMinutes: Number(event.target.value) })}>{MUTE_DURATIONS.map(([minutes, label]) => <option key={minutes} value={minutes}>{label}</option>)}</select></label> : null}</div> : null}</div><div className="automod-conditional-block"><BinarySetting title="Отправлять сообщение при срабатывании" description={action.notifyEnabled ? "Modera отправит указанный ниже текст." : "Дополнительное сообщение не отправляется."} checked={action.notifyEnabled} disabled={disabled} onChange={(checked) => updateAction(rule, { notifyEnabled: checked })} />{action.notifyEnabled ? <label className="automod-field automod-message-editor"><span>Текст сообщения</span><FormattedTextarea rows={5} value={action.notifyText} disabled={disabled} variables={["%target%", "%chat%"]} onChange={(value) => updateAction(rule, { notifyText: value })} placeholder="Введите текст сообщения…" /><small>Поле пустое по умолчанию. Доступны переменные %target% и %chat%.</small></label> : null}</div></div>;
 }
 
 function EscalationFields({ draft, disabled, updateDraft }: ModalFieldsProps) {

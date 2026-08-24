@@ -1,12 +1,14 @@
 import { prisma } from "@/server/db/prisma";
 import { isRaidForcingCaptcha } from "@/server/services/anti-raid-service";
 import { resolveEffectiveCaptchaSettings } from "@/server/services/captcha-settings-service";
+import { resolveEffectiveContentSettings } from "@/server/services/content-settings-service";
 import {
   getTelegramClient,
   MUTED_CHAT_PERMISSIONS,
   TelegramApiError,
   UNRESTRICTED_CHAT_PERMISSIONS
 } from "@/server/telegram/client";
+import { parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 export const CAPTCHA_PUNISHMENT_STATE = "CAPTCHA_PENDING";
 const CALLBACK_DATA_PREFIX = "captcha:";
@@ -28,6 +30,7 @@ export async function issueCaptchaChallenge(input: {
   telegramChatId: bigint;
   telegramUserId: bigint;
   challengeMessageTemplate: string;
+  challengeButtonText: string;
 }) {
   try {
     await getTelegramClient().restrictChatMember({
@@ -72,9 +75,9 @@ export async function issueCaptchaChallenge(input: {
     const sent = await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
-      text: input.challengeMessageTemplate,
+      ...parseTelegramHtml(input.challengeMessageTemplate),
       replyMarkup: {
-        inline_keyboard: [[{ text: "✅ Я не бот", callback_data: captchaCallbackData(input.telegramUserId) }]]
+        inline_keyboard: [[{ text: input.challengeButtonText, callback_data: captchaCallbackData(input.telegramUserId) }]]
       }
     });
     if (sent.ephemeral_message_id === undefined) {
@@ -141,7 +144,8 @@ export async function maybeIssueCaptchaChallenge(input: {
     userId: input.userId,
     telegramChatId: input.telegramChatId,
     telegramUserId: input.telegramUserId,
-    challengeMessageTemplate: profile.settings.challengeMessageTemplate
+    challengeMessageTemplate: profile.settings.challengeMessageTemplate,
+    challengeButtonText: profile.settings.challengeButtonText
   });
 }
 
@@ -168,11 +172,18 @@ export async function verifyCaptchaChallenge(input: {
     return { outcome: "not_pending" as const };
   }
 
+  const { settings: contentSettings } = await resolveEffectiveContentSettings(input.chatId);
+  const muteUntil = contentSettings.muteNewMembersMinutes > 0 && membership.joinedAt
+    ? new Date(membership.joinedAt.getTime() + contentSettings.muteNewMembersMinutes * 60_000)
+    : null;
+  const keepMuted = Boolean(muteUntil && muteUntil.getTime() > Date.now());
+
   try {
     await getTelegramClient().restrictChatMember({
       chatId: Number(input.telegramChatId),
       userId: input.targetTelegramUserId,
-      permissions: UNRESTRICTED_CHAT_PERMISSIONS
+      permissions: keepMuted ? MUTED_CHAT_PERMISSIONS : UNRESTRICTED_CHAT_PERMISSIONS,
+      ...(keepMuted && muteUntil ? { untilDate: Math.floor(muteUntil.getTime() / 1000) } : {})
     });
   } catch (error) {
     console.warn("[captcha] failed to lift restriction after verification", {
@@ -188,7 +199,7 @@ export async function verifyCaptchaChallenge(input: {
     await prisma.$transaction([
       prisma.chatMember.update({
         where: { id: membership.id },
-        data: { status: "MEMBER", punishmentState: null, punishmentExpiresAt: null, lastModerationAt: now }
+        data: { status: keepMuted ? "RESTRICTED" : "MEMBER", punishmentState: keepMuted ? "MUTED" : null, punishmentExpiresAt: keepMuted ? muteUntil : null, lastModerationAt: now }
       }),
       prisma.auditLog.create({
         data: {
@@ -209,7 +220,8 @@ export async function verifyCaptchaChallenge(input: {
     return { outcome: "db_error" as const };
   }
 
-  return { outcome: "verified" as const };
+  const { settings } = await resolveEffectiveCaptchaSettings(input.chatId);
+  return { outcome: "verified" as const, deleteAfterVerification: settings.deleteAfterVerification };
 }
 
 // Runs once a day (the cron's own schedule, not a per-member duration -- see

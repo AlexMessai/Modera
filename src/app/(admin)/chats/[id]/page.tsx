@@ -56,7 +56,10 @@ const eventLabels: Record<string, string> = {
   CAPTCHA_PASSED: "Капча пройдена",
   CAPTCHA_TIMEOUT_KICK: "Исключён за непройденную капчу",
   CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
-  CAPTCHA_SETTINGS_UPDATED: "Настройки капчи изменены"
+  CAPTCHA_SETTINGS_UPDATED: "Настройки капчи изменены",
+  NEW_MEMBER_BLOCKED: "Новый участник временно заблокирован",
+  NEW_MEMBER_MUTED: "Новый участник временно заглушён",
+  EXISTING_MEMBER_BLOCKED: "Существующий участник заблокирован проверкой"
 };
 
 const botStatusLabels: Record<string, string> = {
@@ -144,10 +147,9 @@ export default async function ChatDetailPage({
 
           {section === "newusers" && captchaProfile && contentProfile ? (
             <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Новые пользователи</h2><p>Капча при вступлении и приветственное сообщение для новых участников этого чата.</p></div></div>
-              <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
-              <hr className="sidebar-divider" />
+              <div className="panel-header"><div><h2>Новые пользователи</h2><p>Приветствие, капча и защита участников при вступлении.</p></div></div>
               <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} canEdit={canEdit} />
+              <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
             </section>
           ) : null}
 

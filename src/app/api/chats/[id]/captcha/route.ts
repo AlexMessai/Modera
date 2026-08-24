@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
   enabled: z.boolean(),
-  challengeMessageTemplate: z.string().min(1).max(1000)
+  challengeMessageTemplate: z.string().min(1).max(1000),
+  challengeButtonText: z.string().min(1).max(64),
+  deleteAfterVerification: z.boolean()
 });
 
 export async function GET(

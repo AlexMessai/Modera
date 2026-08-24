@@ -64,3 +64,20 @@ test("manual and automated templates stay independent and Telegram users become 
   ]);
   assert.equal(channel.templates.AUTOMATED, "Автомод заблокировал %target%");
 });
+
+test("notification formatting is converted to Telegram entities without breaking clickable users", () => {
+  const profiles = normalizeModerationNotificationProfiles([{
+    event: "BAN",
+    channels: { PUBLIC: { enabled: true, templates: { MANUAL: "<b>%admin%</b> заблокировал <tg-spoiler>%target%</tg-spoiler>", AUTOMATED: "%target%" } } }
+  }], legacy);
+  const rendered = renderTelegramModerationNotification(profiles.find((profile) => profile.event === "BAN")!.channels.PUBLIC, "MANUAL", {
+    admin: { text: "Алексей", telegramUserId: 101 }, target: { text: "Иван", telegramUserId: 202 }
+  });
+  assert.equal(rendered.text, "Алексей заблокировал Иван");
+  assert.deepEqual(rendered.entities, [
+    { type: "text_link", offset: 0, length: 7, url: "tg://user?id=101" },
+    { type: "bold", offset: 0, length: 7 },
+    { type: "text_link", offset: 21, length: 4, url: "tg://user?id=202" },
+    { type: "spoiler", offset: 21, length: 4 }
+  ]);
+});
