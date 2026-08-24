@@ -37,27 +37,26 @@ export function ChatMediaFilters({ chatId, initial, canEdit, botCanDeleteMessage
     if (!activeType) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") closeModal(); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) closeModal(); };
     document.addEventListener("keydown", closeOnEscape);
     return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", closeOnEscape); };
-  }, [activeType]);
+  }, [activeType, saving]);
 
-  function updateMediaFilter(type: MediaFilterType, patch: Partial<MediaFilterRuleValue>) {
-    setSettings((current) => ({ ...current, mediaFilters: current.mediaFilters.map((rule) => rule.type === type ? { ...rule, ...patch } : rule) }));
-  }
   function openRule(type: MediaFilterType) { const rule = settings.mediaFilters.find((item) => item.type === type); if (rule) { setDraft(structuredClone(rule)); setActiveType(type); } }
   function closeModal() { setActiveType(null); setDraft(null); }
-  function applyModal() { if (activeType && draft) updateMediaFilter(activeType, { ...draft, deleteMessage: draft.enabled, warnOnTrigger: draft.enabled && draft.punishmentEnabled && draft.punishmentAction === "WARN" }); closeModal(); }
   function updateDraft(patch: Partial<MediaFilterRuleValue>) { setDraft((current) => current ? { ...current, ...patch } : current); }
 
-  async function save() {
+  async function saveModal() {
+    if (!activeType || !draft) return;
+    const savedRule = { ...draft, deleteMessage: draft.enabled, warnOnTrigger: draft.enabled && draft.punishmentEnabled && draft.punishmentAction === "WARN" };
+    const nextSettings = { ...settings, mediaFilters: settings.mediaFilters.map((rule) => rule.type === activeType ? savedRule : rule) };
     setSaving(true); setError(null); setSuccess(null);
     try {
-      const response = await fetch(`/api/chats/${chatId}/moderation`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(settings) });
+      const response = await fetch(`/api/chats/${chatId}/moderation`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(nextSettings) });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось сохранить фильтры.");
       const saved = payload.data as ModerationSettingsValue;
-      setSettings(saved); setSuccess("Фильтры сохранены и применяются к новым Telegram-событиям."); onSaved?.(saved);
+      setSettings(saved); setSuccess("Фильтр сохранён и применяется к новым Telegram-событиям."); onSaved?.(saved); closeModal();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Не удалось сохранить фильтры."); }
     finally { setSaving(false); }
   }
@@ -72,10 +71,9 @@ export function ChatMediaFilters({ chatId, initial, canEdit, botCanDeleteMessage
         const rule = settings.mediaFilters.find((item) => item.type === type); if (!rule) return null; const Icon = FILTER_ICONS[type];
         return <article className={`automod-rule-card filter-rule-card ${rule.enabled ? "" : "automod-rule-card--disabled"}`} key={type}><button type="button" className="automod-rule-open filter-rule-open" onClick={() => openRule(type)} aria-label={`Настроить: ${MEDIA_FILTER_LABELS[type]}`}><span className="automod-rule-icon"><Icon size={19} /></span><span className="automod-rule-copy"><strong>{MEDIA_FILTER_LABELS[type]}</strong><small>{FILTER_DESCRIPTIONS[type]}</small></span><span className={`filter-rule-status ${rule.enabled ? "filter-rule-status--delete" : ""}`}>{rule.enabled ? "Удалять" : "Разрешать"}</span><span className="automod-rule-chevron"><ChevronRight size={17} /></span></button></article>;
       })}</div>
-      {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}{success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
-      {canEdit ? <div className="automod-actions"><button className="button button--primary" type="button" onClick={() => void save()} disabled={saving}><Check size={16} />{saving ? "Сохраняю…" : "Сохранить фильтры"}</button></div> : null}
+      {!activeType && error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}{success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
     </div>
-    {activeType && draft ? <div className="automod-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}><div className="automod-modal" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title"><div className="automod-modal-header"><div className="automod-modal-heading"><span><SlidersHorizontal size={19} /></span><div><h3 id="filter-modal-title">{MEDIA_FILTER_LABELS[activeType]}</h3><p>{FILTER_DESCRIPTIONS[activeType]}</p></div></div><button type="button" className="icon-button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button></div><div className="automod-modal-body"><FilterOutcomeFields draft={draft} disabled={disabled} update={updateDraft} /></div><div className="automod-modal-footer"><button type="button" className="button" onClick={closeModal}>Отмена</button>{canEdit ? <button type="button" className="button button--primary" onClick={applyModal}>Применить</button> : null}</div></div></div> : null}
+    {activeType && draft ? <div className="automod-modal-backdrop" role="presentation" onMouseDown={(event) => { if (!saving && event.target === event.currentTarget) closeModal(); }}><div className="automod-modal" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title"><div className="automod-modal-header"><div className="automod-modal-heading"><span><SlidersHorizontal size={19} /></span><div><h3 id="filter-modal-title">{MEDIA_FILTER_LABELS[activeType]}</h3><p>{FILTER_DESCRIPTIONS[activeType]}</p></div></div><button type="button" className="icon-button" aria-label="Закрыть" disabled={saving} onClick={closeModal}><X size={18} /></button></div><div className="automod-modal-body"><FilterOutcomeFields draft={draft} disabled={disabled} update={updateDraft} />{error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}</div><div className="automod-modal-footer"><button type="button" className="button" disabled={saving} onClick={closeModal}>Отмена</button>{canEdit ? <button type="button" className="button button--primary" disabled={saving} onClick={() => void saveModal()}><Check size={16} />{saving ? "Сохраняю…" : "Сохранить"}</button> : null}</div></div></div> : null}
   </section>;
 }
 
