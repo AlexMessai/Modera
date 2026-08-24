@@ -21,18 +21,6 @@ const settingsSchema = z.object({
     escalationBanMessageTemplate: z.string().min(1).max(1000),
     mediaFilters: z.array(mediaFilterRuleSchema).max(MEDIA_FILTER_TYPES.length)
   }),
-  manualModeration: z.object({
-    warnMessageTemplate: z.string().min(1).max(1000),
-    warnEphemeralMessageTemplate: z.string().min(1).max(1000),
-    unwarnMessageTemplate: z.string().min(1).max(1000),
-    muteMessageTemplate: z.string().min(1).max(1000),
-    muteEphemeralMessageTemplate: z.string().min(1).max(1000),
-    unmuteMessageTemplate: z.string().min(1).max(1000),
-    banMessageTemplate: z.string().min(1).max(1000),
-    banEphemeralMessageTemplate: z.string().min(1).max(1000),
-    unbanMessageTemplate: z.string().min(1).max(1000),
-    kickMessageTemplate: z.string().min(1).max(1000)
-  }),
   captcha: z.object({
     challengeMessageTemplate: z.string().min(1).max(1000)
   }),

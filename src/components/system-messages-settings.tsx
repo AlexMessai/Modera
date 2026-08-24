@@ -21,18 +21,6 @@ export type SystemMessagesValue = {
     escalationBanMessageTemplate: string;
     mediaFilters: MediaFilterRuleValue[];
   };
-  manualModeration: {
-    warnMessageTemplate: string;
-    warnEphemeralMessageTemplate: string;
-    unwarnMessageTemplate: string;
-    muteMessageTemplate: string;
-    muteEphemeralMessageTemplate: string;
-    unmuteMessageTemplate: string;
-    banMessageTemplate: string;
-    banEphemeralMessageTemplate: string;
-    unbanMessageTemplate: string;
-    kickMessageTemplate: string;
-  };
   captcha: { challengeMessageTemplate: string };
   content: { welcomeMessageTemplate: string };
   appeals: {
@@ -68,44 +56,6 @@ const MEDIA_FILTER_ORDER: MediaFilterType[] = [
   "DOCUMENT", "STICKER", "POLL", "LOCATION", "CONTACT"
 ];
 
-type ManualModerationCommandKey = keyof SystemMessagesValue["manualModeration"];
-
-const MANUAL_MODERATION_SECTIONS: Array<{
-  title: string;
-  fields: Array<{ key: ManualModerationCommandKey; label: string; hint: string }>;
-}> = [
-  {
-    title: "Предупреждения",
-    fields: [
-      { key: "warnMessageTemplate", label: "/warn — публичное сообщение", hint: "Доступны %admin%, %target%, %reason%, %warns%, %warns_limit%." },
-      { key: "warnEphemeralMessageTemplate", label: "/warn — приватное уведомление наказанному", hint: "Видит только сам участник. Доступны %chat%, %reason%, %contact%." },
-      { key: "unwarnMessageTemplate", label: "/unwarn — публичное сообщение", hint: "Доступны %admin%, %target%, %warns%, %warns_limit%." }
-    ]
-  },
-  {
-    title: "Mute",
-    fields: [
-      { key: "muteMessageTemplate", label: "/mute — публичное сообщение", hint: "Доступны %admin%, %target%, %reason%, %duration%." },
-      { key: "muteEphemeralMessageTemplate", label: "/mute — приватное уведомление наказанному", hint: "Видит только сам участник. Доступны %chat%, %reason%, %contact%." },
-      { key: "unmuteMessageTemplate", label: "/unmute — публичное сообщение", hint: "Доступны %admin%, %target%." }
-    ]
-  },
-  {
-    title: "Блокировка",
-    fields: [
-      { key: "banMessageTemplate", label: "/ban — публичное сообщение", hint: "Доступны %admin%, %target%, %reason%." },
-      { key: "banEphemeralMessageTemplate", label: "/ban — приватное уведомление наказанному", hint: "Видит только сам участник. Доступны %chat%, %reason%, %contact%." },
-      { key: "unbanMessageTemplate", label: "/unban — публичное сообщение", hint: "Доступны %admin%, %target%." }
-    ]
-  },
-  {
-    title: "Кик",
-    fields: [
-      { key: "kickMessageTemplate", label: "/kick — публичное сообщение", hint: "Доступны %admin%, %target%, %reason%." }
-    ]
-  }
-];
-
 export function SystemMessagesSettings({ initial, canEdit }: Props) {
   const [messages, setMessages] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -126,10 +76,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
         mediaFilters: current.automod.mediaFilters.map((rule) => (rule.type === type ? { ...rule, notifyText } : rule))
       }
     }));
-  }
-
-  function setManualModerationField(key: ManualModerationCommandKey, value: string) {
-    setMessages((current) => ({ ...current, manualModeration: { ...current.manualModeration, [key]: value } }));
   }
 
   function setAppealField<K extends keyof SystemMessagesValue["appeals"]>(key: K, value: SystemMessagesValue["appeals"][K]) {
@@ -162,8 +108,8 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
     <div className="panel automod-settings">
       <div className="panel-header">
         <div>
-          <h2>Системные сообщения</h2>
-          <p>Все тексты, которые бот отправляет в чат или в личные сообщения при каком-либо действии — ручном или автоматическом. Одни на все чаты.</p>
+          <h2>Другие системные сообщения</h2>
+          <p>Automod, CAPTCHA, апелляции и приветствие. Сообщения наказаний настраиваются выше, в едином центре.</p>
         </div>
       </div>
 
@@ -195,19 +141,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
           );
         })}
       </div>
-
-      {MANUAL_MODERATION_SECTIONS.map((section) => (
-        <div className="settings-section" key={section.title}>
-          <span className="settings-section-title">Ручная модерация — {section.title}</span>
-          {section.fields.map((field) => (
-            <label className="automod-field" key={field.key}>
-              <span>{field.label}</span>
-              <textarea rows={2} value={messages.manualModeration[field.key]} disabled={fieldsDisabled} onChange={(event) => setManualModerationField(field.key, event.target.value)} />
-              <small>{field.hint}</small>
-            </label>
-          ))}
-        </div>
-      ))}
 
       <div className="settings-section">
         <span className="settings-section-title">Капча</span>

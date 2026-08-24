@@ -40,7 +40,8 @@ import {
   ModerationError,
   type ModerationActionValue
 } from "@/server/services/moderation-service";
-import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { renderManualModerationTemplate, resolveEffectiveManualModerationSettings, type ManualModerationSettingsValue } from "@/server/services/manual-moderation-settings-service";
+import { getModerationNotificationProfile, type ModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
 import { createReport, notifyAdminsOfNewReport, parseReportCallbackData, ReportError, resolveReport, type ReportCallbackAction } from "@/server/services/report-service";
 import { parseSettingsCallbackData, renderSettingsMenu } from "@/server/services/settings-menu-service";
 import { completePendingLogChannelLink } from "@/server/services/log-channel-service";
@@ -222,7 +223,7 @@ function formatMinutes(minutes: number) {
 }
 
 /** `adminOnly` keeps internal diagnostics (e.g. a failed auto-punishment) out of the public chat announcement — only the admin who ran the command needs to see them. */
-type ModerationOutcomeLine = { text: string; adminOnly?: boolean };
+type ModerationOutcomeLine = { text: string; publicText?: string; adminOnly?: boolean };
 
 /** Runs the moderation action against a single already-resolved target; used in a loop for multi-target commands. */
 async function applyModerationCommandToTarget(input: {
@@ -233,9 +234,8 @@ async function applyModerationCommandToTarget(input: {
   /** Minutes; applies to MUTE or BAN depending on `action` — null means permanent/no duration. */
   durationMinutes: number | null;
   telegramActor: { telegramUserId: number; username?: string; displayName?: string };
-  settings: ManualModerationSettingsValue;
+  notificationProfile: ModerationNotificationProfile;
 }): Promise<ModerationOutcomeLine[]> {
-  const fields = TEMPLATE_FIELDS_BY_ACTION[input.action];
   let warns = "";
   let warnsLimit = "";
   let escalation: ManualWarningEscalation | null = null;
@@ -287,25 +287,34 @@ async function applyModerationCommandToTarget(input: {
   // private confirmation that the action went through, even when public
   // chat announcements are switched off (silent moderation is the default;
   // "silent" means the chat stays quiet, not that the admin is left guessing).
-  const lines: ModerationOutcomeLine[] = [{
-    text: renderManualModerationTemplate(input.settings[fields.template] as string, placeholders)
-  }];
+  const lines: ModerationOutcomeLine[] = [];
+  if (input.notificationProfile.channels.MODERATOR.enabled) {
+    lines.push({
+      text: renderManualModerationTemplate(input.notificationProfile.channels.MODERATOR.text, placeholders),
+      ...(input.notificationProfile.channels.PUBLIC.enabled
+        ? { publicText: renderManualModerationTemplate(input.notificationProfile.channels.PUBLIC.text, placeholders) }
+        : {})
+    });
+  } else if (input.notificationProfile.channels.PUBLIC.enabled) {
+    lines.push({ text: "", publicText: renderManualModerationTemplate(input.notificationProfile.channels.PUBLIC.text, placeholders) });
+  }
 
   // The warning that crossed the threshold also triggered a punishment — say so
   // in the same summary rather than leaving the admin to guess why the mute landed.
   if (escalation?.escalated && escalation.action) {
-    const escalationFields = TEMPLATE_FIELDS_BY_ACTION[escalation.action];
-    lines.push({
-      text: renderManualModerationTemplate(
-        input.settings[escalationFields.template] as string,
-        {
+    const escalationProfile = await getModerationNotificationProfile(escalation.action);
+    const escalationPlaceholders = {
           ...placeholders,
           admin: "Modera",
           reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
           duration: escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : ""
-        }
-      )
-    });
+        };
+    if (escalationProfile.channels.MODERATOR.enabled || escalationProfile.channels.PUBLIC.enabled) {
+      lines.push({
+        text: escalationProfile.channels.MODERATOR.enabled ? renderManualModerationTemplate(escalationProfile.channels.MODERATOR.text, escalationPlaceholders) : "",
+        ...(escalationProfile.channels.PUBLIC.enabled ? { publicText: renderManualModerationTemplate(escalationProfile.channels.PUBLIC.text, escalationPlaceholders) } : {})
+      });
+    }
   } else if (escalation?.attemptedAction && escalation.error) {
     // Threshold was crossed but the mute/ban itself failed (e.g. the bot
     // lacks "Ограничивать участников") — without this line the admin sees a
@@ -401,19 +410,16 @@ async function processGroupModerationCommand(input: {
   };
 
   const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
+  const notificationProfile = await getModerationNotificationProfile(action);
   // Only meaningful in reply mode — target-token commands (@username/ID) have
   // no "message this was a reply to" to delete.
   if (settings[TEMPLATE_FIELDS_BY_ACTION[action].deleteTarget] && input.message.reply_to_message) {
     await input.client.deleteMessage(input.telegramChatId, input.message.reply_to_message.message_id).catch(() => undefined);
   }
 
-  // Single global source of truth for whether punishment notices go out to
-  // the chat at all — no per-command or per-chat override (see
-  // manual-moderation-settings-service.ts). adminSummaryLines holds every
-  // outcome regardless, so the admin who ran the command always gets private
-  // confirmation that it went through, even when the chat itself stays
-  // silent (the default).
-  const visibility = await getManualModerationVisibility();
+  // The notification center controls public and moderator-facing channels
+  // independently for every action. Validation failures stay private even
+  // when the moderator disabled ordinary success confirmations.
   const publicLines: string[] = [];
   const adminSummaryLines: string[] = [];
   for (const target of targets) {
@@ -425,12 +431,12 @@ async function processGroupModerationCommand(input: {
         reason,
         durationMinutes,
         telegramActor,
-        settings
+        notificationProfile
       });
       for (const outcome of outcomes) {
         const line = targets.length > 1 ? `${target.displayName}: ${outcome.text}` : outcome.text;
-        adminSummaryLines.push(line);
-        if (visibility.publicPunishmentMessagesEnabled && !outcome.adminOnly) publicLines.push(line);
+        if (outcome.text) adminSummaryLines.push(line);
+        if (outcome.publicText && !outcome.adminOnly) publicLines.push(targets.length > 1 ? `${target.displayName}: ${outcome.publicText}` : outcome.publicText);
       }
     } catch (error) {
       const message = error instanceof ModerationError ? error.message : "Не удалось выполнить действие модерации.";

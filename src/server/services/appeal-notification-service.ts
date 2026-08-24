@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
-import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
+import { renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
+import { getModerationNotificationProfile } from "@/server/services/moderation-notification-settings-service";
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
@@ -76,48 +77,46 @@ function renderAppealTemplate(
     .replaceAll("%comment%", placeholders.comment ?? "");
 }
 
-const EPHEMERAL_TEMPLATE_FIELD = {
-  WARNING: "warnEphemeralMessageTemplate",
-  MUTE: "muteEphemeralMessageTemplate",
-  BAN: "banEphemeralMessageTemplate"
-} as const;
-
-// The only remaining personal notice for a punishment: an ephemeral message
+// Personal moderation notice: an ephemeral message
 // (Bot API 10.2) visible only to the punished member, posted right in the
 // group they're already in, so it doesn't depend on them ever having opened
 // a DM with the bot. A separate private DM used to also fire here, but it
 // was removed (see the moderation-notification simplification) -- if the
 // member knows /appeal, they can use it themselves; the ephemeral notice no
 // longer points at any specific "reply here" instruction. Text is
-// admin-editable (manual-moderation-settings-service.ts's per-action
-// *EphemeralMessageTemplate) even though this fires for any punishment
-// source, not just manual commands -- the per-action shape already matches.
-async function notifyPunishmentEphemeral(input: {
+// admin-editable in the moderation notification center and shared across
+// manual commands, Web Admin and automatic moderation.
+export async function notifyModerationTarget(input: {
   chatId: string;
   telegramChatId: bigint;
   telegramUserId: bigint;
   chatTitle: string;
-  actionType: "WARNING" | "MUTE" | "BAN";
+  actionType: "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
   reason: string | null;
+  warns?: string;
 }) {
   try {
+    const profile = await getModerationNotificationProfile(input.actionType);
+    if (!profile.channels.OFFENDER.enabled) return { delivered: false as const };
     const botProfile = await getTelegramBotProfile();
     const contact = botProfile.username ? `@${botProfile.username}` : "мне в личные сообщения";
-    const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
-    const template = settings[EPHEMERAL_TEMPLATE_FIELD[input.actionType]];
+    const template = profile.channels.OFFENDER.text;
     await getTelegramClient().sendMessage({
       chatId: Number(input.telegramChatId),
       receiverUserId: Number(input.telegramUserId),
       text: renderManualModerationTemplate(template, {
         chat: input.chatTitle,
         reason: input.reason ?? "",
+        warns: input.warns ?? "",
         contact
       })
     });
+    return { delivered: true as const };
   } catch {
     // Silently ignored -- e.g. the member was just removed from the chat
     // (BAN), or isn't a member yet. Best-effort, same as every other
     // Telegram notification call in this codebase.
+    return { delivered: false as const };
   }
 }
 
@@ -132,12 +131,11 @@ export async function notifyPunishmentAppealOption(input: {
   reason: string | null;
 }) {
   // Private punishment notice (ephemeral in-chat notice only -- the private
-  // DM leg was removed) is gated by its own global toggle, independent of
-  // the public group-chat announcement -- see manual-moderation-settings-service.ts.
-  const { privatePunishmentMessagesEnabled } = await getManualModerationVisibility();
-  if (!privatePunishmentMessagesEnabled) return { delivered: false as const };
+  // DM leg was removed) is independently controlled for this event.
+  const profile = await getModerationNotificationProfile(input.actionType);
+  if (!profile.channels.OFFENDER.enabled) return { delivered: false as const };
 
-  await notifyPunishmentEphemeral({
+  await notifyModerationTarget({
     chatId: input.chatId,
     telegramChatId: input.telegramChatId,
     telegramUserId: input.telegramUserId,

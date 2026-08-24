@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
+import { notifyModerationTarget, notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
 import { forwardModerationEventToLogChannel } from "@/server/services/log-channel-service";
 import { prisma } from "@/server/db/prisma";
 import {
@@ -13,6 +13,7 @@ import { extractBotPermissions } from "@/server/telegram/status";
 import { isBanExpired, isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
 import { revokeWarningRecord } from "@/server/services/warning-service";
+import { sendPublicModerationNotification } from "@/server/services/moderation-notification-settings-service";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
@@ -242,6 +243,16 @@ async function recordWarning(input: {
     reason: input.reason
   }).catch(() => undefined);
 
+  if (input.source === "ADMIN") {
+    await sendPublicModerationNotification({
+      event: "WARNING",
+      telegramChatId: input.member.chat.telegramChatId,
+      target: input.member.user.displayName ?? input.member.user.telegramUserId.toString(),
+      reason: input.reason,
+      warns: String(result.membership.warningCount)
+    }).catch(() => undefined);
+  }
+
   await forwardModerationEventToLogChannel({
     chatId: input.member.chatId,
     chatTitle: input.member.chat.title,
@@ -465,6 +476,27 @@ async function executeTelegramBackedAction(input: {
         actionType: input.action,
         reason: input.reason
       }).catch(() => undefined);
+    } else if (input.action === "UNMUTE" || input.action === "UNBAN" || input.action === "KICK") {
+      await notifyModerationTarget({
+        chatId: member.chatId,
+        telegramChatId: member.chat.telegramChatId,
+        telegramUserId: member.user.telegramUserId,
+        chatTitle: member.chat.title,
+        actionType: input.action,
+        reason: input.reason
+      }).catch(() => undefined);
+    }
+
+    if (input.source === "ADMIN") {
+      const durationMinutes = input.expiresAt ? Math.max(1, Math.round((input.expiresAt.getTime() - Date.now()) / 60_000)) : null;
+      const duration = durationMinutes ? (durationMinutes % 1440 === 0 ? `${durationMinutes / 1440} дн.` : durationMinutes % 60 === 0 ? `${durationMinutes / 60} ч.` : `${durationMinutes} мин.`) : "";
+      await sendPublicModerationNotification({
+        event: input.action,
+        telegramChatId: member.chat.telegramChatId,
+        target: member.user.displayName ?? member.user.telegramUserId.toString(),
+        reason: input.reason,
+        duration
+      }).catch(() => undefined);
     }
 
     await forwardModerationEventToLogChannel({
@@ -607,6 +639,26 @@ async function recordWarningRevoke(input: {
   });
   if (revoked.outcome !== "revoked") {
     throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
+  }
+
+  await notifyModerationTarget({
+    chatId: member.chatId,
+    telegramChatId: member.chat.telegramChatId,
+    telegramUserId: member.user.telegramUserId,
+    chatTitle: member.chat.title,
+    actionType: "UNWARN",
+    reason: "Предупреждение снято администратором.",
+    warns: String(revoked.remainingWarningCount)
+  }).catch(() => undefined);
+
+  if (input.source === "ADMIN") {
+    await sendPublicModerationNotification({
+      event: "UNWARN",
+      telegramChatId: member.chat.telegramChatId,
+      target: member.user.displayName ?? member.user.telegramUserId.toString(),
+      reason: "Предупреждение снято администратором.",
+      warns: String(revoked.remainingWarningCount)
+    }).catch(() => undefined);
   }
 
   return {
