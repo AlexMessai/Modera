@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireChatAccess } from "@/server/auth/guards";
 import { isSameOrigin } from "@/server/http/origin";
 import {
   getMemberTagState,
@@ -35,7 +35,19 @@ export async function GET(
     );
   }
 
-  return Response.json({ data: state });
+  const access = await requireChatAccess(auth.admin, state.chatId);
+  if (!access.ok) return access.response;
+
+  return Response.json({
+    data: {
+      membershipId: state.membershipId,
+      status: state.status,
+      telegramCustomTitle: state.telegramCustomTitle,
+      tag: state.tag,
+      tagUpdatedAt: state.tagUpdatedAt,
+      editable: state.editable
+    }
+  });
 }
 
 export async function PATCH(
@@ -59,6 +71,16 @@ export async function PATCH(
       { status: 400 }
     );
   }
+
+  const state = await getMemberTagState(id);
+  if (!state) {
+    return Response.json(
+      { error: { code: "MEMBER_NOT_FOUND", message: "Участник не найден." } },
+      { status: 404 }
+    );
+  }
+  const access = await requireChatAccess(auth.admin, state.chatId);
+  if (!access.ok) return access.response;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

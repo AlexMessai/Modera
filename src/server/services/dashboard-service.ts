@@ -57,7 +57,7 @@ type TrendRow = { bucket: string; count: number };
 function chatFilterSql(column: Prisma.Sql, visibleChatIds: string[] | null) {
   if (visibleChatIds === null) return Prisma.empty;
   if (visibleChatIds.length === 0) return Prisma.sql`AND false`;
-  return Prisma.sql`AND ${column} = ANY(${visibleChatIds})`;
+  return Prisma.sql`AND ${column} = ANY(${visibleChatIds}::uuid[])`;
 }
 
 async function loadMessageTrend(period: DashboardPeriod, from: Date, visibleChatIds: string[] | null) {

@@ -240,6 +240,29 @@ test("Telegram-actor warning revoke decrements warningCount and rejects once it'
   const membership = await prisma.chatMember.create({
     data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 2, lastAutoEscalationWarningCount: 2 }
   });
+  const warnings = await Promise.all([
+    prisma.moderationAction.create({
+      data: {
+        chatId: chat.id,
+        affectedUserId: user.id,
+        source: "TELEGRAM",
+        type: "WARNING",
+        status: "SUCCEEDED",
+        completedAt: new Date(Date.now() - 60_000),
+        createdAt: new Date(Date.now() - 60_000)
+      }
+    }),
+    prisma.moderationAction.create({
+      data: {
+        chatId: chat.id,
+        affectedUserId: user.id,
+        source: "TELEGRAM",
+        type: "WARNING",
+        status: "SUCCEEDED",
+        completedAt: new Date()
+      }
+    })
+  ]);
 
   try {
     const revoked = await executeTelegramActorWarningRevoke({
@@ -255,6 +278,10 @@ test("Telegram-actor warning revoke decrements warningCount and rejects once it'
     assert.equal(afterFirst.warningCount, 1);
     // Lowered so climbing back to the threshold escalates again.
     assert.equal(afterFirst.lastAutoEscalationWarningCount, 1);
+    const latestWarning = await prisma.moderationAction.findUniqueOrThrow({ where: { id: warnings[1].id } });
+    assert.ok(latestWarning.revokedAt, "the latest active warning is revoked first");
+    assert.equal(latestWarning.revokedByAdminId, null);
+    assert.equal((await prisma.moderationAction.findUniqueOrThrow({ where: { id: warnings[0].id } })).revokedAt, null);
 
     const audit = await prisma.auditLog.findFirstOrThrow({
       where: { affectedUserId: user.id, action: "MODERATION_UNWARN" }
@@ -308,6 +335,17 @@ test("Admin (Web Admin) warning revoke decrements warningCount, mirroring the Te
   const membership = await prisma.chatMember.create({
     data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 1, lastAutoEscalationWarningCount: 1 }
   });
+  const warning = await prisma.moderationAction.create({
+    data: {
+      chatId: chat.id,
+      affectedUserId: user.id,
+      actingAdminId: admin.id,
+      source: "ADMIN",
+      type: "WARNING",
+      status: "SUCCEEDED",
+      completedAt: new Date()
+    }
+  });
 
   try {
     const revoked = await executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id });
@@ -320,6 +358,9 @@ test("Admin (Web Admin) warning revoke decrements warningCount, mirroring the Te
     });
     assert.equal(audit.source, "ADMIN");
     assert.equal(audit.actingAdminId, admin.id);
+    const revokedWarning = await prisma.moderationAction.findUniqueOrThrow({ where: { id: warning.id } });
+    assert.ok(revokedWarning.revokedAt);
+    assert.equal(revokedWarning.revokedByAdminId, admin.id);
 
     await assert.rejects(
       executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id }),

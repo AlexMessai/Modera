@@ -54,7 +54,7 @@ export const COMMAND_CATEGORIES: CommandCategory[] = [
           { label: "Reply на сообщение", line: "/unwarn" },
           { label: "По @username или ID", line: "/unwarn (@username|ID)" }
         ],
-        description: "Снимает одно предупреждение с участника (самое старое активное).",
+        description: "Снимает последнее активное предупреждение с участника.",
         permission: "Выдавать предупреждения",
         tags: ["Reply", "@username / ID"]
       }

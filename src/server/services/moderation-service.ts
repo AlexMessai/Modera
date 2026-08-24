@@ -12,6 +12,7 @@ import {
 import { extractBotPermissions } from "@/server/telegram/status";
 import { isBanExpired, isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
+import { revokeWarningRecord } from "@/server/services/warning-service";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
@@ -581,9 +582,9 @@ export async function executeTelegramActorModerationAction(input: {
 /**
  * /unwarn's shared core (mirrors recordWarning above, generic over
  * source/actingAdminId, called from both the Telegram path and Web Admin).
- * Purely local: unlike mute/ban there is no Telegram call to make, so this
- * writes an audit trail rather than a ModerationAction (same shape the
- * appeal-approval path uses).
+ * Purely local: unlike mute/ban there is no Telegram call to make. The latest
+ * active WARNING entity is marked revoked and the member counter is rebuilt
+ * from the remaining active records.
  */
 async function recordWarningRevoke(input: {
   membershipId: string;
@@ -593,42 +594,24 @@ async function recordWarningRevoke(input: {
 }) {
   const member = await loadMember(input.membershipId);
   if (!member) throw new ModerationError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
-  if (member.warningCount <= 0) {
+  const revoked = await revokeWarningRecord({
+    chatId: member.chatId,
+    affectedUserId: member.userId,
+    revokedByAdminId: input.actingAdminId,
+    revocationReason: "Предупреждение снято администратором.",
+    audit: {
+      source: input.source,
+      actingAdminId: input.actingAdminId,
+      metadata: input.metadata
+    }
+  });
+  if (revoked.outcome !== "revoked") {
     throw new ModerationError("NO_WARNINGS", "У участника нет предупреждений.", 409);
   }
 
-  const nextWarningCount = member.warningCount - 1;
-  const membership = await prisma.$transaction(async (tx) => {
-    const updated = await tx.chatMember.update({
-      where: { id: member.id },
-      data: {
-        warningCount: nextWarningCount,
-        // Lower the escalation marker too, so climbing back to the threshold
-        // escalates again instead of being treated as already handled.
-        lastAutoEscalationWarningCount: Math.min(
-          member.lastAutoEscalationWarningCount,
-          nextWarningCount
-        )
-      }
-    });
-    await tx.auditLog.create({
-      data: {
-        chatId: member.chatId,
-        affectedUserId: member.userId,
-        actingAdminId: input.actingAdminId,
-        source: input.source,
-        action: "MODERATION_UNWARN",
-        metadata: {
-          ...(input.metadata ?? {}),
-          warningCount: updated.warningCount
-        }
-      }
-    });
-    return updated;
-  });
-
   return {
-    warningCount: membership.warningCount,
+    warningCount: revoked.remainingWarningCount,
+    warningActionId: revoked.warningActionId,
     chatId: member.chatId,
     affectedUserId: member.userId
   };

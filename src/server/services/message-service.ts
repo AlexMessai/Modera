@@ -91,6 +91,7 @@ export async function listMessages(input: {
   state: MessageStateValue;
   dateFrom?: string;
   dateTo?: string;
+  visibleChatIds?: string[] | null;
 }) {
   const page = Math.max(1, input.page);
   const pageSize = Math.min(100, Math.max(1, input.pageSize));
@@ -100,7 +101,13 @@ export async function listMessages(input: {
   const dateTo = parseDate(input.dateTo);
 
   const where: Prisma.MessageWhereInput = {
-    ...(input.chatId && UUID_PATTERN.test(input.chatId) ? { chatId: input.chatId } : {}),
+    ...(input.chatId && UUID_PATTERN.test(input.chatId)
+      ? input.visibleChatIds !== null && input.visibleChatIds !== undefined && !input.visibleChatIds.includes(input.chatId)
+        ? { chatId: { in: [] } }
+        : { chatId: input.chatId }
+      : input.visibleChatIds !== null && input.visibleChatIds !== undefined
+        ? { chatId: { in: input.visibleChatIds } }
+        : {}),
     ...(input.type ? { messageType: input.type } : {}),
     ...stateWhere(input.state),
     ...(dateFrom || dateTo
@@ -164,6 +171,10 @@ export async function listMessages(input: {
       }
     }),
     prisma.chat.findMany({
+      where:
+        input.visibleChatIds !== null && input.visibleChatIds !== undefined
+          ? { id: { in: input.visibleChatIds } }
+          : undefined,
       orderBy: { title: "asc" },
       take: 200,
       select: {
