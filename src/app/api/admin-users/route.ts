@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireGlobalAdminAccess } from "@/server/auth/guards";
 import { canManageAdmins } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -33,6 +33,8 @@ function forbidden() {
 export async function GET() {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
   if (!canManageAdmins(auth.admin.role)) return forbidden();
 
   const data = await listAdminUsers();
@@ -49,6 +51,8 @@ export async function POST(request: Request) {
 
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
   if (!canManageAdmins(auth.admin.role)) return forbidden();
 
   const parsed = createSchema.safeParse(await request.json().catch(() => null));

@@ -598,6 +598,8 @@ model Appeal {
   resolvedByAdminId  String?      @db.Uuid
   resolutionComment  String?      @db.VarChar(1000)
   resolvedAt         DateTime?    @db.Timestamptz(3)
+  resolutionAttemptId String?     @db.Uuid
+  resolutionStartedAt DateTime?   @db.Timestamptz(3)
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
   chat               Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -606,6 +608,7 @@ model Appeal {
   resolvedByAdmin    AdminUser?       @relation("AppealResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt(sort: Desc)])
+  @@index([status, resolutionStartedAt])
   @@index([chatId, status, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
 }

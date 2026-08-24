@@ -27,7 +27,7 @@ export default async function SystemPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [admin, query] = await Promise.all([requireAdminPage(), searchParams]);
-  if (!canViewSystem(admin.role)) redirect("/overview");
+  if (admin.scope !== "GLOBAL" || !canViewSystem(admin.role)) redirect("/overview");
 
   const canSeeAccounts = canManageAdmins(admin.role);
   const canEditNotifications = canManageChatSettings(admin.role);

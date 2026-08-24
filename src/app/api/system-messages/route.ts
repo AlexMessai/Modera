@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireGlobalAdminAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import { MEDIA_FILTER_TYPES } from "@/server/services/global-moderation-service";
@@ -50,6 +50,11 @@ const settingsSchema = z.object({
 export async function GET() {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
+  if (!canManageChatSettings(auth.admin.role)) {
+    return Response.json({ error: { code: "FORBIDDEN", message: "Системные сообщения доступны только владельцу и администратору Modera." } }, { status: 403 });
+  }
   return Response.json({ data: await getSystemMessages() });
 }
 
@@ -59,6 +64,8 @@ export async function PATCH(request: Request) {
   }
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
   if (!canManageChatSettings(auth.admin.role)) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Изменять системные сообщения могут только владелец и администратор Modera." } }, { status: 403 });
   }

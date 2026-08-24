@@ -1,4 +1,4 @@
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireGlobalAdminAccess } from "@/server/auth/guards";
 import { canReconcileModeration } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import {
@@ -21,6 +21,8 @@ export async function POST(
 
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
   if (!canReconcileModeration(auth.admin.role)) {
     return Response.json(
       {

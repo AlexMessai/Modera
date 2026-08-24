@@ -1,4 +1,4 @@
-import { requireAdminApi } from "@/server/auth/guards";
+import { requireAdminApi, requireGlobalAdminAccess } from "@/server/auth/guards";
 import { canViewSystem } from "@/server/auth/permissions";
 import { getSystemDiagnostics } from "@/server/services/system-service";
 
@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
+  const globalAccess = requireGlobalAdminAccess(auth.admin);
+  if (!globalAccess.ok) return globalAccess.response;
 
   if (!canViewSystem(auth.admin.role)) {
     return Response.json(

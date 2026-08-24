@@ -48,6 +48,28 @@ export async function requireModerationApi() {
   return { ok: true as const, admin: auth.admin };
 }
 
+/**
+ * Global configuration, diagnostics and account-management endpoints must
+ * never infer authority from `role` alone. CHAT accounts deliberately keep
+ * an inert global role, but this explicit scope gate prevents a malformed or
+ * manually-edited account from crossing the global boundary.
+ */
+export function requireGlobalAdminAccess(admin: CurrentAdmin) {
+  if (admin.scope === "GLOBAL") return { ok: true as const };
+  return {
+    ok: false as const,
+    response: Response.json(
+      {
+        error: {
+          code: "FORBIDDEN",
+          message: "Доступно только глобальным администраторам Modera."
+        }
+      },
+      { status: 403 }
+    )
+  };
+}
+
 async function hasChatAccess(admin: CurrentAdmin, chatId: string): Promise<boolean> {
   if (admin.scope === "GLOBAL") return true;
   const access = await prisma.chatAdminAccess.findUnique({

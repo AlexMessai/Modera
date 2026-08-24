@@ -314,7 +314,7 @@ test("Telegram-actor warning revoke decrements warningCount and rejects once it'
   }
 });
 
-test("Admin (Web Admin) warning revoke decrements warningCount, mirroring the Telegram-actor path", async () => {
+test("concurrent Admin warning revokes claim distinct warnings and rebuild the counter", async () => {
   const telegramChatId = -1009000000304n;
   const telegramUserId = 900000304n;
   const email = "moderation-unwarn-admin-ci@example.com";
@@ -333,34 +333,58 @@ test("Admin (Web Admin) warning revoke decrements warningCount, mirroring the Te
     data: { telegramUserId, firstName: "Target", displayName: "Target User" }
   });
   const membership = await prisma.chatMember.create({
-    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 1, lastAutoEscalationWarningCount: 1 }
+    data: { chatId: chat.id, userId: user.id, status: "MEMBER", warningCount: 2, lastAutoEscalationWarningCount: 2 }
   });
-  const warning = await prisma.moderationAction.create({
-    data: {
-      chatId: chat.id,
-      affectedUserId: user.id,
-      actingAdminId: admin.id,
-      source: "ADMIN",
-      type: "WARNING",
-      status: "SUCCEEDED",
-      completedAt: new Date()
-    }
-  });
+  const [olderWarning, latestWarning] = await Promise.all([
+    prisma.moderationAction.create({
+      data: {
+        chatId: chat.id,
+        affectedUserId: user.id,
+        actingAdminId: admin.id,
+        source: "ADMIN",
+        type: "WARNING",
+        status: "SUCCEEDED",
+        completedAt: new Date(Date.now() - 60_000),
+        createdAt: new Date(Date.now() - 60_000)
+      }
+    }),
+    prisma.moderationAction.create({
+      data: {
+        chatId: chat.id,
+        affectedUserId: user.id,
+        actingAdminId: admin.id,
+        source: "ADMIN",
+        type: "WARNING",
+        status: "SUCCEEDED",
+        completedAt: new Date()
+      }
+    })
+  ]);
 
   try {
-    const revoked = await executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id });
-    assert.equal(revoked.warningCount, 0);
-    assert.equal(revoked.chatId, chat.id);
-    assert.equal(revoked.affectedUserId, user.id);
+    const revoked = await Promise.all([
+      executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id }),
+      executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id })
+    ]);
+    assert.deepEqual(revoked.map((item) => item.warningCount).sort(), [0, 1]);
+    assert.deepEqual(
+      revoked.map((item) => item.warningActionId).sort(),
+      [olderWarning.id, latestWarning.id].sort()
+    );
+    assert.ok(revoked.every((item) => item.chatId === chat.id && item.affectedUserId === user.id));
 
-    const audit = await prisma.auditLog.findFirstOrThrow({
+    const audits = await prisma.auditLog.findMany({
       where: { affectedUserId: user.id, action: "MODERATION_UNWARN" }
     });
-    assert.equal(audit.source, "ADMIN");
-    assert.equal(audit.actingAdminId, admin.id);
-    const revokedWarning = await prisma.moderationAction.findUniqueOrThrow({ where: { id: warning.id } });
-    assert.ok(revokedWarning.revokedAt);
-    assert.equal(revokedWarning.revokedByAdminId, admin.id);
+    assert.equal(audits.length, 2);
+    assert.ok(audits.every((audit) => audit.source === "ADMIN" && audit.actingAdminId === admin.id));
+    const revokedWarnings = await prisma.moderationAction.findMany({
+      where: { id: { in: [olderWarning.id, latestWarning.id] } }
+    });
+    assert.ok(revokedWarnings.every((warning) => warning.revokedAt && warning.revokedByAdminId === admin.id));
+    const refreshedMember = await prisma.chatMember.findUniqueOrThrow({ where: { id: membership.id } });
+    assert.equal(refreshedMember.warningCount, 0);
+    assert.equal(refreshedMember.lastAutoEscalationWarningCount, 0);
 
     await assert.rejects(
       executeAdminWarningRevoke({ membershipId: membership.id, actingAdminId: admin.id }),

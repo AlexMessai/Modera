@@ -1,6 +1,6 @@
 import { prisma } from "@/server/db/prisma";
-import { canModerate } from "@/server/auth/permissions";
 import { consumeLinkCode } from "@/server/services/admin-link-service";
+import { canAdminModerateChat } from "@/server/services/chat-admin-access-service";
 import { getAppealMessages, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
 import { AppealError, resolveAppeal, submitLatestAppeal } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
@@ -1115,10 +1115,19 @@ async function processAppealCallback(
   parsed: NonNullable<ReturnType<typeof parseAppealCallbackData>>
 ) {
   const client = getTelegramClient();
-  const admin = await prisma.adminUser.findFirst({
-    where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
-  });
-  if (!admin || !canModerate(admin.role)) {
+  const [admin, appealRecord] = await Promise.all([
+    prisma.adminUser.findFirst({
+      where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
+    }),
+    prisma.appeal.findUnique({
+      where: { id: parsed.appealId },
+      select: { chatId: true, status: true }
+    })
+  ]);
+  const allowed = Boolean(
+    admin && appealRecord && await canAdminModerateChat(admin, appealRecord.chatId)
+  );
+  if (!admin || !appealRecord || !allowed) {
     await client.answerCallbackQuery({
       callbackQueryId: callbackQuery.id,
       text: "У вас нет прав решать апелляции.",
@@ -1128,8 +1137,7 @@ async function processAppealCallback(
   }
 
   try {
-    const before = await prisma.appeal.findUnique({ where: { id: parsed.appealId }, select: { status: true } });
-    const wasPending = before?.status === "PENDING";
+    const wasPending = appealRecord.status === "PENDING";
 
     const result = await resolveAppeal({
       appealId: parsed.appealId,
@@ -1170,10 +1178,19 @@ async function processReportCallback(
   parsed: NonNullable<ReturnType<typeof parseReportCallbackData>>
 ) {
   const client = getTelegramClient();
-  const admin = await prisma.adminUser.findFirst({
-    where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
-  });
-  if (!admin || !canModerate(admin.role)) {
+  const [admin, reportRecord] = await Promise.all([
+    prisma.adminUser.findFirst({
+      where: { telegramUserId: BigInt(callbackQuery.from.id), isActive: true }
+    }),
+    prisma.report.findUnique({
+      where: { id: parsed.reportId },
+      select: { chatId: true }
+    })
+  ]);
+  const allowed = Boolean(
+    admin && reportRecord && await canAdminModerateChat(admin, reportRecord.chatId)
+  );
+  if (!admin || !reportRecord || !allowed) {
     await client.answerCallbackQuery({
       callbackQueryId: callbackQuery.id,
       text: "У вас нет прав решать жалобы.",
