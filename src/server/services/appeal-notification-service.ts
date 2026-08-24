@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { getManualModerationVisibility, renderManualModerationTemplate, resolveEffectiveManualModerationSettings } from "@/server/services/manual-moderation-settings-service";
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
+import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramBotProfile, getTelegramClient } from "@/server/telegram/client";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -188,15 +189,8 @@ export async function notifyAdminsOfNewAppeal(input: {
   const { settings } = await resolveEffectiveChatAppealSettings(input.chatId);
   if (!settings.notifyAdminsOnSubmit) return;
 
-  const admins = await prisma.adminUser.findMany({
-    where: {
-      isActive: true,
-      telegramUserId: { not: null },
-      role: { in: ["OWNER", "ADMIN", "MODERATOR"] }
-    },
-    select: { telegramUserId: true }
-  });
-  if (admins.length === 0) return;
+  const telegramModeratorIds = await listTelegramModeratorsForChat(input.chatId);
+  if (telegramModeratorIds.length === 0) return;
 
   const messages = await getAppealMessages();
   const label = ACTION_LABELS[input.actionType] ?? input.actionType;
@@ -208,10 +202,9 @@ export async function notifyAdminsOfNewAppeal(input: {
   });
   const client = getTelegramClient();
 
-  for (const admin of admins) {
-    if (!admin.telegramUserId) continue;
+  for (const telegramUserId of telegramModeratorIds) {
     await client.sendMessage({
-      chatId: Number(admin.telegramUserId),
+      chatId: Number(telegramUserId),
       text,
       replyMarkup: {
         inline_keyboard: [

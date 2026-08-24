@@ -1,6 +1,10 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 
+const SERIALIZABLE_RETRY_LIMIT = 3;
+
+class WarningClaimConflict extends Error {}
+
 export type WarningRevocationResult =
   | {
       outcome: "revoked";
@@ -57,130 +61,135 @@ export async function revokeWarningRecord(input: {
     metadata?: Prisma.InputJsonObject;
   };
 }): Promise<WarningRevocationResult> {
-  const candidate = input.warningActionId
-    ? await prisma.moderationAction.findFirst({
-        where: {
-          id: input.warningActionId,
-          chatId: input.chatId,
-          affectedUserId: input.affectedUserId,
-          type: "WARNING",
-          status: "SUCCEEDED"
-        },
-        select: { id: true, revokedAt: true }
-      })
-    : await prisma.moderationAction.findFirst({
-        where: {
-          chatId: input.chatId,
-          affectedUserId: input.affectedUserId,
-          type: "WARNING",
-          status: "SUCCEEDED",
-          revokedAt: null
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { id: true, revokedAt: true }
-      });
+  for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        // Selection belongs to the same SERIALIZABLE transaction as the
+        // claim. If two /unwarn calls select the same newest row, Postgres
+        // aborts one transaction; the retry then selects the next warning
+        // instead of incorrectly returning NO_WARNINGS.
+        const candidate = input.warningActionId
+          ? await tx.moderationAction.findFirst({
+              where: {
+                id: input.warningActionId,
+                chatId: input.chatId,
+                affectedUserId: input.affectedUserId,
+                type: "WARNING",
+                status: "SUCCEEDED"
+              },
+              select: { id: true, revokedAt: true }
+            })
+          : await tx.moderationAction.findFirst({
+              where: {
+                chatId: input.chatId,
+                affectedUserId: input.affectedUserId,
+                type: "WARNING",
+                status: "SUCCEEDED",
+                revokedAt: null
+              },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              select: { id: true, revokedAt: true }
+            });
 
-  if (!candidate) return { outcome: "not_found" };
+        if (!candidate) return { outcome: "not_found" as const };
 
-  if (candidate.revokedAt) {
-    const remainingWarningCount = await countActiveWarningRecords({
-      chatId: input.chatId,
-      affectedUserId: input.affectedUserId,
-      warningExpiryDays: 0
-    });
-    return {
-      outcome: "already_revoked",
-      warningActionId: candidate.id,
-      remainingWarningCount,
-      chatId: input.chatId,
-      affectedUserId: input.affectedUserId
-    };
+        if (candidate.revokedAt) {
+          const remainingWarningCount = await tx.moderationAction.count({
+            where: {
+              chatId: input.chatId,
+              affectedUserId: input.affectedUserId,
+              type: "WARNING",
+              status: "SUCCEEDED",
+              revokedAt: null
+            }
+          });
+          return {
+            outcome: "already_revoked" as const,
+            warningActionId: candidate.id,
+            remainingWarningCount,
+            chatId: input.chatId,
+            affectedUserId: input.affectedUserId
+          };
+        }
+
+        const claimed = await tx.moderationAction.updateMany({
+          where: { id: candidate.id, revokedAt: null },
+          data: {
+            revokedAt: new Date(),
+            revokedByAdminId: input.revokedByAdminId,
+            revocationReason: input.revocationReason.slice(0, 500)
+          }
+        });
+
+        if (claimed.count === 0) {
+          throw new WarningClaimConflict();
+        }
+
+        const remainingWarningCount = await tx.moderationAction.count({
+          where: {
+            chatId: input.chatId,
+            affectedUserId: input.affectedUserId,
+            type: "WARNING",
+            status: "SUCCEEDED",
+            revokedAt: null
+          }
+        });
+        const membership = await tx.chatMember.findUnique({
+          where: {
+            chatId_userId: {
+              chatId: input.chatId,
+              userId: input.affectedUserId
+            }
+          },
+          select: { id: true, lastAutoEscalationWarningCount: true }
+        });
+        if (membership) {
+          await tx.chatMember.update({
+            where: { id: membership.id },
+            data: {
+              warningCount: remainingWarningCount,
+              lastAutoEscalationWarningCount: Math.min(
+                membership.lastAutoEscalationWarningCount,
+                remainingWarningCount
+              )
+            }
+          });
+        }
+        if (input.audit) {
+          await tx.auditLog.create({
+            data: {
+              chatId: input.chatId,
+              affectedUserId: input.affectedUserId,
+              actingAdminId: input.audit.actingAdminId,
+              source: input.audit.source,
+              action: "MODERATION_UNWARN",
+              metadata: {
+                ...(input.audit.metadata ?? {}),
+                warningActionId: candidate.id,
+                warningCount: remainingWarningCount
+              }
+            }
+          });
+        }
+
+        return {
+          outcome: "revoked" as const,
+          warningActionId: candidate.id,
+          remainingWarningCount,
+          chatId: input.chatId,
+          affectedUserId: input.affectedUserId
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const retryable =
+        error instanceof WarningClaimConflict ||
+        (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034");
+      if (!retryable || attempt === SERIALIZABLE_RETRY_LIMIT - 1) throw error;
+    }
   }
 
-  return prisma.$transaction(async (tx) => {
-    const claimed = await tx.moderationAction.updateMany({
-      where: { id: candidate.id, revokedAt: null },
-      data: {
-        revokedAt: new Date(),
-        revokedByAdminId: input.revokedByAdminId,
-        revocationReason: input.revocationReason.slice(0, 500)
-      }
-    });
-
-    if (claimed.count === 0) {
-      const remainingWarningCount = await tx.moderationAction.count({
-        where: {
-          chatId: input.chatId,
-          affectedUserId: input.affectedUserId,
-          type: "WARNING",
-          status: "SUCCEEDED",
-          revokedAt: null
-        }
-      });
-      return {
-        outcome: "already_revoked" as const,
-        warningActionId: candidate.id,
-        remainingWarningCount,
-        chatId: input.chatId,
-        affectedUserId: input.affectedUserId
-      };
-    }
-
-    const remainingWarningCount = await tx.moderationAction.count({
-      where: {
-        chatId: input.chatId,
-        affectedUserId: input.affectedUserId,
-        type: "WARNING",
-        status: "SUCCEEDED",
-        revokedAt: null
-      }
-    });
-    const membership = await tx.chatMember.findUnique({
-      where: {
-        chatId_userId: {
-          chatId: input.chatId,
-          userId: input.affectedUserId
-        }
-      },
-      select: { id: true, lastAutoEscalationWarningCount: true }
-    });
-    if (membership) {
-      await tx.chatMember.update({
-        where: { id: membership.id },
-        data: {
-          warningCount: remainingWarningCount,
-          lastAutoEscalationWarningCount: Math.min(
-            membership.lastAutoEscalationWarningCount,
-            remainingWarningCount
-          )
-        }
-      });
-    }
-    if (input.audit) {
-      await tx.auditLog.create({
-        data: {
-          chatId: input.chatId,
-          affectedUserId: input.affectedUserId,
-          actingAdminId: input.audit.actingAdminId,
-          source: input.audit.source,
-          action: "MODERATION_UNWARN",
-          metadata: {
-            ...(input.audit.metadata ?? {}),
-            warningActionId: candidate.id,
-            warningCount: remainingWarningCount
-          }
-        }
-      });
-    }
-
-    return {
-      outcome: "revoked" as const,
-      warningActionId: candidate.id,
-      remainingWarningCount,
-      chatId: input.chatId,
-      affectedUserId: input.affectedUserId
-    };
-  });
+  // The loop either returns or throws. Kept for exhaustive TypeScript flow.
+  throw new Error("Warning revocation retry limit exhausted.");
 }
 
 export async function linkWarningToTriggeredPunishment(

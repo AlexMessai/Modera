@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
 import { resolveEffectiveReportSettings } from "@/server/services/report-settings-service";
+import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramClient } from "@/server/telegram/client";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -113,11 +114,8 @@ export async function notifyAdminsOfNewReport(input: {
   reason: string | null;
   messageTelegramId: number;
 }) {
-  const admins = await prisma.adminUser.findMany({
-    where: { isActive: true, telegramUserId: { not: null }, role: { in: ["OWNER", "ADMIN", "MODERATOR"] } },
-    select: { telegramUserId: true }
-  });
-  if (admins.length === 0) return;
+  const telegramModeratorIds = await listTelegramModeratorsForChat(input.chatId);
+  if (telegramModeratorIds.length === 0) return;
 
   const link = buildTelegramMessageLink(input.chatTelegramId, input.chatUsername, BigInt(input.messageTelegramId));
   const lines = [
@@ -129,10 +127,9 @@ export async function notifyAdminsOfNewReport(input: {
   ].filter(Boolean);
 
   const client = getTelegramClient();
-  for (const admin of admins) {
-    if (!admin.telegramUserId) continue;
+  for (const telegramUserId of telegramModeratorIds) {
     await client.sendMessage({
-      chatId: Number(admin.telegramUserId),
+      chatId: Number(telegramUserId),
       text: lines.join("\n"),
       replyMarkup: {
         inline_keyboard: [

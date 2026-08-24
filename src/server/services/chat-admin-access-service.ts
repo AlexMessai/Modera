@@ -230,3 +230,36 @@ export async function listChatsForAdmin(adminId: string): Promise<string[] | nul
   const access = await prisma.chatAdminAccess.findMany({ where: { adminId }, select: { chatId: true } });
   return access.map((row) => row.chatId);
 }
+
+const MODERATION_ADMIN_ROLES = ["OWNER", "ADMIN", "MODERATOR"] as const;
+
+export async function canAdminModerateChat(
+  admin: { id: string; scope: "GLOBAL" | "CHAT"; role: string; isActive: boolean },
+  chatId: string
+) {
+  if (!admin.isActive) return false;
+  if (admin.scope === "GLOBAL") {
+    return (MODERATION_ADMIN_ROLES as readonly string[]).includes(admin.role);
+  }
+  const access = await prisma.chatAdminAccess.findUnique({
+    where: { chatId_adminId: { chatId, adminId: admin.id } },
+    select: { id: true }
+  });
+  return access !== null;
+}
+
+/** Telegram recipients for chat-scoped moderation cards. */
+export async function listTelegramModeratorsForChat(chatId: string) {
+  const admins = await prisma.adminUser.findMany({
+    where: {
+      isActive: true,
+      telegramUserId: { not: null },
+      OR: [
+        { scope: "GLOBAL", role: { in: [...MODERATION_ADMIN_ROLES] } },
+        { scope: "CHAT", chatAdminAccess: { some: { chatId } } }
+      ]
+    },
+    select: { telegramUserId: true }
+  });
+  return admins.flatMap((admin) => admin.telegramUserId === null ? [] : [admin.telegramUserId]);
+}

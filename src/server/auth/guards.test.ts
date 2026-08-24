@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { requireTelegramUserAccess, resolveEffectiveChatRole } from "./guards";
+import { requireGlobalAdminAccess, requireTelegramUserAccess, resolveEffectiveChatRole } from "./guards";
 
 const CHAT_ID = -1009000016001n;
 const GLOBAL_ADMIN_EMAIL = "guards-resolve-effective-role-ci@example.com";
@@ -108,6 +108,20 @@ test("requireTelegramUserAccess hides users outside a CHAT admin's visible chats
     const denied = await requireTelegramUserAccess(noAccessChatAdmin, memberUser.id);
     assert.equal(denied.ok, false);
     if (!denied.ok) assert.equal(denied.response.status, 404);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("requireGlobalAdminAccess rejects CHAT scope even if its inert role is elevated", async () => {
+  await cleanup();
+  const { globalAdmin, chatAdmin } = await setup();
+  try {
+    assert.equal(requireGlobalAdminAccess(globalAdmin).ok, true);
+
+    const denied = requireGlobalAdminAccess({ ...chatAdmin, role: "OWNER" });
+    assert.equal(denied.ok, false);
+    if (!denied.ok) assert.equal(denied.response.status, 403);
   } finally {
     await cleanup();
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { listAppealCandidates, resolveAppeal, submitLatestAppeal } from "./appeal-service";
+import { AppealError, listAppealCandidates, resolveAppeal, submitLatestAppeal } from "./appeal-service";
 import { updateChatAppealProfile } from "./chat-appeal-settings-service";
 
 const CHAT_ID = -1009000014001n;
@@ -219,6 +219,77 @@ test("approving a WARNING appeal decrements warningCount without calling Telegra
 
     const candidates = await listAppealCandidates(Number(TELEGRAM_USER_ID));
     assert.equal(candidates.length, 1, "only the older, still-active warning remains appealable");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a live appeal resolution lease blocks a second admin without reverting the warning", async () => {
+  await cleanup();
+  const { admin, warningAction } = await setup();
+
+  try {
+    const appeal = await prisma.appeal.create({
+      data: {
+        chatId: warningAction.chatId,
+        userId: warningAction.affectedUserId,
+        moderationActionId: warningAction.id,
+        message: "Причина апелляции",
+        resolutionAttemptId: "11111111-1111-4111-8111-111111111111",
+        resolutionStartedAt: new Date()
+      }
+    });
+
+    await assert.rejects(
+      resolveAppeal({
+        appealId: appeal.id,
+        actingAdminId: admin.id,
+        decision: "APPROVE"
+      }),
+      (error: unknown) =>
+        error instanceof AppealError &&
+        error.code === "APPEAL_IN_PROGRESS" &&
+        error.httpStatus === 409
+    );
+
+    const [storedAppeal, storedWarning] = await Promise.all([
+      prisma.appeal.findUniqueOrThrow({ where: { id: appeal.id } }),
+      prisma.moderationAction.findUniqueOrThrow({ where: { id: warningAction.id } })
+    ]);
+    assert.equal(storedAppeal.status, "PENDING");
+    assert.equal(storedWarning.revokedAt, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a stale appeal resolution lease is reclaimed and cleared on completion", async () => {
+  await cleanup();
+  const { admin, warningAction } = await setup();
+
+  try {
+    const appeal = await prisma.appeal.create({
+      data: {
+        chatId: warningAction.chatId,
+        userId: warningAction.affectedUserId,
+        moderationActionId: warningAction.id,
+        message: "Причина апелляции",
+        resolutionAttemptId: "22222222-2222-4222-8222-222222222222",
+        resolutionStartedAt: new Date(Date.now() - 3 * 60_000)
+      }
+    });
+
+    const result = await resolveAppeal({
+      appealId: appeal.id,
+      actingAdminId: admin.id,
+      decision: "REJECT",
+      comment: "Нарушение подтверждено"
+    });
+    assert.equal(result.status, "REJECTED");
+
+    const stored = await prisma.appeal.findUniqueOrThrow({ where: { id: appeal.id } });
+    assert.equal(stored.resolutionAttemptId, null);
+    assert.equal(stored.resolutionStartedAt, null);
   } finally {
     await cleanup();
   }

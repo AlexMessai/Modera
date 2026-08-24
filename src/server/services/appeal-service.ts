@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { notifyAdminsOfNewAppeal, notifyAppealDecision } from "@/server/services/appeal-notification-service";
 import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
@@ -8,6 +9,7 @@ import { revokeWarningRecord } from "@/server/services/warning-service";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_COMMENT_LENGTH = 1000;
+const RESOLUTION_LEASE_MS = 2 * 60 * 1000;
 
 export class AppealError extends Error {
   constructor(public readonly code: string, message: string, public readonly httpStatus: number) {
@@ -298,94 +300,133 @@ export async function resolveAppeal(input: {
   }
 
   const comment = input.comment ? normalize(input.comment, MAX_COMMENT_LENGTH) || null : null;
-  const now = new Date();
+  const attemptId = randomUUID();
+  const resolutionStartedAt = new Date();
+  const staleBefore = new Date(resolutionStartedAt.getTime() - RESOLUTION_LEASE_MS);
+  const claim = await prisma.appeal.updateMany({
+    where: {
+      id: appeal.id,
+      status: "PENDING",
+      OR: [
+        { resolutionAttemptId: null },
+        { resolutionStartedAt: null },
+        { resolutionStartedAt: { lt: staleBefore } }
+      ]
+    },
+    data: { resolutionAttemptId: attemptId, resolutionStartedAt }
+  });
 
-  if (input.decision === "REJECT") {
-    await prisma.$transaction([
-      prisma.appeal.update({
-        where: { id: appeal.id },
-        data: { status: "REJECTED", resolvedByAdminId: input.actingAdminId, resolutionComment: comment, resolvedAt: now }
-      }),
-      prisma.auditLog.create({
+  if (claim.count === 0) {
+    const current = await prisma.appeal.findUnique({
+      where: { id: appeal.id },
+      select: { status: true, resolvedAt: true }
+    });
+    if (current && current.status !== "PENDING") {
+      return {
+        id: appeal.id,
+        status: current.status,
+        resolvedAt: current.resolvedAt?.toISOString() ?? null
+      };
+    }
+    throw new AppealError(
+      "APPEAL_IN_PROGRESS",
+      "Эту апелляцию уже обрабатывает другой администратор.",
+      409
+    );
+  }
+
+  const releaseClaim = () => prisma.appeal.updateMany({
+    where: { id: appeal.id, status: "PENDING", resolutionAttemptId: attemptId },
+    data: { resolutionAttemptId: null, resolutionStartedAt: null }
+  });
+
+  const status = input.decision === "APPROVE" ? "APPROVED" as const : "REJECTED" as const;
+  let resolvedAt: Date;
+
+  try {
+    if (input.decision === "APPROVE") {
+      const membership = await prisma.chatMember.findUnique({
+        where: { chatId_userId: { chatId: appeal.chatId, userId: appeal.userId } }
+      });
+      if (!membership) throw new AppealError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
+
+      if (appeal.moderationAction.type === "WARNING") {
+        await revertWarning({
+          chatId: appeal.chatId,
+          userId: appeal.userId,
+          moderationActionId: appeal.moderationActionId,
+          actingAdminId: input.actingAdminId,
+          comment
+        });
+      } else {
+        const unwindAction = appeal.moderationAction.type === "MUTE" ? "UNMUTE" : "UNBAN";
+        try {
+          await executeModerationAction({
+            membershipId: membership.id,
+            actingAdminId: input.actingAdminId,
+            action: unwindAction,
+            reason: `Апелляция одобрена${comment ? `: ${comment}` : ""}`
+          });
+        } catch (error) {
+          const alreadyResolved =
+            error instanceof ModerationError &&
+            (error.code === "NOT_MUTED" || error.code === "NOT_BANNED" || error.code === "TARGET_PROTECTED");
+          if (!alreadyResolved) {
+            const message = error instanceof ModerationError ? error.message : "Не удалось отменить наказание в Telegram.";
+            throw new AppealError("APPEAL_REVERT_FAILED", message, 502);
+          }
+        }
+      }
+    }
+
+    resolvedAt = new Date();
+    await prisma.$transaction(async (tx) => {
+      const finalized = await tx.appeal.updateMany({
+        where: { id: appeal.id, status: "PENDING", resolutionAttemptId: attemptId },
+        data: {
+          status,
+          resolvedByAdminId: input.actingAdminId,
+          resolutionComment: comment,
+          resolvedAt,
+          resolutionAttemptId: null,
+          resolutionStartedAt: null
+        }
+      });
+      if (finalized.count !== 1) {
+        throw new AppealError(
+          "APPEAL_RESOLUTION_LOST",
+          "Не удалось зафиксировать решение по апелляции.",
+          409
+        );
+      }
+      await tx.auditLog.create({
         data: {
           chatId: appeal.chatId,
           affectedUserId: appeal.userId,
           actingAdminId: input.actingAdminId,
           source: "ADMIN",
-          action: "APPEAL_REJECTED",
+          action: input.decision === "APPROVE" ? "APPEAL_APPROVED" : "APPEAL_REJECTED",
           reason: comment,
-          metadata: { appealId: appeal.id, moderationActionId: appeal.moderationActionId }
+          metadata: {
+            appealId: appeal.id,
+            moderationActionId: appeal.moderationActionId,
+            ...(input.decision === "APPROVE" ? { revertedType: appeal.moderationAction.type } : {})
+          }
         }
-      })
-    ]);
-    await notifyAppealDecision({
-      chatId: appeal.chatId,
-      telegramUserId: appeal.user.telegramUserId,
-      chatTitle: appeal.chat.title,
-      decision: "REJECTED",
-      comment
-    }).catch(() => undefined);
-    return { id: appeal.id, status: "REJECTED" as const, resolvedAt: now.toISOString() };
-  }
-
-  const membership = await prisma.chatMember.findUnique({
-    where: { chatId_userId: { chatId: appeal.chatId, userId: appeal.userId } }
-  });
-  if (!membership) throw new AppealError("MEMBER_NOT_FOUND", "Участник не найден.", 404);
-
-  if (appeal.moderationAction.type === "WARNING") {
-    await revertWarning({
-      chatId: appeal.chatId,
-      userId: appeal.userId,
-      moderationActionId: appeal.moderationActionId,
-      actingAdminId: input.actingAdminId,
-      comment
-    });
-  } else {
-    const unwindAction = appeal.moderationAction.type === "MUTE" ? "UNMUTE" : "UNBAN";
-    try {
-      await executeModerationAction({
-        membershipId: membership.id,
-        actingAdminId: input.actingAdminId,
-        action: unwindAction,
-        reason: `Апелляция одобрена${comment ? `: ${comment}` : ""}`
       });
-    } catch (error) {
-      const alreadyResolved =
-        error instanceof ModerationError &&
-        (error.code === "NOT_MUTED" || error.code === "NOT_BANNED" || error.code === "TARGET_PROTECTED");
-      if (!alreadyResolved) {
-        const message = error instanceof ModerationError ? error.message : "Не удалось отменить наказание в Telegram.";
-        throw new AppealError("APPEAL_REVERT_FAILED", message, 502);
-      }
-    }
+    });
+  } catch (error) {
+    await releaseClaim().catch(() => undefined);
+    throw error;
   }
-
-  await prisma.$transaction([
-    prisma.appeal.update({
-      where: { id: appeal.id },
-      data: { status: "APPROVED", resolvedByAdminId: input.actingAdminId, resolutionComment: comment, resolvedAt: now }
-    }),
-    prisma.auditLog.create({
-      data: {
-        chatId: appeal.chatId,
-        affectedUserId: appeal.userId,
-        actingAdminId: input.actingAdminId,
-        source: "ADMIN",
-        action: "APPEAL_APPROVED",
-        reason: comment,
-        metadata: { appealId: appeal.id, moderationActionId: appeal.moderationActionId, revertedType: appeal.moderationAction.type }
-      }
-    })
-  ]);
 
   await notifyAppealDecision({
     chatId: appeal.chatId,
     telegramUserId: appeal.user.telegramUserId,
     chatTitle: appeal.chat.title,
-    decision: "APPROVED",
+    decision: status,
     comment
   }).catch(() => undefined);
 
-  return { id: appeal.id, status: "APPROVED" as const, resolvedAt: now.toISOString() };
+  return { id: appeal.id, status, resolvedAt: resolvedAt.toISOString() };
 }

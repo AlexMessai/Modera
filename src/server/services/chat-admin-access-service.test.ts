@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
 import {
+  canAdminModerateChat,
   ChatAdminAccessError,
   grantChatAccessByUsername,
   listChatsForAdmin,
   listChatTeam,
+  listTelegramModeratorsForChat,
   resolveTelegramUserByHandle,
   revokeChatAccess,
   updateChatAccessRole
@@ -204,6 +206,38 @@ test("listChatsForAdmin returns null for a GLOBAL admin and the exact chat-ID ar
     const forChatAdmin = await listChatsForAdmin(granted.adminId);
     assert.deepEqual(forChatAdmin, [chat.id]);
     assert.ok(!forChatAdmin?.includes(otherChat.id));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("chat moderation authorization and Telegram recipients respect GLOBAL/CHAT scope", async () => {
+  await cleanup();
+  const { chat, otherChat, globalAdmin } = await setup();
+  try {
+    const globalWithTelegram = await prisma.adminUser.update({
+      where: { id: globalAdmin.id },
+      data: { telegramUserId: 900001599n, role: "MODERATOR" }
+    });
+    const granted = await grantChatAccessByUsername({
+      chatId: chat.id,
+      actingAdminId: globalAdmin.id,
+      handle: KNOWN_USERNAME,
+      role: "MODERATOR"
+    });
+    const chatAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { id: granted.adminId } });
+
+    assert.equal(await canAdminModerateChat(globalWithTelegram, chat.id), true);
+    assert.equal(await canAdminModerateChat(chatAdmin, chat.id), true);
+    assert.equal(await canAdminModerateChat(chatAdmin, otherChat.id), false);
+
+    const recipients = await listTelegramModeratorsForChat(chat.id);
+    assert.ok(recipients.map(String).includes("900001599"));
+    assert.ok(recipients.map(String).includes(KNOWN_TELEGRAM_USER_ID.toString()));
+
+    const otherRecipients = await listTelegramModeratorsForChat(otherChat.id);
+    assert.ok(otherRecipients.map(String).includes("900001599"));
+    assert.ok(!otherRecipients.map(String).includes(KNOWN_TELEGRAM_USER_ID.toString()));
   } finally {
     await cleanup();
   }
