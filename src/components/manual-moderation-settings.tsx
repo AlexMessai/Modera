@@ -28,7 +28,6 @@ export type ManualModerationSettingsValue = {
 export type ManualModerationVisibilitySettingsValue = {
   publicPunishmentMessagesEnabled: boolean;
   privatePunishmentMessagesEnabled: boolean;
-  proactiveDmNotificationsEnabled: boolean;
 };
 
 type Props = {
@@ -144,7 +143,7 @@ export function ManualModerationSettings({
         />
         <SettingsRow
           title="Приватные сообщения о наказаниях"
-          description="Личное уведомление наказанному участнику: в чате, видимое только ему, и в личные сообщения. Не зависит от публичных сообщений выше."
+          description="Личное уведомление наказанному участнику — сообщение в чате, видимое только ему. Не зависит от публичных сообщений выше."
           checked={visibility.privatePunishmentMessagesEnabled}
           disabled
           onChange={() => undefined}

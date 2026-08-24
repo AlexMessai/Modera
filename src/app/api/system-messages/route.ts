@@ -38,6 +38,12 @@ const settingsSchema = z.object({
   }),
   content: z.object({
     welcomeMessageTemplate: z.string().min(1).max(2000)
+  }),
+  appeals: z.object({
+    appealSubmittedMessageTemplate: z.string().min(1).max(1000),
+    appealNotifyAdminsMessageTemplate: z.string().min(1).max(1000),
+    appealApprovedMessageTemplate: z.string().min(1).max(1000),
+    appealRejectedMessageTemplate: z.string().min(1).max(1000)
   })
 });
 

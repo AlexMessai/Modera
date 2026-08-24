@@ -1,8 +1,8 @@
 import { prisma } from "@/server/db/prisma";
 import { canModerate } from "@/server/auth/permissions";
 import { consumeLinkCode } from "@/server/services/admin-link-service";
-import { deliverPendingAppealNotifications, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
-import { AppealError, resolveAppeal, submitAppealFromReply } from "@/server/services/appeal-service";
+import { getAppealMessages, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
+import { AppealError, resolveAppeal, submitLatestAppeal } from "@/server/services/appeal-service";
 import { processAutomodMessage } from "@/server/services/automod-service";
 import { evaluateRaidOnJoin } from "@/server/services/anti-raid-service";
 import { findMatchingAutoResponse } from "@/server/services/auto-response-service";
@@ -928,7 +928,7 @@ const HELP_TEXT = [
   "Доступные команды:",
   "/status — ваш текущий статус и история наказаний",
   "/unmute — самостоятельно снять mute (до 3 раз в каждом чате)",
-  "/appeal — подать апелляцию на бан или предупреждение (ответом на моё сообщение о наказании)",
+  "/appeal — подать апелляцию на бан или предупреждение",
   "/help — этот список команд"
 ].join("\n");
 
@@ -968,11 +968,6 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
   if (!message.from || message.from.id === botTelegramId || message.from.is_bot) {
     return { accepted: true, ignored: true };
   }
-
-  // The user just opened a conversation with the bot (possibly for the first time) —
-  // flush any punishment notifications that couldn't be sent earlier because Telegram
-  // blocks bots from messaging users first.
-  await deliverPendingAppealNotifications(message.from.id).catch(() => undefined);
 
   // A forwarded post is how /settings' "Подключить канал" flow confirms a
   // log channel -- only meaningful if this admin has an active pending link,
@@ -1070,25 +1065,44 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
     return { accepted: true, ignored: true };
   }
 
-  if (!message.reply_to_message) {
-    await client.sendMessage({
-      chatId: message.from.id,
-      text: "Чтобы подать апелляцию, ответьте (Reply) на сообщение бота о наказании командой /appeal и текстом причины."
-    }).catch(() => undefined);
-    return { accepted: true, ignored: false };
-  }
+  // No Reply required anymore (the DM it used to match against is gone,
+  // see appeal-service.ts::listAppealCandidates) -- find the user's latest
+  // appeal-eligible punishment automatically. When it's ambiguous across
+  // more than one chat, same numbered-picker pattern as /unmute just above:
+  // "/appeal <номер> <причина>" once the bot has listed the candidates.
+  const raw = (match[1] ?? "").trim();
+  const indexMatch = /^(\d+)(?:\s+([\s\S]*))?$/.exec(raw);
 
-  const result = await submitAppealFromReply({
+  const firstResult = await submitLatestAppeal({
     fromTelegramUserId: message.from.id,
-    replyToMessageId: message.reply_to_message.message_id,
-    text: (match[1] ?? "").trim()
+    text: raw
   });
 
+  let result = firstResult;
+  if (firstResult.outcome === "multiple_chats") {
+    const index = indexMatch ? Number(indexMatch[1]) : NaN;
+    if (!indexMatch || !Number.isInteger(index) || index < 1 || index > firstResult.candidates.length) {
+      const list = firstResult.candidates.map((candidate, position) => `${position + 1}. ${candidate.chatTitle}`).join("\n");
+      await client.sendMessage({
+        chatId: message.from.id,
+        text: `У вас есть наказания, доступные для апелляции, сразу в нескольких чатах. Укажите номер чата:\n${list}\n\nНапример: /appeal 1 причина`
+      }).catch(() => undefined);
+      return { accepted: true, ignored: false };
+    }
+    result = await submitLatestAppeal({
+      fromTelegramUserId: message.from.id,
+      text: indexMatch[2] ?? "",
+      chatId: firstResult.candidates[index - 1].chatId
+    });
+  }
+
+  const messages = await getAppealMessages();
   const replyText = {
-    submitted: "Апелляция отправлена администраторам. Дождитесь решения.",
+    submitted: messages.appealSubmittedMessageTemplate,
     already_submitted: "По этому наказанию апелляция уже была подана.",
     empty_message: "Опишите причину апелляции текстом после команды /appeal.",
-    action_not_found: "Не удалось определить, к какому наказанию относится апелляция. Отвечайте именно на сообщение бота о наказании."
+    action_not_found: "Нет наказаний, доступных для апелляции.",
+    multiple_chats: "Не удалось определить чат для апелляции."
   }[result.outcome];
 
   await client.sendMessage({ chatId: message.from.id, text: replyText }).catch(() => undefined);

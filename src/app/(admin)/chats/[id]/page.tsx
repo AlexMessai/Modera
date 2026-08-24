@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CaptchaSettings } from "@/components/captcha-settings";
+import { ChatAppealSettings } from "@/components/chat-appeal-settings";
 import { ChatModerationSettings } from "@/components/chat-moderation-settings";
 import { ChatMediaFilters } from "@/components/chat-media-filters";
 import { ManualModerationSettings } from "@/components/manual-moderation-settings";
@@ -22,6 +23,7 @@ import { listChatTeam } from "@/server/services/chat-admin-access-service";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
 import { getChatManualModerationProfile, getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
+import { getChatAppealProfile } from "@/server/services/chat-appeal-settings-service";
 import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getChatReportProfile } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
@@ -66,6 +68,7 @@ const SETTINGS_SECTIONS = [
   { key: "newusers", label: "Новые пользователи" },
   { key: "antiraid", label: "Anti-Raid" },
   { key: "manual", label: "Ручная модерация" },
+  { key: "appeals", label: "Апелляции" },
   { key: "roles", label: "Роли" },
   { key: "team", label: "Команда" },
   { key: "reports", label: "Жалобы" },
@@ -92,11 +95,12 @@ export default async function ChatDetailPage({
   const tab = typeof query.tab === "string" ? query.tab : "overview";
   const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
 
-  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
     getManualModerationVisibility(),
+    getChatAppealProfile(id),
     getChatAntiRaidProfile(id),
     getChatReportProfile(id),
     getChatLogChannelProfile(id),
@@ -160,6 +164,13 @@ export default async function ChatDetailPage({
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Ручная модерация</h2><p>Тексты ответов бота и удаление сообщений для команд /warn /mute /ban /unban в этом чате.</p></div></div>
               <ManualModerationSettings chatId={manualModerationProfile.chat.id} initial={manualModerationProfile.settings} visibility={manualModerationVisibility} canEdit={canEdit} />
+            </section>
+          ) : null}
+
+          {section === "appeals" && appealProfile ? (
+            <section className="panel profile-section">
+              <div className="panel-header"><div><h2>Апелляции</h2><p>Команда /appeal боту в личные сообщения: включение для этого чата и уведомления вокруг апелляций.</p></div></div>
+              <ChatAppealSettings chatId={appealProfile.chat.id} initial={appealProfile.settings} canEdit={canEdit} />
             </section>
           ) : null}
 

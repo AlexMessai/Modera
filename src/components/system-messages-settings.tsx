@@ -35,6 +35,12 @@ export type SystemMessagesValue = {
   };
   captcha: { challengeMessageTemplate: string };
   content: { welcomeMessageTemplate: string };
+  appeals: {
+    appealSubmittedMessageTemplate: string;
+    appealNotifyAdminsMessageTemplate: string;
+    appealApprovedMessageTemplate: string;
+    appealRejectedMessageTemplate: string;
+  };
 };
 
 type Props = {
@@ -126,6 +132,10 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
     setMessages((current) => ({ ...current, manualModeration: { ...current.manualModeration, [key]: value } }));
   }
 
+  function setAppealField<K extends keyof SystemMessagesValue["appeals"]>(key: K, value: SystemMessagesValue["appeals"][K]) {
+    setMessages((current) => ({ ...current, appeals: { ...current.appeals, [key]: value } }));
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -206,6 +216,31 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
           <textarea rows={3} value={messages.captcha.challengeMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setMessages((current) => ({ ...current, captcha: { challengeMessageTemplate: event.target.value } }))} />
           <small>Видит только сам новый участник (ephemeral). Без плейсхолдеров, текст статичный.</small>
         </label>
+      </div>
+
+      <div className="settings-section">
+        <span className="settings-section-title">Апелляции</span>
+        <label className="automod-field">
+          <span>/appeal — подтверждение подачи</span>
+          <textarea rows={2} value={messages.appeals.appealSubmittedMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setAppealField("appealSubmittedMessageTemplate", event.target.value)} />
+          <small>Присылается автору апелляции сразу после отправки. Без плейсхолдеров.</small>
+        </label>
+        <label className="automod-field">
+          <span>Новая апелляция — уведомление админам</span>
+          <textarea rows={2} value={messages.appeals.appealNotifyAdminsMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setAppealField("appealNotifyAdminsMessageTemplate", event.target.value)} />
+          <small>Доступны %user%, %chat%, %action%, %message%.</small>
+        </label>
+        <label className="automod-field">
+          <span>Апелляция одобрена</span>
+          <textarea rows={2} value={messages.appeals.appealApprovedMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setAppealField("appealApprovedMessageTemplate", event.target.value)} />
+          <small>Доступны %chat%, %comment%.</small>
+        </label>
+        <label className="automod-field">
+          <span>Апелляция отклонена</span>
+          <textarea rows={2} value={messages.appeals.appealRejectedMessageTemplate} disabled={fieldsDisabled} onChange={(event) => setAppealField("appealRejectedMessageTemplate", event.target.value)} />
+          <small>Доступны %chat%, %comment%.</small>
+        </label>
+        <small className="hint-note">Включение апелляций и уведомления вокруг них настраиваются по каждому чату отдельно — вкладка «Апелляции» в настройках чата.</small>
       </div>
 
       <div className="settings-section">

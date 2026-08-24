@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
-import { resolveAppeal, submitAppealFromReply } from "./appeal-service";
+import { listAppealCandidates, resolveAppeal, submitLatestAppeal } from "./appeal-service";
+import { updateChatAppealProfile } from "./chat-appeal-settings-service";
 
 const CHAT_ID = -1009000014001n;
+const CHAT_ID_2 = -1009000014002n;
 const TELEGRAM_USER_ID = 900001401n;
 const ADMIN_EMAIL = "appeal-service-ci@example.com";
-const DM_MESSAGE_ID = 555001;
 
-async function setup() {
-  await prisma.chat.deleteMany({ where: { telegramChatId: CHAT_ID } });
+async function cleanup() {
+  await prisma.chat.deleteMany({ where: { telegramChatId: { in: [CHAT_ID, CHAT_ID_2] } } });
   await prisma.telegramUser.deleteMany({ where: { telegramUserId: TELEGRAM_USER_ID } });
   await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
+}
+
+async function setup() {
+  await cleanup();
 
   const chat = await prisma.chat.create({
     data: { telegramChatId: CHAT_ID, title: "Appeal CI", type: "supergroup" }
@@ -34,49 +39,37 @@ async function setup() {
       type: "WARNING",
       status: "SUCCEEDED",
       reason: "Тестовое предупреждение",
-      completedAt: new Date(),
-      metadata: { appealDmMessageId: DM_MESSAGE_ID }
+      completedAt: new Date()
     }
   });
 
   return { chat, user, admin, member, warningAction };
 }
 
-async function cleanup() {
-  await prisma.chat.deleteMany({ where: { telegramChatId: CHAT_ID } });
-  await prisma.telegramUser.deleteMany({ where: { telegramUserId: TELEGRAM_USER_ID } });
-  await prisma.adminUser.deleteMany({ where: { email: ADMIN_EMAIL } });
-}
+test("submitLatestAppeal: no eligible punishment reports action_not_found honestly", async () => {
+  await cleanup();
+  try {
+    const unknownUser = await submitLatestAppeal({ fromTelegramUserId: 999999999, text: "причина" });
+    assert.equal(unknownUser.outcome, "action_not_found");
+  } finally {
+    await cleanup();
+  }
+});
 
-test("submitAppealFromReply rejects unknown users, empty text and non-matching replies", async () => {
+test("submitLatestAppeal: single eligible chat submits directly without needing a chat number", async () => {
   await cleanup();
   const { warningAction } = await setup();
 
   try {
-    const unknownUser = await submitAppealFromReply({
-      fromTelegramUserId: 999999999,
-      replyToMessageId: DM_MESSAGE_ID,
-      text: "причина"
-    });
-    assert.equal(unknownUser.outcome, "action_not_found");
+    const candidates = await listAppealCandidates(Number(TELEGRAM_USER_ID));
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].chatId, warningAction.chatId);
 
-    const empty = await submitAppealFromReply({
-      fromTelegramUserId: Number(TELEGRAM_USER_ID),
-      replyToMessageId: DM_MESSAGE_ID,
-      text: "   "
-    });
+    const empty = await submitLatestAppeal({ fromTelegramUserId: Number(TELEGRAM_USER_ID), text: "   " });
     assert.equal(empty.outcome, "empty_message");
 
-    const wrongReply = await submitAppealFromReply({
+    const submitted = await submitLatestAppeal({
       fromTelegramUserId: Number(TELEGRAM_USER_ID),
-      replyToMessageId: DM_MESSAGE_ID + 1,
-      text: "причина"
-    });
-    assert.equal(wrongReply.outcome, "action_not_found");
-
-    const submitted = await submitAppealFromReply({
-      fromTelegramUserId: Number(TELEGRAM_USER_ID),
-      replyToMessageId: DM_MESSAGE_ID,
       text: "Я не отправлял это сообщение"
     });
     assert.equal(submitted.outcome, "submitted");
@@ -85,12 +78,81 @@ test("submitAppealFromReply rejects unknown users, empty text and non-matching r
     assert.equal(stored?.status, "PENDING");
     assert.equal(stored?.message, "Я не отправлял это сообщение");
 
-    const duplicate = await submitAppealFromReply({
+    // Once appealed, the action drops out of the candidate list entirely --
+    // no more "already appealed" DM to reply to, so a second /appeal now
+    // honestly reports nothing left to appeal.
+    const again = await submitLatestAppeal({ fromTelegramUserId: Number(TELEGRAM_USER_ID), text: "ещё раз" });
+    assert.equal(again.outcome, "action_not_found");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("submitLatestAppeal: punishments in two chats come back as multiple_chats until a chatId is given", async () => {
+  await cleanup();
+  const { chat, user, admin, warningAction } = await setup();
+  const chat2 = await prisma.chat.create({
+    data: { telegramChatId: CHAT_ID_2, title: "Appeal CI 2", type: "supergroup" }
+  });
+  const action2 = await prisma.moderationAction.create({
+    data: {
+      chatId: chat2.id,
+      affectedUserId: user.id,
+      actingAdminId: admin.id,
+      source: "ADMIN",
+      type: "MUTE",
+      status: "SUCCEEDED",
+      reason: "Тестовый mute",
+      completedAt: new Date()
+    }
+  });
+
+  try {
+    const candidates = await listAppealCandidates(Number(TELEGRAM_USER_ID));
+    assert.equal(candidates.length, 2);
+
+    const ambiguous = await submitLatestAppeal({ fromTelegramUserId: Number(TELEGRAM_USER_ID), text: "причина" });
+    assert.equal(ambiguous.outcome, "multiple_chats");
+    if (ambiguous.outcome === "multiple_chats") {
+      assert.equal(ambiguous.candidates.length, 2);
+    }
+
+    const resolved = await submitLatestAppeal({
       fromTelegramUserId: Number(TELEGRAM_USER_ID),
-      replyToMessageId: DM_MESSAGE_ID,
-      text: "ещё раз"
+      text: "причина для второго чата",
+      chatId: chat2.id
     });
-    assert.equal(duplicate.outcome, "already_submitted");
+    assert.equal(resolved.outcome, "submitted");
+
+    const stored = await prisma.appeal.findUnique({ where: { moderationActionId: action2.id } });
+    assert.equal(stored?.message, "причина для второго чата");
+
+    // The first chat's warning is still un-appealed and still eligible.
+    const remaining = await listAppealCandidates(Number(TELEGRAM_USER_ID));
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0].chatId, chat.id);
+    assert.equal(remaining[0].moderationActionId, warningAction.id);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("submitLatestAppeal excludes chats where appeals are disabled", async () => {
+  await cleanup();
+  const { chat, admin } = await setup();
+
+  try {
+    await updateChatAppealProfile({
+      chatId: chat.id,
+      actingAdminId: admin.id,
+      settings: { enabled: false, notifyAdminsOnSubmit: true, notifyUserOnDecision: true }
+    });
+
+    const candidates = await listAppealCandidates(Number(TELEGRAM_USER_ID));
+    assert.equal(candidates.length, 0);
+
+    const result = await submitLatestAppeal({ fromTelegramUserId: Number(TELEGRAM_USER_ID), text: "причина" });
+    assert.equal(result.outcome, "action_not_found");
   } finally {
     await cleanup();
   }

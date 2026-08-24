@@ -7,7 +7,6 @@ import { SettingsRow } from "@/components/settings-row";
 export type ManualModerationVisibilitySettingsValue = {
   publicPunishmentMessagesEnabled: boolean;
   privatePunishmentMessagesEnabled: boolean;
-  proactiveDmNotificationsEnabled: boolean;
 };
 
 type Props = {
@@ -69,18 +68,12 @@ export function ManualModerationVisibilitySettings({ initial, canEdit }: Props) 
         />
         <SettingsRow
           title="Приватные сообщения о наказаниях"
-          description="Личное уведомление наказанному участнику: в чате, видимое только ему, и в личные сообщения."
+          description="Личное уведомление наказанному участнику — сообщение в чате, видимое только ему."
           checked={visibility.privatePunishmentMessagesEnabled}
           disabled={fieldsDisabled}
           onChange={(checked) => setField("privatePunishmentMessagesEnabled", checked)}
         />
-        <SettingsRow
-          title="Проактивные DM-уведомления"
-          description="Сообщения, которые бот сам присылает в личные сообщения без прямой команды пользователя в этот момент — например, решение по апелляции."
-          checked={visibility.proactiveDmNotificationsEnabled}
-          disabled={fieldsDisabled}
-          onChange={(checked) => setField("proactiveDmNotificationsEnabled", checked)}
-        />
+        <small className="hint-note">Уведомления по апелляциям (решение по апелляции, новая апелляция админам) настраиваются отдельно по каждому чату — вкладка «Апелляции» в настройках чата.</small>
       </div>
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}

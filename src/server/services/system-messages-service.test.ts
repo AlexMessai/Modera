@@ -21,9 +21,10 @@ test("getSystemMessages falls back to app defaults when no Global*Settings rows 
   assert.equal(typeof messages.manualModeration.warnMessageTemplate, "string");
   assert.equal(typeof messages.captcha.challengeMessageTemplate, "string");
   assert.equal(typeof messages.content.welcomeMessageTemplate, "string");
+  assert.equal(typeof messages.appeals.appealSubmittedMessageTemplate, "string");
 });
 
-test("updateSystemMessages persists all 4 domains and getSystemMessages reads them back", async () => {
+test("updateSystemMessages persists all 5 domains and getSystemMessages reads them back", async () => {
   await cleanup();
   const admin = await prisma.adminUser.create({
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
@@ -41,7 +42,8 @@ test("updateSystemMessages persists all 4 domains and getSystemMessages reads th
       },
       manualModeration: { ...before.manualModeration, warnMessageTemplate: "WARN %target%" },
       captcha: { challengeMessageTemplate: "prove you're human" },
-      content: { welcomeMessageTemplate: "hi {name}" }
+      content: { welcomeMessageTemplate: "hi {name}" },
+      appeals: { ...before.appeals, appealSubmittedMessageTemplate: "Appeal received" }
     });
 
     assert.equal(saved.automod.escalationMuteMessageTemplate, "MUTE %target%");
@@ -50,12 +52,14 @@ test("updateSystemMessages persists all 4 domains and getSystemMessages reads th
     assert.equal(saved.manualModeration.warnMessageTemplate, "WARN %target%");
     assert.equal(saved.captcha.challengeMessageTemplate, "prove you're human");
     assert.equal(saved.content.welcomeMessageTemplate, "hi {name}");
+    assert.equal(saved.appeals.appealSubmittedMessageTemplate, "Appeal received");
 
     const reloaded = await getSystemMessages();
     assert.equal(reloaded.automod.escalationMuteMessageTemplate, "MUTE %target%");
     assert.equal(reloaded.manualModeration.warnMessageTemplate, "WARN %target%");
     assert.equal(reloaded.captcha.challengeMessageTemplate, "prove you're human");
     assert.equal(reloaded.content.welcomeMessageTemplate, "hi {name}");
+    assert.equal(reloaded.appeals.appealSubmittedMessageTemplate, "Appeal received");
   } finally {
     await updateSystemMessages({ actingAdminId: admin.id, ...before });
     await cleanup();

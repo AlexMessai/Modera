@@ -25,14 +25,14 @@ export type ManualModerationSettingsValue = {
 // Single source of truth, global only -- no per-chat or per-command override.
 // publicPunishmentMessagesEnabled gates the group-chat announcement for every
 // manual punishment command; privatePunishmentMessagesEnabled gates the
-// ephemeral in-chat notice and DM sent to the punished member (independent of
-// the public one); proactiveDmNotificationsEnabled gates bot-initiated DMs
-// that aren't a direct reply to a command the user just sent (e.g. the
-// appeal-decision notice).
+// ephemeral in-chat notice sent to the punished member (the DM leg was
+// removed, see decision #1 in the moderation-notification simplification).
+// Bot-initiated DMs that aren't a direct reply to a command the user just
+// sent (the appeal-decision notice) are now gated per chat by
+// ChatAppealSettings.notifyUserOnDecision instead of a global toggle here.
 export type ManualModerationVisibilitySettingsValue = {
   publicPunishmentMessagesEnabled: boolean;
   privatePunishmentMessagesEnabled: boolean;
-  proactiveDmNotificationsEnabled: boolean;
 };
 
 // The *EphemeralMessageTemplate fields back the punishment ephemeral notice
@@ -63,8 +63,7 @@ export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue =
 
 export const DEFAULT_MANUAL_MODERATION_VISIBILITY: ManualModerationVisibilitySettingsValue = {
   publicPunishmentMessagesEnabled: true,
-  privatePunishmentMessagesEnabled: true,
-  proactiveDmNotificationsEnabled: true
+  privatePunishmentMessagesEnabled: true
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -99,8 +98,7 @@ export function normalizeManualModerationSettings(input: ManualModerationSetting
 export function normalizeManualModerationVisibility(input: ManualModerationVisibilitySettingsValue): ManualModerationVisibilitySettingsValue {
   return {
     publicPunishmentMessagesEnabled: Boolean(input.publicPunishmentMessagesEnabled),
-    privatePunishmentMessagesEnabled: Boolean(input.privatePunishmentMessagesEnabled),
-    proactiveDmNotificationsEnabled: Boolean(input.proactiveDmNotificationsEnabled)
+    privatePunishmentMessagesEnabled: Boolean(input.privatePunishmentMessagesEnabled)
   };
 }
 
@@ -129,8 +127,7 @@ export function serializeManualModerationSettings(settings: ManualModerationSett
 function serializeManualModerationVisibility(settings: ManualModerationVisibilitySettingsValue): ManualModerationVisibilitySettingsValue {
   return {
     publicPunishmentMessagesEnabled: settings.publicPunishmentMessagesEnabled,
-    privatePunishmentMessagesEnabled: settings.privatePunishmentMessagesEnabled,
-    proactiveDmNotificationsEnabled: settings.proactiveDmNotificationsEnabled
+    privatePunishmentMessagesEnabled: settings.privatePunishmentMessagesEnabled
   };
 }
 
@@ -140,8 +137,7 @@ export async function getManualModerationVisibility(): Promise<ManualModerationV
     where: { id: GLOBAL_MANUAL_MODERATION_PROFILE_ID },
     select: {
       publicPunishmentMessagesEnabled: true,
-      privatePunishmentMessagesEnabled: true,
-      proactiveDmNotificationsEnabled: true
+      privatePunishmentMessagesEnabled: true
     }
   });
   return serializeManualModerationVisibility(stored ?? DEFAULT_MANUAL_MODERATION_VISIBILITY);

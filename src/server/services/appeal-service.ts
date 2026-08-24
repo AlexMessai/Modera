@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { notifyAdminsOfNewAppeal, notifyAppealDecision } from "@/server/services/appeal-notification-service";
+import { resolveEffectiveChatAppealSettings } from "@/server/services/chat-appeal-settings-service";
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
 
@@ -18,11 +19,98 @@ function normalize(value: string, maxLength: number) {
   return value.trim().slice(0, maxLength);
 }
 
-export async function submitAppealFromReply(input: {
+type AppealCandidate = {
+  moderationActionId: string;
+  chatId: string;
+  chatTitle: string;
+  actionType: "WARNING" | "MUTE" | "BAN";
+};
+
+/**
+ * Every appeal-eligible punishment a Telegram user still has an open shot
+ * at -- mirrors self-unmute-service.ts::listActiveMutes (called directly by
+ * update-handler.ts for the numbered chat picker when there's more than
+ * one). "Eligible" means: WARNING/MUTE/BAN that succeeded, has no Appeal
+ * yet, and whose chat hasn't turned /appeal off (ChatAppealSettings.enabled).
+ * At most one candidate per chat -- the most recent un-appealed punishment
+ * in that chat -- since /appeal only ever targets "the latest one" per the
+ * product decision, same as how a mute is inherently one-per-chat for
+ * /unmute.
+ */
+export async function listAppealCandidates(telegramUserId: number): Promise<AppealCandidate[]> {
+  const user = await prisma.telegramUser.findUnique({
+    where: { telegramUserId: BigInt(telegramUserId) },
+    select: { id: true }
+  });
+  if (!user) return [];
+
+  const actions = await prisma.moderationAction.findMany({
+    where: {
+      affectedUserId: user.id,
+      type: { in: ["WARNING", "MUTE", "BAN"] },
+      status: "SUCCEEDED",
+      appeal: { is: null }
+    },
+    orderBy: { createdAt: "desc" },
+    include: { chat: { select: { id: true, title: true } } }
+  });
+
+  const seenChats = new Set<string>();
+  const candidates: AppealCandidate[] = [];
+  for (const action of actions) {
+    if (seenChats.has(action.chatId)) continue;
+    const { settings } = await resolveEffectiveChatAppealSettings(action.chatId);
+    if (!settings.enabled) continue;
+    seenChats.add(action.chatId);
+    candidates.push({
+      moderationActionId: action.id,
+      chatId: action.chatId,
+      chatTitle: action.chat.title,
+      actionType: action.type as "WARNING" | "MUTE" | "BAN"
+    });
+  }
+  return candidates;
+}
+
+/**
+ * Replaces the old submitAppealFromReply, which matched a punishment to
+ * appeal exclusively via metadata.appealDmMessageId === replyToMessageId --
+ * the id of the DM message that no longer exists (see decision #1). /appeal
+ * no longer requires a Reply: this finds the user's latest appeal-eligible
+ * punishment automatically, using the same numbered-chat-picker pattern
+ * /unmute already uses when there's more than one.
+ *
+ * `chatId` lets a caller that already resolved the ambiguity (update-handler.ts,
+ * after the user replied with an explicit chat number) submit directly; when
+ * omitted, 0/1 candidates resolve on their own and 2+ come back as
+ * "multiple_chats" without submitting -- same shape /unmute's own
+ * `listActiveMutes` + numbered-picker flow already produces.
+ */
+export async function submitLatestAppeal(input: {
   fromTelegramUserId: number;
-  replyToMessageId: number;
   text: string;
-}) {
+  chatId?: string;
+}): Promise<
+  | { outcome: "action_not_found" }
+  | { outcome: "already_submitted" }
+  | { outcome: "empty_message" }
+  | { outcome: "multiple_chats"; candidates: AppealCandidate[] }
+  | { outcome: "submitted" }
+> {
+  const candidates = await listAppealCandidates(input.fromTelegramUserId);
+  if (candidates.length === 0) return { outcome: "action_not_found" as const };
+
+  let chosen: AppealCandidate;
+  if (input.chatId) {
+    const match = candidates.find((candidate) => candidate.chatId === input.chatId);
+    if (!match) return { outcome: "action_not_found" as const };
+    chosen = match;
+  } else if (candidates.length > 1) {
+    return { outcome: "multiple_chats" as const, candidates };
+  } else {
+    chosen = candidates[0];
+  }
+
   const message = normalize(input.text, MAX_MESSAGE_LENGTH);
   if (!message) return { outcome: "empty_message" as const };
 
@@ -32,27 +120,13 @@ export async function submitAppealFromReply(input: {
   });
   if (!user) return { outcome: "action_not_found" as const };
 
-  const action = await prisma.moderationAction.findFirst({
-    where: {
-      affectedUserId: user.id,
-      type: { in: ["WARNING", "MUTE", "BAN"] },
-      metadata: { path: ["appealDmMessageId"], equals: input.replyToMessageId }
-    },
-    orderBy: { createdAt: "desc" },
-    include: { chat: { select: { title: true } } }
-  });
-  if (!action) return { outcome: "action_not_found" as const };
-
-  const existing = await prisma.appeal.findUnique({ where: { moderationActionId: action.id } });
-  if (existing) return { outcome: "already_submitted" as const };
-
   let appeal;
   try {
     appeal = await prisma.appeal.create({
       data: {
-        chatId: action.chatId,
+        chatId: chosen.chatId,
         userId: user.id,
-        moderationActionId: action.id,
+        moderationActionId: chosen.moderationActionId,
         message
       }
     });
@@ -65,19 +139,20 @@ export async function submitAppealFromReply(input: {
 
   await prisma.auditLog.create({
     data: {
-      chatId: action.chatId,
+      chatId: chosen.chatId,
       affectedUserId: user.id,
       source: "TELEGRAM",
       action: "APPEAL_SUBMITTED",
-      metadata: { moderationActionId: action.id }
+      metadata: { moderationActionId: chosen.moderationActionId }
     }
   });
 
   await notifyAdminsOfNewAppeal({
+    chatId: chosen.chatId,
     appealId: appeal.id,
-    chatTitle: action.chat.title,
+    chatTitle: chosen.chatTitle,
     userDisplayName: user.displayName,
-    actionType: action.type as "WARNING" | "MUTE" | "BAN",
+    actionType: chosen.actionType,
     message
   }).catch(() => undefined);
 
@@ -213,6 +288,7 @@ export async function resolveAppeal(input: {
       })
     ]);
     await notifyAppealDecision({
+      chatId: appeal.chatId,
       telegramUserId: appeal.user.telegramUserId,
       chatTitle: appeal.chat.title,
       decision: "REJECTED",
@@ -267,6 +343,7 @@ export async function resolveAppeal(input: {
   ]);
 
   await notifyAppealDecision({
+    chatId: appeal.chatId,
     telegramUserId: appeal.user.telegramUserId,
     chatTitle: appeal.chat.title,
     decision: "APPROVED",
