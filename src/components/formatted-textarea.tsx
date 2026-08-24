@@ -186,6 +186,12 @@ export function FormattedTextarea({
         }
       }
     },
+    onCreate: ({ editor: currentEditor }) => {
+      currentEditor.view.dispatch(currentEditor.state.tr.setStoredMarks([]));
+    },
+    onFocus: ({ editor: currentEditor }) => {
+      if (currentEditor.isEmpty) currentEditor.view.dispatch(currentEditor.state.tr.setStoredMarks([]));
+    },
     onUpdate: ({ editor: currentEditor }) => {
       if (maxLength != null && currentEditor.getText({ blockSeparator: "\n" }).length > maxLength) {
         currentEditor.commands.undo();
@@ -200,15 +206,15 @@ export function FormattedTextarea({
   const selectedToolbarState = useEditorState({
     editor,
     selector: ({ editor: currentEditor }) => ({
-      bold: currentEditor?.isActive("bold") ?? false,
-      italic: currentEditor?.isActive("italic") ?? false,
-      underline: currentEditor?.isActive("underline") ?? false,
-      strike: currentEditor?.isActive("strike") ?? false,
-      quote: currentEditor?.isActive("blockquote") ?? false,
-      link: currentEditor?.isActive("link") ?? false,
-      code: currentEditor?.isActive("code") ?? false,
-      pre: currentEditor?.isActive("codeBlock") ?? false,
-      spoiler: currentEditor?.isActive("telegramSpoiler") ?? false
+      bold: Boolean(currentEditor?.isFocused && currentEditor.isActive("bold")),
+      italic: Boolean(currentEditor?.isFocused && currentEditor.isActive("italic")),
+      underline: Boolean(currentEditor?.isFocused && currentEditor.isActive("underline")),
+      strike: Boolean(currentEditor?.isFocused && currentEditor.isActive("strike")),
+      quote: Boolean(currentEditor?.isFocused && currentEditor.isActive("blockquote")),
+      link: Boolean(currentEditor?.isFocused && currentEditor.isActive("link")),
+      code: Boolean(currentEditor?.isFocused && currentEditor.isActive("code")),
+      pre: Boolean(currentEditor?.isFocused && currentEditor.isActive("codeBlock")),
+      spoiler: Boolean(currentEditor?.isFocused && currentEditor.isActive("telegramSpoiler"))
     })
   });
   const toolbarState = selectedToolbarState ?? EMPTY_TOOLBAR_STATE;
@@ -222,7 +228,10 @@ export function FormattedTextarea({
     if (!editor || value === lastEmittedRef.current) return;
     const next = toEditorHtml(value);
     const current = sanitizeTelegramHtml(editor.getHTML());
-    if (sanitizeTelegramHtml(next) !== current) editor.commands.setContent(next, { emitUpdate: false });
+    if (sanitizeTelegramHtml(next) !== current) {
+      editor.commands.setContent(next, { emitUpdate: false });
+      editor.view.dispatch(editor.state.tr.setStoredMarks([]));
+    }
     lastEmittedRef.current = value;
   }, [editor, value]);
 
@@ -230,6 +239,7 @@ export function FormattedTextarea({
     if (!editor) return;
     const next = toEditorHtml(value);
     editor.commands.setContent(next, { emitUpdate: false });
+    editor.view.dispatch(editor.state.tr.setStoredMarks([]));
     lastEmittedRef.current = value;
     if (autoFocus) editor.commands.focus("end");
   // Initial content belongs to the editor lifecycle; later updates are synchronized above.
