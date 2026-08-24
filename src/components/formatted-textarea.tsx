@@ -1,7 +1,17 @@
 "use client";
 
+import { Mark, mergeAttributes } from "@tiptap/core";
+import Placeholder from "@tiptap/extension-placeholder";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { Braces, Code2, EyeOff, Link2, MessageSquareQuote, Smile, SquareCode } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    telegramSpoiler: { toggleTelegramSpoiler: () => ReturnType };
+  }
+}
 
 type Props = {
   value: string;
@@ -22,7 +32,28 @@ const ALLOWED_TAGS: Record<string, string> = {
   BLOCKQUOTE: "blockquote", CODE: "code", PRE: "pre", "TG-SPOILER": "tg-spoiler", A: "a", BR: "br"
 };
 
-function sanitizeEditorHtml(source: string) {
+const TelegramSpoiler = Mark.create({
+  name: "telegramSpoiler",
+  parseHTML: () => [{ tag: "tg-spoiler" }],
+  renderHTML: ({ HTMLAttributes }) => ["tg-spoiler", mergeAttributes(HTMLAttributes), 0],
+  addCommands() {
+    return { toggleTelegramSpoiler: () => ({ commands }) => commands.toggleMark(this.name) };
+  }
+});
+
+const EMPTY_TOOLBAR_STATE = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  quote: false,
+  link: false,
+  code: false,
+  pre: false,
+  spoiler: false
+};
+
+function sanitizeTelegramHtml(source: string) {
   const parsed = new DOMParser().parseFromString(`<body>${source}</body>`, "text/html");
   const output = document.createElement("div");
 
@@ -48,7 +79,8 @@ function sanitizeEditorHtml(source: string) {
           }
           clean.setAttribute("href", href);
         }
-        appendChildren(child, clean);
+        if (tag === "pre") clean.textContent = child.textContent ?? "";
+        else appendChildren(child, clean);
         target.appendChild(clean);
         continue;
       }
@@ -65,17 +97,26 @@ function sanitizeEditorHtml(source: string) {
   return output.textContent ? output.innerHTML : "";
 }
 
-function closestElement(node: Node | null, selector: string) {
-  const element = node instanceof Element ? node : node?.parentElement;
-  return element?.closest(selector) ?? null;
+function toEditorHtml(source: string) {
+  const clean = sanitizeTelegramHtml(source);
+  if (!clean) return "";
+  const parsed = new DOMParser().parseFromString(`<body>${clean}</body>`, "text/html");
+  const walker = document.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (!node.parentElement?.closest("pre") && /\r?\n/.test(node.data)) textNodes.push(node);
+  }
+  for (const node of textNodes) {
+    const fragment = document.createDocumentFragment();
+    node.data.split(/\r?\n/).forEach((part, index) => {
+      if (index) fragment.appendChild(document.createElement("br"));
+      fragment.appendChild(document.createTextNode(part));
+    });
+    node.replaceWith(fragment);
+  }
+  return parsed.body.innerHTML;
 }
-
-const INLINE_FORMATS = [
-  { key: "bold", command: "bold", selector: "b, strong" },
-  { key: "italic", command: "italic", selector: "i, em" },
-  { key: "underline", command: "underline", selector: "u, ins" },
-  { key: "strike", command: "strikeThrough", selector: "s, strike, del" }
-] as const;
 
 export function FormattedTextarea({
   value,
@@ -90,152 +131,109 @@ export function FormattedTextarea({
   autoFocus,
   "aria-label": ariaLabel
 }: Props) {
-  const editorRef = useRef<HTMLDivElement>(null);
+  const onChangeRef = useRef(onChange);
   const lastEmittedRef = useRef(value);
-  const [active, setActive] = useState<Set<string>>(() => new Set());
+  onChangeRef.current = onChange;
 
-  useLayoutEffect(() => {
-    const editor = editorRef.current;
-    if (!editor || value === lastEmittedRef.current) return;
-    const safeValue = sanitizeEditorHtml(value);
-    if (editor.innerHTML !== safeValue) editor.innerHTML = safeValue;
-    lastEmittedRef.current = value;
-  }, [value]);
+  const extensions = useMemo(() => [
+    StarterKit.configure({
+      heading: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      horizontalRule: false,
+      link: { openOnClick: false, autolink: false, linkOnPaste: true }
+    }),
+    Placeholder.configure({ placeholder: placeholder ?? "" }),
+    TelegramSpoiler
+  ], [placeholder]);
 
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.innerHTML = sanitizeEditorHtml(value);
-    lastEmittedRef.current = value;
-    if (autoFocus) editor.focus();
-    document.execCommand("defaultParagraphSeparator", false, "br");
-    document.execCommand("styleWithCSS", false, "false");
-  // The initial value is loaded once; subsequent external updates are handled above.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const updateActiveFormats = useCallback(() => {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection?.anchorNode || !editor.contains(selection.anchorNode)) {
-      setActive(new Set());
-      return;
-    }
-    const next = new Set<string>();
-    for (const format of INLINE_FORMATS) {
-      if (closestElement(selection.anchorNode, format.selector)) next.add(format.key);
-    }
-    if (closestElement(selection.anchorNode, "blockquote")) next.add("quote");
-    if (closestElement(selection.anchorNode, "code")) next.add("code");
-    if (closestElement(selection.anchorNode, "pre")) next.add("pre");
-    if (closestElement(selection.anchorNode, "tg-spoiler")) next.add("spoiler");
-    if (closestElement(selection.anchorNode, "a")) next.add("link");
-    setActive(next);
-  }, []);
-
-  useEffect(() => {
-    document.addEventListener("selectionchange", updateActiveFormats);
-    return () => document.removeEventListener("selectionchange", updateActiveFormats);
-  }, [updateActiveFormats]);
-
-  function emitChange() {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const next = sanitizeEditorHtml(editor.innerHTML);
-    if (maxLength != null && editor.innerText.length > maxLength) {
-      editor.innerHTML = sanitizeEditorHtml(lastEmittedRef.current);
-      return;
-    }
-    if (!next && editor.innerHTML) {
-      editor.innerHTML = "";
-      const range = document.createRange();
-      const selection = window.getSelection();
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      resetPendingFormatting();
-    }
-    lastEmittedRef.current = next;
-    onChange(next);
-    updateActiveFormats();
-  }
-
-  function runCommand(command: string, commandValue?: string) {
-    if (disabled) return;
-    editorRef.current?.focus();
-    document.execCommand(command, false, commandValue);
-    emitChange();
-  }
-
-  function resetPendingFormatting() {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection?.anchorNode || !editor.contains(selection.anchorNode)) return;
-    for (const format of INLINE_FORMATS) {
-      if (!closestElement(selection.anchorNode, format.selector) && document.queryCommandState(format.command)) {
-        document.execCommand(format.command, false);
+  const editor = useEditor({
+    extensions,
+    content: "",
+    editable: !disabled,
+    immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
+    editorProps: {
+      attributes: {
+        id: id ?? "",
+        role: "textbox",
+        "aria-label": ariaLabel ?? "Редактор сообщения",
+        "aria-multiline": "true"
       }
+    },
+    onUpdate: ({ editor: currentEditor }) => {
+      if (maxLength != null && currentEditor.getText({ blockSeparator: "\n" }).length > maxLength) {
+        currentEditor.commands.undo();
+        return;
+      }
+      const next = sanitizeTelegramHtml(currentEditor.getHTML());
+      lastEmittedRef.current = next;
+      onChangeRef.current(next);
     }
-    setActive(new Set());
-  }
+  });
 
-  function toggleElement(tag: "code" | "pre" | "tg-spoiler") {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection?.rangeCount) return;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return;
-    const existing = closestElement(selection.anchorNode, tag);
-    if (existing && editor.contains(existing)) {
-      existing.replaceWith(...Array.from(existing.childNodes));
-    } else {
-      const wrapper = document.createElement(tag);
-      if (range.collapsed) wrapper.textContent = tag === "pre" ? "код" : "текст";
-      else wrapper.appendChild(range.extractContents());
-      range.insertNode(wrapper);
-      selection.selectAllChildren(wrapper);
-    }
-    emitChange();
-  }
+  const selectedToolbarState = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor }) => ({
+      bold: currentEditor?.isActive("bold") ?? false,
+      italic: currentEditor?.isActive("italic") ?? false,
+      underline: currentEditor?.isActive("underline") ?? false,
+      strike: currentEditor?.isActive("strike") ?? false,
+      quote: currentEditor?.isActive("blockquote") ?? false,
+      link: currentEditor?.isActive("link") ?? false,
+      code: currentEditor?.isActive("code") ?? false,
+      pre: currentEditor?.isActive("codeBlock") ?? false,
+      spoiler: currentEditor?.isActive("telegramSpoiler") ?? false
+    })
+  });
+  const toolbarState = selectedToolbarState ?? EMPTY_TOOLBAR_STATE;
 
-  function toggleLink() {
-    const selection = window.getSelection();
-    const existing = closestElement(selection?.anchorNode ?? null, "a");
-    if (existing) {
-      existing.replaceWith(...Array.from(existing.childNodes));
-      emitChange();
-      return;
-    }
-    const href = window.prompt("Введите ссылку", "https://");
-    if (href && /^(?:https?:\/\/|tg:\/\/)/i.test(href)) runCommand("createLink", href);
-  }
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [disabled, editor]);
 
-  function insertText(text: string) {
-    runCommand("insertText", text);
-  }
+  useEffect(() => {
+    if (!editor || value === lastEmittedRef.current) return;
+    const next = toEditorHtml(value);
+    const current = sanitizeTelegramHtml(editor.getHTML());
+    if (sanitizeTelegramHtml(next) !== current) editor.commands.setContent(next, { emitUpdate: false });
+    lastEmittedRef.current = value;
+  }, [editor, value]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const next = toEditorHtml(value);
+    editor.commands.setContent(next, { emitUpdate: false });
+    lastEmittedRef.current = value;
+    if (autoFocus) editor.commands.focus("end");
+  // Initial content belongs to the editor lifecycle; later updates are synchronized above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   function preserveSelection(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!(event.ctrlKey || event.metaKey)) return;
-    const commands: Record<string, string> = { b: "bold", i: "italic", u: "underline" };
-    const command = commands[event.key.toLowerCase()];
-    if (!command) return;
-    event.preventDefault();
-    runCommand(command);
+  function toggleLink() {
+    if (!editor) return;
+    if (editor.isActive("link")) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+    const href = window.prompt("Введите ссылку", "https://");
+    if (href && /^(?:https?:\/\/|tg:\/\/)/i.test(href)) editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
   }
 
-  const button = (key: string, label: string, content: ReactNode, action: () => void) => (
+  const button = (key: keyof typeof toolbarState, label: string, content: ReactNode, action: () => void) => (
     <button
       type="button"
       title={label}
       aria-label={label}
-      aria-pressed={active.has(key)}
-      className={active.has(key) ? "is-active" : undefined}
-      disabled={disabled}
+      aria-pressed={toolbarState[key]}
+      className={toolbarState[key] ? "is-active" : undefined}
+      disabled={disabled || !editor}
       onMouseDown={preserveSelection}
       onClick={action}
     >{content}</button>
@@ -243,42 +241,18 @@ export function FormattedTextarea({
 
   return <div className={`formatted-textarea${disabled ? " is-disabled" : ""}${className ? ` ${className}` : ""}`}>
     <div className="formatted-textarea-toolbar" role="toolbar" aria-label="Форматирование текста">
-      {button("bold", "Жирный", <strong>B</strong>, () => runCommand("bold"))}
-      {button("italic", "Курсив", <em>I</em>, () => runCommand("italic"))}
-      {button("underline", "Подчёркнутый", <u>U</u>, () => runCommand("underline"))}
-      {button("strike", "Зачёркнутый", <s>S</s>, () => runCommand("strikeThrough"))}
-      {button("quote", "Цитата", <MessageSquareQuote size={14} />, () => runCommand("formatBlock", active.has("quote") ? "div" : "blockquote"))}
-      {button("link", active.has("link") ? "Убрать ссылку" : "Добавить ссылку", <Link2 size={14} />, toggleLink)}
-      {button("code", "Код", <Code2 size={14} />, () => toggleElement("code"))}
-      {button("pre", "Блок кода", <SquareCode size={14} />, () => toggleElement("pre"))}
-      {button("spoiler", "Спойлер", <EyeOff size={14} />, () => toggleElement("tg-spoiler"))}
-      {button("emoji", "Вставить эмодзи", <Smile size={14} />, () => insertText("🙂"))}
-      {variables.length ? button("variable", `Вставить ${variables[0]}`, <Braces size={14} />, () => insertText(variables[0]!)) : null}
+      {button("bold", "Жирный", <strong>B</strong>, () => editor?.chain().focus().toggleBold().run())}
+      {button("italic", "Курсив", <em>I</em>, () => editor?.chain().focus().toggleItalic().run())}
+      {button("underline", "Подчёркнутый", <u>U</u>, () => editor?.chain().focus().toggleUnderline().run())}
+      {button("strike", "Зачёркнутый", <s>S</s>, () => editor?.chain().focus().toggleStrike().run())}
+      {button("quote", "Цитата", <MessageSquareQuote size={14} />, () => editor?.chain().focus().toggleBlockquote().run())}
+      {button("link", toolbarState.link ? "Убрать ссылку" : "Добавить ссылку", <Link2 size={14} />, toggleLink)}
+      {button("code", "Код", <Code2 size={14} />, () => editor?.chain().focus().toggleCode().run())}
+      {button("pre", "Блок кода", <SquareCode size={14} />, () => editor?.chain().focus().toggleCodeBlock().run())}
+      {button("spoiler", "Спойлер", <EyeOff size={14} />, () => editor?.chain().focus().toggleTelegramSpoiler().run())}
+      <button type="button" title="Вставить эмодзи" aria-label="Вставить эмодзи" disabled={disabled || !editor} onMouseDown={preserveSelection} onClick={() => editor?.chain().focus().insertContent("🙂").run()}><Smile size={14} /></button>
+      {variables.length ? <button type="button" title={`Вставить ${variables[0]}`} aria-label="Вставить переменную" disabled={disabled || !editor} onMouseDown={preserveSelection} onClick={() => editor?.chain().focus().insertContent(variables[0]!).run()}><Braces size={14} /></button> : null}
     </div>
-    <div
-      ref={editorRef}
-      id={id}
-      role="textbox"
-      aria-label={ariaLabel}
-      aria-multiline="true"
-      aria-disabled={disabled}
-      contentEditable={!disabled}
-      suppressContentEditableWarning
-      className="formatted-textarea-editor"
-      data-placeholder={placeholder ?? ""}
-      style={{ minHeight: `${Math.max(rows, 2) * 22 + 22}px` }}
-      onFocus={() => {
-        document.execCommand("styleWithCSS", false, "false");
-        resetPendingFormatting();
-        updateActiveFormats();
-      }}
-      onInput={emitChange}
-      onBlur={() => {
-        const editor = editorRef.current;
-        if (editor) editor.innerHTML = sanitizeEditorHtml(editor.innerHTML);
-        updateActiveFormats();
-      }}
-      onKeyDown={handleKeyDown}
-    />
+    <EditorContent editor={editor} className="formatted-textarea-editor" style={{ minHeight: `${Math.max(rows, 2) * 22 + 22}px` }} />
   </div>;
 }
