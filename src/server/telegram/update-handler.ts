@@ -27,6 +27,7 @@ import {
   describeWarningStanding,
   escalateAfterManualWarning,
   listWarningsForMember,
+  applyAutomodRulePunishment,
   recordAutomodViolationAndEscalate,
   type ManualWarningEscalation
 } from "@/server/services/moderation-escalation-service";
@@ -57,7 +58,12 @@ const RULE_BY_AUTOMOD_RESULT: Record<string, string> = {
   DELETED_MEDIA: "MEDIA",
   DELETED_MENTIONS: "MENTIONS",
   DELETED_DUPLICATE: "DUPLICATE",
-  DELETED_SPAM: "SPAM"
+  DELETED_SPAM: "SPAM",
+  TRIGGERED_LINK: "LINK",
+  TRIGGERED_TERM: "TERM",
+  TRIGGERED_MENTIONS: "MENTIONS",
+  TRIGGERED_DUPLICATE: "DUPLICATE",
+  TRIGGERED_SPAM: "SPAM"
 };
 
 function extractChat(update: TelegramUpdate): TelegramChat | null {
@@ -103,14 +109,36 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
     if (!result.mediaFilterRule.warnOnTrigger) return;
   }
 
+  const ruleAction = "ruleAction" in result ? result.ruleAction : null;
+  if (ruleAction?.notifyEnabled && ruleAction.notifyText) {
+    const text = renderManualModerationTemplate(ruleAction.notifyText, {
+      target: telegramDisplayName(input.message.from),
+      chat: input.message.chat.title ?? ""
+    });
+    await getTelegramClient().sendMessage({ chatId: input.message.chat.id, text }).catch(() => undefined);
+  }
+
+  if (ruleAction && !ruleAction.punishmentEnabled) return;
+
   const violation = {
     chatId: input.chatId,
     telegramUserId: input.message.from.id,
     rule,
     telegramMessageId: String(input.message.message_id)
   };
-  const escalation = await recordAutomodViolationAndEscalate(violation).catch(() => undefined);
+  const escalation = ruleAction
+    ? await applyAutomodRulePunishment({
+        ...violation,
+        action: ruleAction.punishmentAction,
+        muteDurationMinutes: ruleAction.muteDurationMinutes
+      }).catch(() => undefined)
+    : await recordAutomodViolationAndEscalate(violation).catch(() => undefined);
   if (!escalation?.escalated || !escalation.action) return;
+
+  // A direct rule-level Mute is fully described by that rule's own optional
+  // message. The legacy escalation announcement belongs only to a Warn that
+  // crossed the shared escalation chain.
+  if (ruleAction?.punishmentAction === "MUTE") return;
 
   const { settings } = await resolveEffectiveModerationSettings(input.chatId);
   if (!settings.announceEscalationEnabled) return;

@@ -323,6 +323,7 @@ model ChatModerationSettings {
   // code — same deprecation convention as the escalation fields further down).
   blockLinks             Boolean  @default(false)
   // "ALLOW_ALL" | "BLOCK_ALL" | "WHITELIST_ONLY" | "BLACKLIST_ONLY" — BOT_PRODUCT_SPEC §22.
+  linkEnabled            Boolean  @default(false)
   linkProtectionMode     String   @default("ALLOW_ALL")
   allowedDomains         String[] @default([])
   blockedDomains         String[] @default([])
@@ -357,6 +358,10 @@ model ChatModerationSettings {
   // "VOICE"|"AUDIO"|"VIDEO_NOTE"|"DICE"|"DOCUMENT"|"STICKER"|"POLL"|
   // "LOCATION"|"CONTACT", enabled, warnOnTrigger, notifyEnabled, notifyText }].
   mediaFilters           Json     @default("[]")
+  // Per-rule outcomes for LINK/TERM/SPAM/DUPLICATE/MENTIONS. Detection
+  // settings stay in their existing typed columns; this JSON only controls
+  // delete/punishment/notification behavior in a forward-compatible shape.
+  ruleActions            Json     @default("[]")
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
   chat                   Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)

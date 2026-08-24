@@ -25,7 +25,18 @@ const mediaFilterRuleSchema = z.object({
   notifyText: z.string().min(1).max(1000)
 });
 
+const automodRuleActionSchema = z.object({
+  rule: z.enum(["LINK", "TERM", "SPAM", "DUPLICATE", "MENTIONS"]),
+  deleteMessage: z.boolean(),
+  punishmentEnabled: z.boolean(),
+  punishmentAction: z.enum(["WARN", "MUTE"]),
+  muteDurationMinutes: z.number().int().min(15).max(43200),
+  notifyEnabled: z.boolean(),
+  notifyText: z.string().max(1000)
+});
+
 const settingsSchema = z.object({
+  linkEnabled: z.boolean(),
   linkProtectionMode: z.enum(LINK_PROTECTION_MODES),
   allowedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
   blockedDomains: z.array(z.string().trim().min(1).max(255)).max(100),
@@ -46,7 +57,8 @@ const settingsSchema = z.object({
   announceEscalationEnabled: z.boolean(),
   escalationMuteMessageTemplate: z.string().min(1).max(1000),
   escalationBanMessageTemplate: z.string().min(1).max(1000),
-  mediaFilters: z.array(mediaFilterRuleSchema).max(MEDIA_FILTER_TYPES.length)
+  mediaFilters: z.array(mediaFilterRuleSchema).max(MEDIA_FILTER_TYPES.length),
+  ruleActions: z.array(automodRuleActionSchema).max(5)
 });
 
 export async function GET(

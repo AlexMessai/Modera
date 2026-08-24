@@ -4,6 +4,7 @@ import {
   findTriggeredEscalationRule,
   lowestEscalationThreshold,
   resolveEffectiveModerationSettings,
+  type AutomodPunishmentAction,
   type ModerationSettingsValue
 } from "@/server/services/global-moderation-service";
 import {
@@ -131,10 +132,13 @@ export async function recordAutomodViolationAndEscalate(input: {
   telegramUserId: number;
   rule: string;
   telegramMessageId: string;
+  recordWarningWhenEscalationDisabled?: boolean;
 }): Promise<WarningEscalationResult> {
   const resolved = await resolveEffectiveModerationSettings(input.chatId);
   const policy = resolved.settings;
-  if (!policy.autoEscalationEnabled) return { enabled: false, escalated: false } as const;
+  if (!policy.autoEscalationEnabled && !input.recordWarningWhenEscalationDisabled) {
+    return { enabled: false, escalated: false } as const;
+  }
 
   const member = await prisma.chatMember.findFirst({
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
@@ -273,6 +277,15 @@ export async function recordAutomodViolationAndEscalate(input: {
     reason
   }).catch(() => undefined);
 
+  if (!policy.autoEscalationEnabled) {
+    return {
+      enabled: false,
+      escalated: false,
+      warningCount: warning.warningCount,
+      activeWarningCount: warning.activeWarningCount
+    } as const;
+  }
+
   return applyWarningEscalation({
     membershipId: warning.id,
     chatId: input.chatId,
@@ -285,6 +298,81 @@ export async function recordAutomodViolationAndEscalate(input: {
     escalationMarker: warning.escalationMarker,
     warningActionId: warning.moderationActionId
   });
+}
+
+/** Applies the explicit outcome selected in an Automod rule modal. */
+export async function applyAutomodRulePunishment(input: {
+  chatId: string;
+  telegramUserId: number;
+  rule: string;
+  telegramMessageId: string;
+  action: AutomodPunishmentAction;
+  muteDurationMinutes: number;
+}): Promise<WarningEscalationResult> {
+  if (input.action === "WARN") {
+    return recordAutomodViolationAndEscalate({
+      chatId: input.chatId,
+      telegramUserId: input.telegramUserId,
+      rule: input.rule,
+      telegramMessageId: input.telegramMessageId,
+      recordWarningWhenEscalationDisabled: true
+    });
+  }
+
+  const member = await prisma.chatMember.findFirst({
+    where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      warningCount: true,
+      user: { select: { isBot: true } }
+    }
+  });
+  if (!member || member.user.isBot || isProtectedMemberStatus(member.status)) {
+    if (member && isProtectedMemberStatus(member.status)) {
+      await prisma.auditLog.create({
+        data: {
+          chatId: input.chatId,
+          affectedUserId: member.userId,
+          source: "SYSTEM",
+          action: "AUTOMOD_ESCALATION_SKIPPED_PROTECTED",
+          reason: "Автоматическое наказание не применяется к владельцу или администратору Telegram.",
+          metadata: { rule: input.rule, telegramMessageId: input.telegramMessageId }
+        }
+      });
+    }
+    return { enabled: true, escalated: false, skipped: true } as const;
+  }
+
+  try {
+    const result = await executeAutomatedModerationAction({
+      membershipId: member.id,
+      action: "MUTE",
+      reason: `Автомодерация: ${RULE_LABELS[input.rule] ?? "нарушение правила"}`,
+      escalationWarningCount: member.warningCount,
+      triggerRule: input.rule,
+      muteDurationMinutes: input.muteDurationMinutes
+    });
+    return {
+      enabled: true,
+      escalated: true,
+      warningCount: member.warningCount,
+      activeWarningCount: member.warningCount,
+      action: "MUTE",
+      muteDurationMinutes: input.muteDurationMinutes,
+      result
+    } as const;
+  } catch (error) {
+    return {
+      enabled: true,
+      escalated: false,
+      warningCount: member.warningCount,
+      activeWarningCount: member.warningCount,
+      attemptedAction: "MUTE",
+      error: error instanceof ModerationError ? error.message : "Не удалось применить автоматическое наказание."
+    } as const;
+  }
 }
 
 /**

@@ -47,6 +47,36 @@ export type MediaFilterRuleValue = {
   notifyText: string;
 };
 
+export const AUTOMOD_ACTION_RULES = ["LINK", "TERM", "SPAM", "DUPLICATE", "MENTIONS"] as const;
+export type AutomodActionRule = (typeof AUTOMOD_ACTION_RULES)[number];
+export type AutomodPunishmentAction = "WARN" | "MUTE";
+
+export type AutomodRuleActionValue = {
+  rule: AutomodActionRule;
+  deleteMessage: boolean;
+  punishmentEnabled: boolean;
+  punishmentAction: AutomodPunishmentAction;
+  muteDurationMinutes: number;
+  notifyEnabled: boolean;
+  /** Intentionally allowed to be empty: the modal textarea starts blank. */
+  notifyText: string;
+};
+
+const DEFAULT_AUTOMOD_MUTE_DURATION_MINUTES = 60;
+const MAX_AUTOMOD_MUTE_DURATION_MINUTES = 30 * 24 * 60;
+
+function defaultAutomodRuleActions(punishmentEnabled: boolean): AutomodRuleActionValue[] {
+  return AUTOMOD_ACTION_RULES.map((rule) => ({
+    rule,
+    deleteMessage: true,
+    punishmentEnabled,
+    punishmentAction: "WARN",
+    muteDurationMinutes: DEFAULT_AUTOMOD_MUTE_DURATION_MINUTES,
+    notifyEnabled: false,
+    notifyText: ""
+  }));
+}
+
 const DEFAULT_MEDIA_FILTER_NOTIFY_TEXT = "🚫 Этот тип контента запрещён в этом чате.";
 
 export const DEFAULT_MEDIA_FILTERS: MediaFilterRuleValue[] = MEDIA_FILTER_TYPES.map((type) => ({
@@ -60,6 +90,7 @@ export const DEFAULT_MEDIA_FILTERS: MediaFilterRuleValue[] = MEDIA_FILTER_TYPES.
 const MAX_MEDIA_FILTER_NOTIFY_TEXT_LENGTH = 1000;
 
 export const DEFAULT_MODERATION_SETTINGS = {
+  linkEnabled: false,
   linkProtectionMode: "ALLOW_ALL" as LinkProtectionMode,
   allowedDomains: [] as string[],
   blockedDomains: [] as string[],
@@ -83,7 +114,8 @@ export const DEFAULT_MODERATION_SETTINGS = {
   announceEscalationEnabled: false,
   escalationMuteMessageTemplate: "🔇 %target% получил(а) mute на %duration% за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
   escalationBanMessageTemplate: "⛔ %target% заблокирован(а) за нарушение правил чата. Предупреждений: %warns% из %warns_limit%.",
-  mediaFilters: DEFAULT_MEDIA_FILTERS
+  mediaFilters: DEFAULT_MEDIA_FILTERS,
+  ruleActions: defaultAutomodRuleActions(false)
 };
 
 export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
@@ -94,10 +126,11 @@ export type ModerationSettingsValue = typeof DEFAULT_MODERATION_SETTINGS;
  * raw `Prisma.JsonValue` (a DB row read straight from `ChatModerationSettings`/
  * `GlobalModerationSettings`) — normalizeEscalationRules validates either.
  */
-type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" | "linkProtectionMode" | "mediaFilters"> & {
+type ModerationSettingsInput = Omit<ModerationSettingsValue, "escalationRules" | "linkProtectionMode" | "mediaFilters" | "ruleActions"> & {
   escalationRules: unknown;
   linkProtectionMode: string;
   mediaFilters: unknown;
+  ruleActions: unknown;
 };
 
 /** The lowest configured threshold — the closest analog to the old single "warns_limit" number for chat-reply placeholders. */
@@ -218,8 +251,48 @@ export function normalizeMediaFilters(input: unknown): MediaFilterRuleValue[] {
   return MEDIA_FILTER_TYPES.map((type) => byType.get(type) ?? DEFAULT_MEDIA_FILTERS.find((rule) => rule.type === type)!);
 }
 
+function isAutomodActionRule(value: unknown): value is AutomodActionRule {
+  return typeof value === "string" && (AUTOMOD_ACTION_RULES as readonly string[]).includes(value);
+}
+
+/**
+ * Empty/legacy JSON means the chat predates per-rule outcomes. Mirror its old
+ * chat-wide escalation toggle so rollout does not silently change behavior.
+ * Once saved, the API writes the complete five-rule array.
+ */
+export function normalizeAutomodRuleActions(
+  input: unknown,
+  legacyPunishmentEnabled = false
+): AutomodRuleActionValue[] {
+  const byRule = new Map<AutomodActionRule, AutomodRuleActionValue>();
+  if (Array.isArray(input)) {
+    for (const raw of input) {
+      if (!raw || typeof raw !== "object") continue;
+      const candidate = raw as Partial<AutomodRuleActionValue>;
+      if (!isAutomodActionRule(candidate.rule)) continue;
+      byRule.set(candidate.rule, {
+        rule: candidate.rule,
+        deleteMessage: candidate.deleteMessage !== false,
+        punishmentEnabled: Boolean(candidate.punishmentEnabled),
+        punishmentAction: candidate.punishmentAction === "MUTE" ? "MUTE" : "WARN",
+        muteDurationMinutes: boundedInteger(Number(candidate.muteDurationMinutes), 15, MAX_AUTOMOD_MUTE_DURATION_MINUTES),
+        notifyEnabled: Boolean(candidate.notifyEnabled),
+        notifyText: typeof candidate.notifyText === "string" ? candidate.notifyText.trim().slice(0, 1000) : ""
+      });
+    }
+  }
+  const fallback = defaultAutomodRuleActions(legacyPunishmentEnabled);
+  return AUTOMOD_ACTION_RULES.map((rule) => byRule.get(rule) ?? fallback.find((item) => item.rule === rule)!);
+}
+
+export function getAutomodRuleAction(actions: AutomodRuleActionValue[], rule: AutomodActionRule) {
+  return actions.find((action) => action.rule === rule)
+    ?? defaultAutomodRuleActions(false).find((action) => action.rule === rule)!;
+}
+
 export function normalizeModerationSettings(input: ModerationSettingsInput): ModerationSettingsValue {
   return {
+    linkEnabled: input.linkEnabled,
     linkProtectionMode: isLinkProtectionMode(input.linkProtectionMode) ? input.linkProtectionMode : "ALLOW_ALL",
     allowedDomains: normalizeDomains(input.allowedDomains),
     blockedDomains: normalizeDomains(input.blockedDomains),
@@ -240,12 +313,14 @@ export function normalizeModerationSettings(input: ModerationSettingsInput): Mod
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate: normalizeEscalationTemplate(input.escalationMuteMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate),
     escalationBanMessageTemplate: normalizeEscalationTemplate(input.escalationBanMessageTemplate, DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate),
-    mediaFilters: normalizeMediaFilters(input.mediaFilters)
+    mediaFilters: normalizeMediaFilters(input.mediaFilters),
+    ruleActions: normalizeAutomodRuleActions(input.ruleActions, input.autoEscalationEnabled)
   };
 }
 
 export function serializeModerationSettings(settings: ModerationSettingsInput): ModerationSettingsValue {
   return {
+    linkEnabled: settings.linkEnabled,
     linkProtectionMode: isLinkProtectionMode(settings.linkProtectionMode) ? settings.linkProtectionMode : "ALLOW_ALL",
     allowedDomains: [...settings.allowedDomains],
     blockedDomains: [...settings.blockedDomains],
@@ -266,7 +341,8 @@ export function serializeModerationSettings(settings: ModerationSettingsInput): 
     announceEscalationEnabled: settings.announceEscalationEnabled,
     escalationMuteMessageTemplate: settings.escalationMuteMessageTemplate,
     escalationBanMessageTemplate: settings.escalationBanMessageTemplate,
-    mediaFilters: normalizeMediaFilters(settings.mediaFilters)
+    mediaFilters: normalizeMediaFilters(settings.mediaFilters),
+    ruleActions: normalizeAutomodRuleActions(settings.ruleActions, settings.autoEscalationEnabled)
   };
 }
 

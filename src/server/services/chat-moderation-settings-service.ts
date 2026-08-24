@@ -7,6 +7,7 @@ import {
   DEFAULT_MODERATION_SETTINGS,
   isLinkProtectionMode,
   normalizeEscalationRules,
+  normalizeAutomodRuleActions,
   normalizeMediaFilters,
   resolveEffectiveModerationSettings,
   serializeModerationSettings
@@ -47,6 +48,11 @@ export async function getChatModerationProfile(chatId: string) {
             "AUTOMOD_MEDIA_DELETED",
             "AUTOMOD_MENTIONS_DELETED",
             "AUTOMOD_DUPLICATE_DELETED",
+            "AUTOMOD_LINK_TRIGGERED",
+            "AUTOMOD_TERM_TRIGGERED",
+            "AUTOMOD_MENTIONS_TRIGGERED",
+            "AUTOMOD_DUPLICATE_TRIGGERED",
+            "AUTOMOD_SPAM_TRIGGERED",
             "AUTOMOD_DELETE_FAILED",
             "AUTOMOD_WARNING",
             "AUTOMOD_AUTO_MUTE",
@@ -119,6 +125,7 @@ export async function getChatModerationProfile(chatId: string) {
 export async function updateChatModerationSettings(input: {
   chatId: string;
   actingAdminId: string;
+  linkEnabled: boolean;
   linkProtectionMode: string;
   allowedDomains: string[];
   blockedDomains: string[];
@@ -140,6 +147,7 @@ export async function updateChatModerationSettings(input: {
   escalationMuteMessageTemplate: string;
   escalationBanMessageTemplate: string;
   mediaFilters: unknown;
+  ruleActions: unknown;
 }) {
   if (!UUID_PATTERN.test(input.chatId)) return null;
 
@@ -157,6 +165,7 @@ export async function updateChatModerationSettings(input: {
   const escalationMuteMessageTemplate = input.escalationMuteMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationMuteMessageTemplate;
   const escalationBanMessageTemplate = input.escalationBanMessageTemplate.trim().slice(0, 1000) || DEFAULT_MODERATION_SETTINGS.escalationBanMessageTemplate;
   const values = {
+    linkEnabled: input.linkEnabled,
     linkProtectionMode,
     allowedDomains,
     blockedDomains,
@@ -177,7 +186,8 @@ export async function updateChatModerationSettings(input: {
     announceEscalationEnabled: input.announceEscalationEnabled,
     escalationMuteMessageTemplate,
     escalationBanMessageTemplate,
-    mediaFilters: normalizeMediaFilters(input.mediaFilters)
+    mediaFilters: normalizeMediaFilters(input.mediaFilters),
+    ruleActions: normalizeAutomodRuleActions(input.ruleActions, input.autoEscalationEnabled)
   };
 
   const saved = await prisma.$transaction(async (tx) => {
