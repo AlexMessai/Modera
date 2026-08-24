@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "@/server/db/prisma";
+import { updateChatModerationSettings } from "./chat-moderation-settings-service";
 import {
+  DEFAULT_MODERATION_SETTINGS,
   DEFAULT_MEDIA_FILTERS,
   findEnabledMediaFilterRule,
   findTriggeredEscalationRule,
@@ -129,6 +131,42 @@ test("findEnabledMediaFilterRule returns the rule only when its type is enabled"
   assert.equal(findEnabledMediaFilterRule(rules, "AUDIO")?.type, "AUDIO");
   assert.equal(findEnabledMediaFilterRule(rules, "VOICE"), null);
   assert.equal(findEnabledMediaFilterRule(rules, "DOCUMENT"), null);
+});
+
+test("media filter allow/delete changes persist and are returned on the next read", async () => {
+  const telegramChatId = -1009000000703n;
+  const adminEmail = "media-filter-save-ci@example.com";
+  await prisma.chat.deleteMany({ where: { telegramChatId } });
+  await prisma.adminUser.deleteMany({ where: { email: adminEmail } });
+  const chat = await prisma.chat.create({ data: { telegramChatId, title: "Media filter save CI", type: "supergroup" } });
+  const admin = await prisma.adminUser.create({ data: { email: adminEmail, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" } });
+
+  try {
+    const saved = await updateChatModerationSettings({
+      chatId: chat.id,
+      actingAdminId: admin.id,
+      ...DEFAULT_MODERATION_SETTINGS,
+      mediaFilters: DEFAULT_MEDIA_FILTERS.map((rule) => rule.type === "PHOTO" ? { ...rule, enabled: true, deleteMessage: true } : rule)
+    });
+    assert.equal(saved?.mediaFilters.find((rule) => rule.type === "PHOTO")?.enabled, true);
+
+    const afterDelete = await resolveEffectiveModerationSettings(chat.id);
+    assert.equal(afterDelete.settings.mediaFilters.find((rule) => rule.type === "PHOTO")?.enabled, true);
+
+    await updateChatModerationSettings({
+      chatId: chat.id,
+      actingAdminId: admin.id,
+      ...afterDelete.settings,
+      mediaFilters: afterDelete.settings.mediaFilters.map((rule) => rule.type === "PHOTO" ? { ...rule, enabled: false, deleteMessage: false } : rule)
+    });
+    const afterAllow = await resolveEffectiveModerationSettings(chat.id);
+    const photo = afterAllow.settings.mediaFilters.find((rule) => rule.type === "PHOTO");
+    assert.equal(photo?.enabled, false);
+    assert.equal(photo?.deleteMessage, false);
+  } finally {
+    await prisma.chat.delete({ where: { id: chat.id } });
+    await prisma.adminUser.delete({ where: { id: admin.id } });
+  }
 });
 
 test("chat moderation always reads the chat's own settings, ignoring any GlobalModerationSettings row", async () => {
