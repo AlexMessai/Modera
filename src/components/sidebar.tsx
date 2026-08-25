@@ -81,24 +81,25 @@ export function Sidebar({
   // Setting state during render (not in an effect) is React's documented pattern for
   // this "adjust state when a derived value changes" case.
   const [rememberedChatId, setRememberedChatId] = useState<string | null>(activeChatId);
+
+  // Every connected chat is always listed in the sidebar; each expands independently
+  // (approved chat-first design) rather than only showing tabs for the one chat you
+  // happen to be viewing. Navigating to a chat auto-expands it here the first time --
+  // but only that once, on the transition into it, so the admin can still manually
+  // collapse the chat they're currently viewing without it snapping back open on the
+  // next render (it would, if this re-added shownChatId unconditionally every render
+  // whenever it's missing from the set).
+  const [openChatIds, setOpenChatIds] = useState<Set<string>>(() => new Set(activeChatId ? [activeChatId] : []));
+
   if (activeChatId && activeChatId !== rememberedChatId) {
     setRememberedChatId(activeChatId);
+    if (!openChatIds.has(activeChatId)) setOpenChatIds(new Set(openChatIds).add(activeChatId));
   } else if (!activeChatId && onTopNavPage && rememberedChatId !== null) {
     setRememberedChatId(null);
   }
 
   const shownChatId = activeChatId ?? rememberedChatId;
   const activeTab = activeChatId ? (searchParams.get("tab") ?? "overview") : null;
-
-  // Every connected chat is always listed in the sidebar; each expands independently
-  // (approved chat-first design) rather than only showing tabs for the one chat you
-  // happen to be viewing. Opening a chat via a direct link/navigation auto-expands it
-  // here without collapsing whichever other chats the admin already had open -- same
-  // render-time "adjust state when a derived value changes" pattern as rememberedChatId above.
-  const [openChatIds, setOpenChatIds] = useState<Set<string>>(() => new Set(activeChatId ? [activeChatId] : []));
-  if (shownChatId && !openChatIds.has(shownChatId)) {
-    setOpenChatIds(new Set(openChatIds).add(shownChatId));
-  }
 
   function toggleChat(chatId: string) {
     setOpenChatIds((current) => {
