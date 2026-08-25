@@ -24,6 +24,10 @@
 .formatted-textarea-editor tg-spoiler:hover { color: #fff; }
 .formatted-textarea-editor a { color: var(--accent); text-decoration: underline; }
 .formatted-textarea.is-disabled { background: #f7f8fa; opacity: .72; }
+.formatted-textarea-emoji { position: relative; }
+.formatted-textarea-emoji-popover { position: absolute; top: 100%; left: 0; z-index: 20; display: grid; grid-template-columns: repeat(8, 28px); gap: 2px; padding: 6px; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(15, 23, 42, .12); }
+.formatted-textarea-emoji-popover button { width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; font-size: 15px; line-height: 1; display: grid; place-items: center; cursor: pointer; }
+.formatted-textarea-emoji-popover button:hover { background: var(--accent-soft); }
 .new-user-settings { gap: 12px; }
 .new-user-inline-settings { display: grid; gap: 14px; margin-top: -4px; padding: 16px; border: 1px solid var(--line); border-top-color: #cbd8ef; border-radius: 12px; background: #fbfcff; }
 .new-user-advanced { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fbfbfc; }

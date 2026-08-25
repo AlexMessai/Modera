@@ -5,7 +5,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Braces, Code2, EyeOff, Link2, MessageSquareQuote, Smile, SquareCode } from "lucide-react";
-import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -40,6 +40,12 @@ const TelegramSpoiler = Mark.create({
     return { toggleTelegramSpoiler: () => ({ commands }) => commands.toggleMark(this.name) };
   }
 });
+
+const EMOJI_PALETTE = [
+  "🙂", "😀", "😁", "😂", "😉", "😍", "😎", "🤔", "😐", "😢", "😡", "😱",
+  "👍", "👎", "👌", "🙏", "👋", "💪", "🎉", "🔥", "✅", "❌", "⚠️", "❗",
+  "⛔", "🚫", "🔇", "🔒", "⏳", "📌", "💬", "❤️"
+];
 
 const EMPTY_TOOLBAR_STATE = {
   bold: false,
@@ -145,8 +151,12 @@ export function FormattedTextarea({
   autoFocus,
   "aria-label": ariaLabel
 }: Props) {
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   const lastEmittedRef = useRef(value);
+  /** Tiptap's `mount()` fires a spurious empty `update` event on its own timeline before our initial-content effect runs (see effect below) -- onUpdate must ignore it or it clobbers the caller's state with "". Set once the initial content effect has run for this editor instance. */
+  const initializedRef = useRef(false);
   onChangeRef.current = onChange;
 
   const extensions = useMemo(() => [
@@ -186,13 +196,11 @@ export function FormattedTextarea({
         }
       }
     },
-    onCreate: ({ editor: currentEditor }) => {
-      currentEditor.view.dispatch(currentEditor.state.tr.setStoredMarks([]));
-    },
     onFocus: ({ editor: currentEditor }) => {
       if (currentEditor.isEmpty) currentEditor.view.dispatch(currentEditor.state.tr.setStoredMarks([]));
     },
     onUpdate: ({ editor: currentEditor }) => {
+      if (!initializedRef.current) return;
       if (maxLength != null && currentEditor.getText({ blockSeparator: "\n" }).length > maxLength) {
         currentEditor.commands.undo();
         return;
@@ -225,6 +233,15 @@ export function FormattedTextarea({
   }, [disabled, editor]);
 
   useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const closeOnOutsideClick = (event: globalThis.MouseEvent) => {
+      if (!(event.target instanceof Node) || !emojiPickerRef.current?.contains(event.target)) setEmojiPickerOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [emojiPickerOpen]);
+
+  useEffect(() => {
     if (!editor || value === lastEmittedRef.current) return;
     const next = toEditorHtml(value);
     const current = sanitizeTelegramHtml(editor.getHTML());
@@ -241,6 +258,7 @@ export function FormattedTextarea({
     editor.commands.setContent(next, { emitUpdate: false });
     editor.view.dispatch(editor.state.tr.setStoredMarks([]));
     lastEmittedRef.current = value;
+    initializedRef.current = true;
     if (autoFocus) editor.commands.focus("end");
   // Initial content belongs to the editor lifecycle; later updates are synchronized above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,7 +302,25 @@ export function FormattedTextarea({
       {button("code", "Код", <Code2 size={14} />, () => editor?.chain().focus().toggleCode().run())}
       {button("pre", "Блок кода", <SquareCode size={14} />, () => editor?.chain().focus().toggleCodeBlock().run())}
       {button("spoiler", "Спойлер", <EyeOff size={14} />, () => editor?.chain().focus().toggleTelegramSpoiler().run())}
-      <button type="button" title="Вставить эмодзи" aria-label="Вставить эмодзи" disabled={disabled || !editor} onMouseDown={preserveSelection} onClick={() => editor?.chain().focus().insertContent("🙂").run()}><Smile size={14} /></button>
+      <div className="formatted-textarea-emoji" ref={emojiPickerRef}>
+        <button type="button" title="Вставить эмодзи" aria-label="Вставить эмодзи" aria-expanded={emojiPickerOpen} disabled={disabled || !editor} onMouseDown={preserveSelection} onClick={() => setEmojiPickerOpen((open) => !open)}><Smile size={14} /></button>
+        {emojiPickerOpen ? (
+          <div className="formatted-textarea-emoji-popover" role="menu" aria-label="Выбор эмодзи">
+            {EMOJI_PALETTE.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                role="menuitem"
+                onMouseDown={preserveSelection}
+                onClick={() => {
+                  editor?.chain().focus().insertContent(emoji).run();
+                  setEmojiPickerOpen(false);
+                }}
+              >{emoji}</button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       {variables.length ? <button type="button" title={`Вставить ${variables[0]}`} aria-label="Вставить переменную" disabled={disabled || !editor} onMouseDown={preserveSelection} onClick={() => editor?.chain().focus().insertContent(variables[0]!).run()}><Braces size={14} /></button> : null}
     </div>
     <EditorContent editor={editor} className="formatted-textarea-editor" style={{ minHeight: `${Math.max(rows, 2) * 22 + 22}px` }} />
