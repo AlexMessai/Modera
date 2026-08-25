@@ -1047,6 +1047,53 @@ async function processSettingsCommand(input: {
   return true;
 }
 
+const MSG_COMMAND_PATTERN = /^\/msg(?:@\w+)?(?:\s+([\s\S]+))?$/i;
+
+/**
+ * /msg <текст> — posts a message to the chat as the bot itself, e.g. for
+ * announcements that shouldn't look like they came from an admin's own
+ * account. Gated the same way /settings is (automod.manage) rather than a
+ * new permission, since "can change what the bot does/says" already covers
+ * this. Supports the same HTML formatting as custom commands/auto-responses.
+ */
+async function processMsgCommand(input: {
+  chatId: string;
+  telegramChatId: number;
+  message: TelegramMessage;
+  client: ReturnType<typeof getTelegramClient>;
+}): Promise<boolean> {
+  const text = input.message.text?.trim() ?? "";
+  const from = input.message.from;
+  if (!from || from.is_bot) return false;
+  const match = MSG_COMMAND_PATTERN.exec(text);
+  if (!match) return false;
+
+  await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
+
+  const reply = (replyText: string) =>
+    input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
+
+  const allowed = await hasChatPermission({
+    chatId: input.chatId,
+    chatTelegramId: input.telegramChatId,
+    telegramUserId: from.id,
+    permission: "automod.manage"
+  });
+  if (!allowed) {
+    await reply("❌ У вас нет прав отправлять сообщения от имени бота в этом чате.");
+    return true;
+  }
+
+  const messageText = match[1]?.trim();
+  if (!messageText) {
+    await reply("Укажите текст сообщения: /msg Текст сообщения");
+    return true;
+  }
+
+  await input.client.sendMessage({ chatId: input.telegramChatId, ...parseTelegramHtml(messageText) }).catch(() => undefined);
+  return true;
+}
+
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
@@ -1568,6 +1615,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             telegramChatId: chat.id,
             message: update.message,
             client
+          })) || (await processMsgCommand({
+            chatId: syncedChat.id,
+            telegramChatId: chat.id,
+            message: update.message,
+            client
           })) || (await processCustomCommand({
             chatId: syncedChat.id,
             telegramChatId: chat.id,
@@ -1637,7 +1689,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       protection.outcome !== "blocked" &&
       syncedMember.membership.internalRole !== TRUSTED_INTERNAL_ROLE
     ) {
-      await evaluateRaidOnJoin({ chatId: syncedChat.id, at: joinedAt }).catch(() => undefined);
+      await evaluateRaidOnJoin({ chatId: syncedChat.id, telegramChatId: chat.id, at: joinedAt }).catch(() => undefined);
       await maybeIssueCaptchaChallenge({
         chatId: syncedChat.id,
         chatType: chat.type,
