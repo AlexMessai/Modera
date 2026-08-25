@@ -82,13 +82,20 @@ export async function issueCaptchaChallenge(input: {
     });
     if (sent.ephemeral_message_id === undefined) {
       // Telegram is supposed to always set this for a receiver_user_id send
-      // -- if it doesn't, the callback_query handler has nothing to delete
-      // later, so this is worth knowing about rather than failing silently.
+      // -- if it doesn't, verification has nothing to delete later, so this
+      // is worth knowing about rather than failing silently.
       console.warn("[captcha] challenge sent without ephemeral_message_id", {
         chatId: input.chatId,
         telegramUserId: input.telegramUserId.toString(),
         messageId: sent.message_id
       });
+    } else {
+      // Persisted rather than re-read off callback_query.message later --
+      // that field isn't reliably echoed back on the callback update.
+      await prisma.chatMember.update({
+        where: { id: input.membershipId },
+        data: { captchaChallengeEphemeralMessageId: sent.ephemeral_message_id }
+      }).catch(() => undefined);
     }
   } catch (error) {
     console.warn("[captcha] failed to send challenge message", {
@@ -199,7 +206,13 @@ export async function verifyCaptchaChallenge(input: {
     await prisma.$transaction([
       prisma.chatMember.update({
         where: { id: membership.id },
-        data: { status: keepMuted ? "RESTRICTED" : "MEMBER", punishmentState: keepMuted ? "MUTED" : null, punishmentExpiresAt: keepMuted ? muteUntil : null, lastModerationAt: now }
+        data: {
+          status: keepMuted ? "RESTRICTED" : "MEMBER",
+          punishmentState: keepMuted ? "MUTED" : null,
+          punishmentExpiresAt: keepMuted ? muteUntil : null,
+          lastModerationAt: now,
+          captchaChallengeEphemeralMessageId: null
+        }
       }),
       prisma.auditLog.create({
         data: {
@@ -221,7 +234,11 @@ export async function verifyCaptchaChallenge(input: {
   }
 
   const { settings } = await resolveEffectiveCaptchaSettings(input.chatId);
-  return { outcome: "verified" as const, deleteAfterVerification: settings.deleteAfterVerification };
+  return {
+    outcome: "verified" as const,
+    deleteAfterVerification: settings.deleteAfterVerification,
+    ephemeralMessageId: membership.captchaChallengeEphemeralMessageId
+  };
 }
 
 // Runs once a day (the cron's own schedule, not a per-member duration -- see

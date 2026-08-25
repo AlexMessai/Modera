@@ -212,6 +212,13 @@ model ChatMember {
   selfUnmuteCount                Int               @default(0)
   punishmentState                String?
   punishmentExpiresAt            DateTime?         @db.Timestamptz(3)
+  // Captcha challenge is sent as an ephemeral message (Bot API 10.2,
+  // receiver_user_id) -- the real id is only guaranteed to exist in the
+  // sendMessage response. Persisted here at send time and read back at
+  // verify time instead of trusting callback_query.message to carry it,
+  // since deletion silently failed in production when it was read straight
+  // off the callback update.
+  captchaChallengeEphemeralMessageId Int?
   // Phase 1 (BOT_PRODUCT_SPEC §33-35): per-chat permission role, additive —
   // not yet the enforcement source of truth, see chat-role-service.ts.
   chatRoleId                     String?           @db.Uuid

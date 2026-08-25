@@ -2,7 +2,7 @@ import { prisma } from "@/server/db/prisma";
 import { notifyPunishmentAppealOption } from "@/server/services/appeal-notification-service";
 import {
   findTriggeredEscalationRule,
-  lowestEscalationThreshold,
+  nextEscalationThreshold,
   resolveEffectiveModerationSettings,
   type AutomodPunishmentAction,
   type ModerationSettingsValue
@@ -76,22 +76,31 @@ export function warningCutoff(now: Date, warningExpiryDays: number) {
   return new Date(now.getTime() - warningExpiryDays * 24 * 60 * 60 * 1000);
 }
 
-/** Active-warning count + the mute threshold, for a chat reply after /unwarn. */
+/** Active-warning count + the next unreached mute/ban threshold, for a chat reply after /unwarn. */
 export async function describeWarningStanding(input: { chatId: string; affectedUserId: string }) {
-  const resolved = await resolveEffectiveModerationSettings(input.chatId);
+  const [resolved, member] = await Promise.all([
+    resolveEffectiveModerationSettings(input.chatId),
+    prisma.chatMember.findFirst({
+      where: { chatId: input.chatId, userId: input.affectedUserId },
+      select: { lastAutoEscalationWarningCount: true }
+    })
+  ]);
   const activeWarningCount = await countActiveWarnings({
     chatId: input.chatId,
     affectedUserId: input.affectedUserId,
     warningExpiryDays: resolved.settings.warningExpiryDays
   });
-  return { activeWarningCount, warnsLimit: lowestEscalationThreshold(resolved.settings.escalationRules) };
+  return {
+    activeWarningCount,
+    warnsLimit: nextEscalationThreshold(resolved.settings.escalationRules, member?.lastAutoEscalationWarningCount ?? 0)
+  };
 }
 
 /** Backs `/warns` — active-count + a short recent history for one member in one chat. */
 export async function listWarningsForMember(input: { chatId: string; telegramUserId: number }) {
   const member = await prisma.chatMember.findFirst({
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
-    select: { userId: true, warningCount: true }
+    select: { userId: true, warningCount: true, lastAutoEscalationWarningCount: true }
   });
   if (!member) return null;
 
@@ -112,7 +121,7 @@ export async function listWarningsForMember(input: { chatId: string; telegramUse
 
   return {
     activeWarningCount,
-    warnsLimit: lowestEscalationThreshold(resolved.settings.escalationRules),
+    warnsLimit: nextEscalationThreshold(resolved.settings.escalationRules, member.lastAutoEscalationWarningCount),
     totalWarningCount: member.warningCount,
     recent
   };
@@ -405,7 +414,7 @@ export async function escalateAfterManualWarning(input: {
       user: { select: { id: true, isBot: true } }
     }
   });
-  if (!member) return { activeWarningCount: 0, warnsLimit: lowestEscalationThreshold(policy.escalationRules), escalated: false };
+  if (!member) return { activeWarningCount: 0, warnsLimit: nextEscalationThreshold(policy.escalationRules, 0), escalated: false };
 
   const now = new Date();
   const cutoff = warningCutoff(now, policy.warningExpiryDays);
@@ -418,7 +427,7 @@ export async function escalateAfterManualWarning(input: {
 
   const idle: ManualWarningEscalation = {
     activeWarningCount,
-    warnsLimit: lowestEscalationThreshold(policy.escalationRules),
+    warnsLimit: nextEscalationThreshold(policy.escalationRules, member.lastAutoEscalationWarningCount),
     escalated: false
   };
   if (!policy.autoEscalationEnabled || member.user.isBot || isProtectedMemberStatus(member.status)) return idle;
@@ -450,7 +459,7 @@ export async function escalateAfterManualWarning(input: {
 
   return {
     activeWarningCount,
-    warnsLimit: lowestEscalationThreshold(policy.escalationRules),
+    warnsLimit: nextEscalationThreshold(policy.escalationRules, escalation.escalated ? (escalation.threshold ?? escalationMarker) : escalationMarker),
     escalated: escalation.escalated,
     action: escalation.escalated ? escalation.action : undefined,
     threshold: escalation.escalated ? escalation.threshold : undefined,

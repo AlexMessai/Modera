@@ -157,6 +157,20 @@ export function lowestEscalationThreshold(rules: EscalationRuleValue[]): number 
 }
 
 /**
+ * The threshold a member is actually working towards next, given the levels
+ * they've already cleared (`escalationMarker`, i.e. `lastAutoEscalationWarningCount`).
+ * `%warns_limit%` in chat replies must use this instead of `lowestEscalationThreshold`
+ * once a member has crossed the first level — otherwise the placeholder keeps
+ * showing the already-cleared threshold (e.g. still "3" after a mute at 3
+ * warnings already fired) instead of advancing to the next one (6).
+ */
+export function nextEscalationThreshold(rules: EscalationRuleValue[], escalationMarker: number): number | null {
+  const upcoming = rules.filter((rule) => rule.thresholdWarnings > escalationMarker);
+  if (upcoming.length === 0) return null;
+  return upcoming.reduce((min, rule) => Math.min(min, rule.thresholdWarnings), Infinity);
+}
+
+/**
  * Highest-threshold rule that's been crossed but not yet fired (marker below
  * its threshold) — evaluated by thresholdWarnings, not by `order` (a purely
  * cosmetic list-position field), so the *strongest* applicable action always

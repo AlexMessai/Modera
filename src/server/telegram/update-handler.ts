@@ -1697,8 +1697,11 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         }).catch(() => undefined);
         // The captcha challenge is ephemeral (message_id is always 0 for
         // those) -- deleteMessage won't find it, deleteEphemeralMessage will.
-        const ephemeralMessageId = update.callback_query.message.ephemeral_message_id;
-        if (result.deleteAfterVerification && ephemeralMessageId !== undefined) {
+        // The id is read back from what issueCaptchaChallenge persisted at
+        // send time, not from this callback update -- Telegram does not
+        // reliably echo ephemeral_message_id back on callback_query.message.
+        const ephemeralMessageId = result.ephemeralMessageId;
+        if (result.deleteAfterVerification && ephemeralMessageId !== null) {
           await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch((error) => {
             console.warn("[captcha] failed to delete ephemeral challenge after verification", {
               chatId: chat.id,
@@ -1707,7 +1710,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
             });
           });
         } else if (result.deleteAfterVerification) {
-          console.warn("[captcha] verified callback had no ephemeral_message_id to delete", {
+          console.warn("[captcha] verified member had no stored ephemeral_message_id to delete", {
             chatId: chat.id,
             messageId: update.callback_query.message.message_id
           });
