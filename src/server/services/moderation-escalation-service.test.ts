@@ -18,7 +18,6 @@ async function fixture(suffix: number, status: "MEMBER" | "ADMINISTRATOR" = "MEM
       type: "supergroup",
       moderationSettings: {
         create: {
-          useGlobalProfile: false,
           autoEscalationEnabled: true,
           escalationRules: [
             { order: 1, thresholdWarnings: 5, action: "MUTE", durationMinutes: 10 },
@@ -363,7 +362,7 @@ test("a warning with no escalation rules configured logs a diagnostic entry inst
       telegramChatId,
       title: "Escalation CI no-rules",
       type: "supergroup",
-      moderationSettings: { create: { useGlobalProfile: false, autoEscalationEnabled: true, escalationRules: [] } }
+      moderationSettings: { create: { autoEscalationEnabled: true, escalationRules: [] } }
     }
   });
   const user = await prisma.telegramUser.create({ data: { telegramUserId, firstName: "CI", displayName: "CI No Rules" } });

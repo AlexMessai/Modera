@@ -339,7 +339,6 @@ export async function resolveEffectiveManualModerationSettings(chatId: string) {
   const settings = await overlayGlobalManualModerationText(serializeManualModerationSettings(local ?? DEFAULT_MANUAL_MODERATION_SETTINGS));
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings
   };
 }

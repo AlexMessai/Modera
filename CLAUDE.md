@@ -54,12 +54,26 @@ services are wired in from here, not from the admin API routes.
   assign it to a variable before the `try` — otherwise a missing/misconfigured token skips the
   intended graceful-degradation path entirely (this has caused real, silent bugs in this repo).
 - `src/server/services/*` — all business logic. Two recurring patterns:
-  - **Global + per-chat settings with inheritance**: `Global<X>Settings` / `Chat<X>Settings` tables,
-    a `useGlobalProfile` boolean, and a `resolveEffective<X>Settings(chatId)` helper that returns
-    `{ source: "CHAT" | "GLOBAL", settings }`. See `captcha-settings-service.ts`,
-    `chat-moderation-settings-service.ts`, `manual-moderation-settings-service.ts` for the canonical
-    shape — copy one of these exactly when adding a new configurable feature rather than inventing a
-    new shape.
+  - **Per-chat settings, chat-only** (the shape every feature added since the 2026-08-20 audit
+    actually uses): a single `Chat<X>Settings` table plus a `resolveEffective<X>Settings(chatId)`
+    helper that reads only that chat's row and falls back to an in-code `DEFAULT_<X>_SETTINGS`
+    constant when no row exists — returns `{ source: "CHAT", settings }`. See
+    `captcha-settings-service.ts`, `chat-moderation-settings-service.ts`,
+    `manual-moderation-settings-service.ts` for the canonical shape — copy one of these exactly
+    when adding a new configurable feature. **There is no live global fallback for these settings**;
+    an earlier `useGlobalProfile` boolean + `Global<X>Settings` inheritance design was fully
+    abandoned in practice (every `resolveEffective*` hardcoded the toggle off) and the dead
+    column/tables were removed in migration `202608260900_drop_dead_global_settings` — do not
+    reintroduce that shape without actually wiring the global read path this time.
+  - **Global-only text overlay, for a handful of message templates**: `escalationMuteMessageTemplate`/
+    `escalationBanMessageTemplate` on `GlobalModerationSettings`, the ten command templates on
+    `GlobalManualModerationSettings`, and the four templates on `GlobalAppealSettings` are the
+    exception — these specific fields are unconditionally read from one global singleton row and
+    override whatever the chat's own settings row stores, via `overlayGlobalModerationText`/
+    `overlayGlobalManualModerationText`/`appeal-notification-service.ts`. This is not a toggle the
+    admin chooses per chat; it's a "these particular strings are managed centrally" carve-out. Don't
+    assume a `Global<X>Settings` table implies live inheritance — check whether an overlay function
+    actually reads it before relying on it.
   - **Moderation actions funnel through `moderation-service.ts`**: `executeModerationAction` (admin),
     `executeAutomatedModerationAction` (automod escalation), `executeExpiredMuteRelease` (cron),
     `executeSelfServiceUnmute` (self-unmute) all delegate to the private `executeTelegramBackedAction`,

@@ -39,13 +39,10 @@ async function setup() {
     data: { chatId: chat.id, userId: reported.id, status: "MEMBER" }
   });
   await prisma.chatMember.create({ data: { chatId: chat.id, userId: reporter.id, status: "MEMBER" } });
-  // Explicit chat-level row rather than relying on the GLOBAL fallback --
-  // report-settings-service.test.ts mutates the shared GlobalReportSettings
-  // singleton, and node:test runs different test files concurrently against
-  // the same real Postgres, so a test here that implicitly depended on the
-  // global default could flake depending on that file's timing.
+  // Explicit chat-level row rather than relying on DEFAULT_REPORT_SETTINGS --
+  // makes the fixture's intent explicit regardless of what the app default is.
   await prisma.chatReportSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, enabled: true, muteDurationMinutes: DEFAULT_REPORT_SETTINGS.muteDurationMinutes }
+    data: { chatId: chat.id, enabled: true, muteDurationMinutes: DEFAULT_REPORT_SETTINGS.muteDurationMinutes }
   });
 
   return { chat, reporter, reported, admin, reportedMember };

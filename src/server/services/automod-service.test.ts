@@ -209,11 +209,10 @@ test("same Telegram message revision is processed once and a later edit is a new
       type: "supergroup"
     }
   });
-  // This test is about revision/dedup tracking, not rule matching — opt out
-  // of the global profile explicitly so it stays "DISABLED" regardless of
-  // whatever protective defaults the global profile carries.
+  // This test is about revision/dedup tracking, not rule matching — an
+  // explicit (all-defaults) row keeps every rule "DISABLED".
   await prisma.chatModerationSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false }
+    data: { chatId: chat.id }
   });
   const user = await prisma.telegramUser.create({
     data: {
@@ -314,7 +313,6 @@ test("mediaFilters (Filters module) enables automod for an enabled type", async 
   await prisma.chatModerationSettings.create({
     data: {
       chatId: chat.id,
-      useGlobalProfile: false,
       mediaFilters: [{ type: "PHOTO", enabled: true, warnOnTrigger: true, notifyEnabled: true, notifyText: "🚫" }]
     }
   });
@@ -353,7 +351,6 @@ test("an enabled media filter can trigger without deleting the message", async (
   await prisma.chatModerationSettings.create({
     data: {
       chatId: chat.id,
-      useGlobalProfile: false,
       mediaFilters: [{ type: "PHOTO", enabled: true, deleteMessage: false, punishmentEnabled: false, punishmentAction: "WARN", muteDurationMinutes: 60, warnOnTrigger: false, notifyEnabled: false, notifyText: "" }]
     }
   });
@@ -393,7 +390,6 @@ test("a disabled mediaFilters entry does not trigger automod for that type", asy
   await prisma.chatModerationSettings.create({
     data: {
       chatId: chat.id,
-      useGlobalProfile: false,
       // Some other rule must stay enabled so automod isn't skipped
       // altogether (rulesEnabled) -- massMentionsEnabled here never matches
       // this message, so it can't be what makes the result CLEAN.

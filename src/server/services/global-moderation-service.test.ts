@@ -233,7 +233,6 @@ test("chat moderation always reads the chat's own settings, ignoring any GlobalM
 
     const resolved = await resolveEffectiveModerationSettings(chat.id);
     assert.equal(resolved.source, "CHAT");
-    assert.equal(resolved.useGlobalProfile, false);
     assert.equal(resolved.settings.linkProtectionMode, "ALLOW_ALL");
     assert.equal(resolved.settings.spamEnabled, false);
   } finally {
@@ -261,7 +260,6 @@ test("a chat with no ChatModerationSettings row at all falls back to app default
     // fall back to DEFAULT_MODERATION_SETTINGS, never the global profile.
     const resolved = await resolveEffectiveModerationSettings(chat.id);
     assert.equal(resolved.source, "CHAT");
-    assert.equal(resolved.useGlobalProfile, false);
     assert.equal(resolved.settings.spamEnabled, false);
   } finally {
     await prisma.chat.delete({ where: { id: chat.id } });

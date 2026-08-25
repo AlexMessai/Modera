@@ -2,34 +2,14 @@ import { z } from "zod";
 import { requireAdminApi, requireGlobalAdminAccess } from "@/server/auth/guards";
 import { canManageChatSettings } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
-import { MEDIA_FILTER_TYPES } from "@/server/services/global-moderation-service";
 import { getSystemMessages, updateSystemMessages } from "@/server/services/system-messages-service";
 
 export const dynamic = "force-dynamic";
 
-const mediaFilterRuleSchema = z.object({
-  type: z.enum(MEDIA_FILTER_TYPES),
-  enabled: z.boolean(),
-  deleteMessage: z.boolean().default(true),
-  punishmentEnabled: z.boolean().default(false),
-  punishmentAction: z.enum(["WARN", "MUTE"]).default("WARN"),
-  muteDurationMinutes: z.number().int().min(15).max(43200).default(60),
-  warnOnTrigger: z.boolean(),
-  notifyEnabled: z.boolean(),
-  notifyText: z.string().max(1000)
-});
-
 const settingsSchema = z.object({
   automod: z.object({
     escalationMuteMessageTemplate: z.string().min(1).max(1000),
-    escalationBanMessageTemplate: z.string().min(1).max(1000),
-    mediaFilters: z.array(mediaFilterRuleSchema).max(MEDIA_FILTER_TYPES.length)
-  }),
-  captcha: z.object({
-    challengeMessageTemplate: z.string().min(1).max(1000)
-  }),
-  content: z.object({
-    welcomeMessageTemplate: z.string().min(1).max(2000)
+    escalationBanMessageTemplate: z.string().min(1).max(1000)
   }),
   appeals: z.object({
     appealSubmittedMessageTemplate: z.string().min(1).max(1000),

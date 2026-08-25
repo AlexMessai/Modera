@@ -136,7 +136,6 @@ export async function resolveEffectiveContentSettings(chatId: string) {
   const settings = serializeContentSettings(local ?? DEFAULT_CONTENT_SETTINGS);
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings
   };
 }

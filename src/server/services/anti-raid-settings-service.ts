@@ -101,7 +101,6 @@ export async function resolveEffectiveAntiRaidSettings(chatId: string) {
   const local = await prisma.chatAntiRaidSettings.findUnique({ where: { chatId } });
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings: serializeAntiRaidSettings(local ?? DEFAULT_ANTI_RAID_SETTINGS)
   };
 }

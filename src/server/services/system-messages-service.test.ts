@@ -11,15 +11,12 @@ async function cleanup() {
 }
 
 test("getSystemMessages falls back to app defaults when no Global*Settings rows exist", async () => {
-  // GlobalModerationSettings/GlobalManualModerationSettings/GlobalCaptchaSettings/
-  // GlobalContentSettings are shared singleton rows other test files also touch --
-  // this only asserts the shape, not exact values, to stay independent of that.
+  // GlobalModerationSettings/GlobalManualModerationSettings are shared
+  // singleton rows other test files also touch -- this only asserts the
+  // shape, not exact values, to stay independent of that.
   const messages = await getSystemMessages();
   assert.equal(typeof messages.automod.escalationMuteMessageTemplate, "string");
   assert.equal(typeof messages.automod.escalationBanMessageTemplate, "string");
-  assert.equal(messages.automod.mediaFilters.length, 12);
-  assert.equal(typeof messages.captcha.challengeMessageTemplate, "string");
-  assert.equal(typeof messages.content.welcomeMessageTemplate, "string");
   assert.equal(typeof messages.appeals.appealSubmittedMessageTemplate, "string");
 });
 
@@ -36,25 +33,17 @@ test("updateSystemMessages persists the non-moderation message domains and reads
       actingAdminId: admin.id,
       automod: {
         escalationMuteMessageTemplate: "MUTE %target%",
-        escalationBanMessageTemplate: "BAN %target%",
-        mediaFilters: before.automod.mediaFilters.map((rule) => (rule.type === "PHOTO" ? { ...rule, notifyText: "no photos" } : rule))
+        escalationBanMessageTemplate: "BAN %target%"
       },
-      captcha: { challengeMessageTemplate: "prove you're human" },
-      content: { welcomeMessageTemplate: "hi {name}" },
       appeals: { ...before.appeals, appealSubmittedMessageTemplate: "Appeal received" }
     });
 
     assert.equal(saved.automod.escalationMuteMessageTemplate, "MUTE %target%");
     assert.equal(saved.automod.escalationBanMessageTemplate, "BAN %target%");
-    assert.equal(saved.automod.mediaFilters.find((rule) => rule.type === "PHOTO")?.notifyText, "no photos");
-    assert.equal(saved.captcha.challengeMessageTemplate, "prove you're human");
-    assert.equal(saved.content.welcomeMessageTemplate, "hi {name}");
     assert.equal(saved.appeals.appealSubmittedMessageTemplate, "Appeal received");
 
     const reloaded = await getSystemMessages();
     assert.equal(reloaded.automod.escalationMuteMessageTemplate, "MUTE %target%");
-    assert.equal(reloaded.captcha.challengeMessageTemplate, "prove you're human");
-    assert.equal(reloaded.content.welcomeMessageTemplate, "hi {name}");
     assert.equal(reloaded.appeals.appealSubmittedMessageTemplate, "Appeal received");
   } finally {
     await updateSystemMessages({ actingAdminId: admin.id, ...before });

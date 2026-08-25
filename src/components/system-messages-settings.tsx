@@ -4,26 +4,11 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { FormattedTextarea } from "@/components/formatted-textarea";
 
-export type MediaFilterType =
-  | "PHOTO" | "VIDEO" | "ANIMATION" | "VOICE" | "AUDIO" | "VIDEO_NOTE" | "DICE"
-  | "DOCUMENT" | "STICKER" | "POLL" | "LOCATION" | "CONTACT";
-
-export type MediaFilterRuleValue = {
-  type: MediaFilterType;
-  enabled: boolean;
-  warnOnTrigger: boolean;
-  notifyEnabled: boolean;
-  notifyText: string;
-};
-
 export type SystemMessagesValue = {
   automod: {
     escalationMuteMessageTemplate: string;
     escalationBanMessageTemplate: string;
-    mediaFilters: MediaFilterRuleValue[];
   };
-  captcha: { challengeMessageTemplate: string };
-  content: { welcomeMessageTemplate: string };
   appeals: {
     appealSubmittedMessageTemplate: string;
     appealNotifyAdminsMessageTemplate: string;
@@ -80,7 +65,7 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
       <div className="panel-header">
         <div>
           <h2>Другие системные сообщения</h2>
-          <p>Automod, CAPTCHA, апелляции и приветствие. Сообщения наказаний настраиваются выше, в едином центре.</p>
+          <p>Automod и апелляции. Сообщения наказаний настраиваются выше, в едином центре. Текст капчи и приветствия — только на уровне конкретного чата, в его настройках.</p>
         </div>
       </div>
 
@@ -95,15 +80,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
           <span>Текст при автоматическом ban</span>
           <FormattedTextarea rows={2} value={messages.automod.escalationBanMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAutomodField("escalationBanMessageTemplate", value)} />
           <small>Доступны %target%, %warns%, %warns_limit%.</small>
-        </label>
-      </div>
-
-      <div className="settings-section">
-        <span className="settings-section-title">Капча</span>
-        <label className="automod-field">
-          <span>Текст сообщения с капчой</span>
-          <FormattedTextarea rows={3} value={messages.captcha.challengeMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setMessages((current) => ({ ...current, captcha: { challengeMessageTemplate: value } }))} />
-          <small>Видит только сам новый участник (ephemeral). Без плейсхолдеров, текст статичный.</small>
         </label>
       </div>
 
@@ -130,15 +106,6 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
           <small>Доступны %chat%, %comment%.</small>
         </label>
         <small className="hint-note">Включение апелляций и уведомления вокруг них настраиваются по каждому чату отдельно — вкладка «Апелляции» в настройках чата.</small>
-      </div>
-
-      <div className="settings-section">
-        <span className="settings-section-title">Приветствие</span>
-        <label className="automod-field">
-          <span>Текст приветствия новых участников</span>
-          <FormattedTextarea rows={3} maxLength={2000} value={messages.content.welcomeMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setMessages((current) => ({ ...current, content: { welcomeMessageTemplate: value } }))} />
-          <small>Переменные: {"{name}"}, {"{username}"}, {"{group}"}, {"{member_count}"}.</small>
-        </label>
       </div>
 
       {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}

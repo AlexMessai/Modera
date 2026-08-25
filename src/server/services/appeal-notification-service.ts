@@ -31,8 +31,7 @@ const GLOBAL_APPEAL_MESSAGES_ID = "global";
 // The three appeal-flow texts that used to be inline string literals here
 // and in update-handler.ts -- moved into the same editable-template system
 // every other moderation text already uses (see system-messages-service.ts /
-// system-messages-settings.tsx). Global-only, same as
-// GlobalCaptchaSettings.challengeMessageTemplate -- no per-chat override.
+// system-messages-settings.tsx). Global-only, no per-chat override.
 export type AppealMessagesValue = {
   appealSubmittedMessageTemplate: string;
   appealNotifyAdminsMessageTemplate: string;

@@ -58,7 +58,7 @@ test("renderSettingsMenu: toggling flood persists to the chat's own profile and 
   // shared singleton other test files also touch, so the "before" state here
   // must not depend on whatever the global default happens to be right now.
   await prisma.chatModerationSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, spamEnabled: false, spamMaxMessages: 5, spamWindowSeconds: 10 }
+    data: { chatId: chat.id, spamEnabled: false, spamMaxMessages: 5, spamWindowSeconds: 10 }
   });
 
   try {
@@ -207,7 +207,7 @@ test("renderSettingsMenu: Moderation menu, warnings expiry stepper persists to t
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
   await prisma.chatModerationSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, warningExpiryDays: 0 }
+    data: { chatId: chat.id, warningExpiryDays: 0 }
   });
 
   try {
@@ -256,7 +256,6 @@ test("renderSettingsMenu: Moderation menu, punishment toggles persist and the es
   await prisma.chatModerationSettings.create({
     data: {
       chatId: chat.id,
-      useGlobalProfile: false,
       autoEscalationEnabled: false,
       announceEscalationEnabled: false,
       escalationRules: [{ order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 }]
@@ -299,7 +298,7 @@ test("renderSettingsMenu: Reports section, toggle and duration stepper persist t
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
   await prisma.chatReportSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, enabled: true, muteDurationMinutes: 60 }
+    data: { chatId: chat.id, enabled: true, muteDurationMinutes: 60 }
   });
 
   try {
@@ -342,7 +341,6 @@ test("renderSettingsMenu: Reports section, toggle and duration stepper persist t
     const stored = await prisma.chatReportSettings.findUnique({ where: { chatId: chat.id } });
     assert.equal(stored?.enabled, true);
     assert.equal(stored?.muteDurationMinutes, 75);
-    assert.equal(stored?.useGlobalProfile, false);
   } finally {
     await cleanup();
   }
@@ -485,7 +483,7 @@ test("renderSettingsMenu: Chat section, welcome toggle persists", async () => {
     data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
   await prisma.chatContentSettings.create({
-    data: { chatId: chat.id, useGlobalProfile: false, welcomeEnabled: false }
+    data: { chatId: chat.id, welcomeEnabled: false }
   });
 
   try {

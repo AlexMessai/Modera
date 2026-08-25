@@ -116,7 +116,6 @@ export async function resolveEffectiveCaptchaSettings(chatId: string) {
   const settings = serializeCaptchaSettings(local ?? DEFAULT_CAPTCHA_SETTINGS);
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings
   };
 }

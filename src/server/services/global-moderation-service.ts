@@ -414,7 +414,6 @@ export async function resolveEffectiveModerationSettings(chatId: string) {
 
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings
   };
 }

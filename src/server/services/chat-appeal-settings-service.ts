@@ -1,11 +1,10 @@
 import { prisma } from "@/server/db/prisma";
 
-// Per-chat /appeal toggle + notification flags. Deliberately a simple
-// per-chat table without a Global+useGlobalProfile split (same shape as
-// ChatAdminAccess/chat-role-service.ts, not captcha/manual-moderation's
-// inheritance pattern) -- appeals were never chat-configurable before this
-// feature existed, so there is no meaningful "global profile" to inherit
-// from; every chat just gets its own row, defaulting to fully on.
+// Per-chat /appeal toggle + notification flags. A simple per-chat table with
+// no Global counterpart at all (same shape as ChatAdminAccess/
+// chat-role-service.ts) -- every chat just gets its own row, defaulting to
+// fully on. GlobalAppealSettings exists separately, but only for the appeal
+// *message templates*, not this toggle/notification config.
 export type ChatAppealSettingsValue = {
   enabled: boolean;
   notifyAdminsOnSubmit: boolean;

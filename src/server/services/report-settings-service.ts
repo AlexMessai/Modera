@@ -87,7 +87,6 @@ export async function resolveEffectiveReportSettings(chatId: string) {
   const local = await prisma.chatReportSettings.findUnique({ where: { chatId } });
   return {
     source: "CHAT" as const,
-    useGlobalProfile: false,
     settings: serializeReportSettings(local ?? DEFAULT_REPORT_SETTINGS)
   };
 }
