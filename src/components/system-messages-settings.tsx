@@ -88,12 +88,12 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
         <span className="settings-section-title">Automod — автонаказания</span>
         <label className="automod-field">
           <span>Текст при автоматическом mute</span>
-          <FormattedTextarea rows={2} value={messages.automod.escalationMuteMessageTemplate} disabled={fieldsDisabled} variables={["%target%", "%duration%", "%warns%", "%warns_limit%"]} onChange={(value) => setAutomodField("escalationMuteMessageTemplate", value)} />
+          <FormattedTextarea rows={2} value={messages.automod.escalationMuteMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAutomodField("escalationMuteMessageTemplate", value)} />
           <small>Доступны %target%, %duration%, %warns%, %warns_limit%.</small>
         </label>
         <label className="automod-field">
           <span>Текст при автоматическом ban</span>
-          <FormattedTextarea rows={2} value={messages.automod.escalationBanMessageTemplate} disabled={fieldsDisabled} variables={["%target%", "%warns%", "%warns_limit%"]} onChange={(value) => setAutomodField("escalationBanMessageTemplate", value)} />
+          <FormattedTextarea rows={2} value={messages.automod.escalationBanMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAutomodField("escalationBanMessageTemplate", value)} />
           <small>Доступны %target%, %warns%, %warns_limit%.</small>
         </label>
       </div>
@@ -116,17 +116,17 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
         </label>
         <label className="automod-field">
           <span>Новая апелляция — уведомление админам</span>
-          <FormattedTextarea rows={2} value={messages.appeals.appealNotifyAdminsMessageTemplate} disabled={fieldsDisabled} variables={["%user%", "%chat%", "%action%", "%message%"]} onChange={(value) => setAppealField("appealNotifyAdminsMessageTemplate", value)} />
+          <FormattedTextarea rows={2} value={messages.appeals.appealNotifyAdminsMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAppealField("appealNotifyAdminsMessageTemplate", value)} />
           <small>Доступны %user%, %chat%, %action%, %message%.</small>
         </label>
         <label className="automod-field">
           <span>Апелляция одобрена</span>
-          <FormattedTextarea rows={2} value={messages.appeals.appealApprovedMessageTemplate} disabled={fieldsDisabled} variables={["%chat%", "%comment%"]} onChange={(value) => setAppealField("appealApprovedMessageTemplate", value)} />
+          <FormattedTextarea rows={2} value={messages.appeals.appealApprovedMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAppealField("appealApprovedMessageTemplate", value)} />
           <small>Доступны %chat%, %comment%.</small>
         </label>
         <label className="automod-field">
           <span>Апелляция отклонена</span>
-          <FormattedTextarea rows={2} value={messages.appeals.appealRejectedMessageTemplate} disabled={fieldsDisabled} variables={["%chat%", "%comment%"]} onChange={(value) => setAppealField("appealRejectedMessageTemplate", value)} />
+          <FormattedTextarea rows={2} value={messages.appeals.appealRejectedMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setAppealField("appealRejectedMessageTemplate", value)} />
           <small>Доступны %chat%, %comment%.</small>
         </label>
         <small className="hint-note">Включение апелляций и уведомления вокруг них настраиваются по каждому чату отдельно — вкладка «Апелляции» в настройках чата.</small>
@@ -136,7 +136,7 @@ export function SystemMessagesSettings({ initial, canEdit }: Props) {
         <span className="settings-section-title">Приветствие</span>
         <label className="automod-field">
           <span>Текст приветствия новых участников</span>
-          <FormattedTextarea rows={3} maxLength={2000} value={messages.content.welcomeMessageTemplate} disabled={fieldsDisabled} variables={["{name}", "{username}", "{group}", "{member_count}"]} onChange={(value) => setMessages((current) => ({ ...current, content: { welcomeMessageTemplate: value } }))} />
+          <FormattedTextarea rows={3} maxLength={2000} value={messages.content.welcomeMessageTemplate} disabled={fieldsDisabled} onChange={(value) => setMessages((current) => ({ ...current, content: { welcomeMessageTemplate: value } }))} />
           <small>Переменные: {"{name}"}, {"{username}"}, {"{group}"}, {"{member_count}"}.</small>
         </label>
       </div>

@@ -5,29 +5,10 @@
 
 .automod-settings { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .automod-rule { display: grid; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
-.formatted-textarea { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
-.formatted-textarea:focus-within { border-color: #8bb3ff; box-shadow: 0 0 0 3px rgba(42, 104, 232, .1); }
-.formatted-textarea-toolbar { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--line); background: #f7f8fa; }
-.formatted-textarea-toolbar button { width: 34px; height: 32px; display: grid; place-items: center; border: 0; border-right: 1px solid var(--line); background: transparent; color: #596579; cursor: pointer; }
-.formatted-textarea-toolbar button:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
-.formatted-textarea-toolbar button.is-active { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
-.formatted-textarea-toolbar button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
-.formatted-textarea-editor { width: 100%; min-height: 110px; display: block; overflow: auto; resize: vertical; border: 0; border-radius: 0; outline: 0; color: var(--text); }
-.formatted-textarea-editor .ProseMirror { min-height: inherit; padding: 12px 13px; outline: 0; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.formatted-textarea-editor .ProseMirror p { margin: 0; }
-.formatted-textarea-editor .ProseMirror p + p { margin-top: .55em; }
-.formatted-textarea-editor .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: var(--muted); pointer-events: none; }
-.formatted-textarea-editor blockquote { margin: 4px 0; padding-left: 10px; border-left: 3px solid #9eb6e6; color: #4b596f; }
-.formatted-textarea-editor pre { margin: 4px 0; padding: 8px 10px; border-radius: 6px; background: #f1f3f6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
-.formatted-textarea-editor code { padding: 1px 4px; border-radius: 4px; background: #f1f3f6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-.formatted-textarea-editor tg-spoiler { border-radius: 3px; background: #687386; color: transparent; cursor: pointer; }
-.formatted-textarea-editor tg-spoiler:hover { color: #fff; }
-.formatted-textarea-editor a { color: var(--accent); text-decoration: underline; }
-.formatted-textarea.is-disabled { background: #f7f8fa; opacity: .72; }
-.formatted-textarea-emoji { position: relative; }
-.formatted-textarea-emoji-popover { position: absolute; top: 100%; left: 0; z-index: 20; display: grid; grid-template-columns: repeat(8, 28px); gap: 2px; padding: 6px; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(15, 23, 42, .12); }
-.formatted-textarea-emoji-popover button { width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; font-size: 15px; line-height: 1; display: grid; place-items: center; cursor: pointer; }
-.formatted-textarea-emoji-popover button:hover { background: var(--accent-soft); }
+.formatted-textarea { width: 100%; min-height: 110px; display: block; padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; line-height: 1.55; resize: vertical; }
+.formatted-textarea:focus { outline: 0; border-color: #8bb3ff; box-shadow: 0 0 0 3px rgba(42, 104, 232, .1); }
+.formatted-textarea::placeholder { color: var(--muted); }
+.formatted-textarea:disabled { background: #f7f8fa; opacity: .72; }
 .new-user-settings { gap: 12px; }
 .new-user-inline-settings { display: grid; gap: 14px; margin-top: -4px; padding: 16px; border: 1px solid var(--line); border-top-color: #cbd8ef; border-radius: 12px; background: #fbfcff; }
 .new-user-advanced { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fbfbfc; }

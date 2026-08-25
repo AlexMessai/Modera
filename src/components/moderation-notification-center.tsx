@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { BellRing, Bot, Check, MessageCircle, Radio, ShieldCheck, UserRound } from "lucide-react";
 import { SettingsRow } from "@/components/settings-row";
 import { FormattedTextarea } from "@/components/formatted-textarea";
+import { parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 export type ModerationNotificationEvent = "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
 export type ModerationNotificationAudience = "OFFENDER" | "PUBLIC" | "MODERATOR";
@@ -38,7 +39,7 @@ function preview(text: string, source: ModerationNotificationSource) {
   const parts = text.split(/(%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%)/g);
   return parts.map((part, index) => {
     const value = SAMPLE[part];
-    if (!value) return part;
+    if (!value) return parseTelegramHtml(part).text;
     if (part === "%admin%" && source === "AUTOMATED") return "";
     if (part === "%admin%" || part === "%target%") {
       return <a href={part === "%admin%" ? "tg://user?id=111111111" : "tg://user?id=222222222"} key={`${part}-${index}`}>{value}</a>;
@@ -111,7 +112,7 @@ export function ModerationNotificationCenter({ initial, canEdit }: { initial: Mo
           </div>
           <div className="notification-channel">
             <SettingsRow title={`${audienceMeta.label}: уведомление`} description={audienceMeta.description} checked={channel.enabled} disabled={!canEdit || saving} onChange={(enabled) => updateChannel(selectedAudience, { enabled })} />
-            <label className="notification-template-field"><span>Текст сообщения · {selectedSource === "MANUAL" ? "ручная модерация" : "Automod и Web Admin"}</span><FormattedTextarea rows={7} maxLength={1000} value={template} disabled={!canEdit || saving} variables={selectedSource === "MANUAL" ? ["%admin%", "%target%", "%reason%", "%duration%", "%warns%", "%warns_limit%", "%chat%", "%contact%"] : ["%target%", "%reason%", "%duration%", "%warns%", "%warns_limit%", "%chat%", "%contact%"]} onChange={(value) => updateChannel(selectedAudience, { templates: { ...channel.templates, [selectedSource]: value } })} /><small>{selectedSource === "MANUAL" ? "%admin% · " : ""}%target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%<br />В Telegram пользователи из %admin% и %target% становятся ссылками на профили.</small></label>
+            <label className="notification-template-field"><span>Текст сообщения · {selectedSource === "MANUAL" ? "ручная модерация" : "Automod и Web Admin"}</span><FormattedTextarea rows={7} maxLength={1000} value={template} disabled={!canEdit || saving} onChange={(value) => updateChannel(selectedAudience, { templates: { ...channel.templates, [selectedSource]: value } })} /><small>{selectedSource === "MANUAL" ? "%admin% · " : ""}%target% · %reason% · %duration% · %warns% · %warns_limit% · %chat% · %contact%<br />В Telegram пользователи из %admin% и %target% становятся ссылками на профили.</small></label>
             <div className="notification-preview"><span><MessageCircle size={14} /> Предпросмотр</span><p>{preview(template, selectedSource)}</p></div>
           </div>
         </div>
