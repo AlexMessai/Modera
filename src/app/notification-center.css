@@ -15,10 +15,6 @@
 .notification-event__channels i.is-on, .notification-audience-tabs i.is-on { background: #3d9d68; }
 .notification-editor { min-width: 0; padding: 20px; }.notification-editor__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 16px; }
 .notification-editor__header h3 { margin: 3px 0; font-size: 22px; letter-spacing: -.03em; }
-.notification-source-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-.notification-source-tabs button { min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--surface); text-align: left; cursor: pointer; font: inherit; }
-.notification-source-tabs button > span { display: grid; gap: 2px; }.notification-source-tabs strong { color: var(--text); font-size: 11px; }.notification-source-tabs small { font-size: 9px; }
-.notification-source-tabs button.is-active { border-color: #bcd3f2; color: var(--accent); background: #f6faff; box-shadow: 0 1px 3px rgba(25, 53, 86, .07); }
 .notification-audience-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 5px; border-radius: 10px; background: var(--surface-2); }
 .notification-audience-tabs button { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; font: inherit; font-size: 11px; font-weight: 650; }
 .notification-audience-tabs button.is-active { color: var(--text); background: var(--surface); box-shadow: 0 1px 3px rgba(25, 53, 86, .09); }
@@ -29,4 +25,4 @@
 .notification-center__actions { display: flex; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--line); }.notification-center > .moderation-feedback { margin: 12px 20px 0; }
 @media (max-width: 900px) { .notification-center__workspace { grid-template-columns: 210px minmax(0, 1fr); } }
 @media (max-width: 720px) { .notification-center__header, .notification-editor__header { align-items: stretch; flex-direction: column; }.notification-center__health { justify-items: start; }.notification-center__workspace { grid-template-columns: 1fr; }.notification-events { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }.notification-event { min-width: 172px; }.notification-editor { padding: 16px; } }
-@media (max-width: 520px) { .notification-source-tabs, .notification-audience-tabs { grid-template-columns: 1fr; }.notification-audience-tabs button { justify-content: flex-start; padding: 0 12px; } }
+@media (max-width: 520px) { .notification-audience-tabs { grid-template-columns: 1fr; }.notification-audience-tabs button { justify-content: flex-start; padding: 0 12px; } }
