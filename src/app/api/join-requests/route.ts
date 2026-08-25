@@ -4,7 +4,7 @@ import { listJoinRequests } from "@/server/services/join-request-service";
 
 export const dynamic = "force-dynamic";
 
-const statuses = new Set(["PENDING", "APPROVED", "DECLINED"]);
+const statuses = new Set(["PENDING", "APPROVED", "DECLINED", "EXPIRED"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(request: Request) {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") ?? "50") || 50));
   const rawStatus = url.searchParams.get("status") ?? "PENDING";
   const status = statuses.has(rawStatus)
-    ? (rawStatus as "PENDING" | "APPROVED" | "DECLINED")
+    ? (rawStatus as "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED")
     : "PENDING";
   const chatId = url.searchParams.get("chatId") || undefined;
   if (chatId && !UUID_PATTERN.test(chatId)) {

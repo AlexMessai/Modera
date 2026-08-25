@@ -60,6 +60,12 @@ enum JoinRequestStatus {
   PENDING
   APPROVED
   DECLINED
+  // Telegram no longer has this request (withdrawn by the user, or resolved
+  // by a live admin directly in Telegram, outside this panel) -- discovered
+  // only when an admin here tries to act on it and Telegram's API rejects
+  // the call (e.g. "HIDE_REQUESTER_MISSING"), since Telegram sends no event
+  // when a request disappears on its own.
+  EXPIRED
 }
 
 enum AppealStatus {

@@ -11,7 +11,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const PROCESSING_STALE_MS = 2 * 60 * 1000;
 
 type JoinAction = "APPROVE" | "DECLINE";
-type JoinStatus = "PENDING" | "APPROVED" | "DECLINED";
+type JoinStatus = "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED";
+
+// Telegram's own signal that a join request no longer exists on its side --
+// the user withdrew it, or a live admin resolved it directly in Telegram,
+// outside this panel. Telegram never sends an event for either case, so this
+// error (returned from approve/declineChatJoinRequest) is the only way we
+// ever find out; matched on the stable error code Telegram puts in
+// `description`, not the surrounding human-readable text.
+const REQUEST_GONE_ERROR = "HIDE_REQUESTER_MISSING";
 
 export class JoinRequestError extends Error {
   constructor(
@@ -102,6 +110,53 @@ async function finalizeAction(input: {
       status: resolved.status,
       resolvedAt: resolved.resolvedAt?.toISOString() ?? null,
       resolvedBy: resolved.resolvedByAdmin?.displayName ?? null
+    };
+  });
+}
+
+// Telegram has already lost this request by the time an admin tried to act
+// on it -- outcome unknown (withdrawn? resolved elsewhere?), so this
+// deliberately does NOT touch ChatMember or claim APPROVED/DECLINED; it just
+// stops the request from sitting in "Ожидает" forever with a dead-end retry.
+async function expireRequest(input: { requestId: string; actingAdminId: string; attemptedAction: JoinAction }) {
+  const request = await prisma.joinRequest.findUnique({ where: { id: input.requestId } });
+  if (!request) {
+    throw new JoinRequestError("JOIN_REQUEST_NOT_FOUND", "Заявка не найдена.", 404);
+  }
+  const now = new Date();
+
+  return prisma.$transaction(async (tx) => {
+    const resolved = await tx.joinRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "EXPIRED",
+        resolvedAt: now,
+        resolvedByAdminId: input.actingAdminId,
+        processingAt: null,
+        telegramError: null
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        chatId: request.chatId,
+        affectedUserId: request.userId,
+        actingAdminId: input.actingAdminId,
+        source: "ADMIN",
+        action: "JOIN_REQUEST_EXPIRED",
+        metadata: {
+          joinRequestId: request.id,
+          telegramUpdateId: request.telegramUpdateId.toString(),
+          attemptedAction: input.attemptedAction
+        }
+      }
+    });
+
+    return {
+      id: resolved.id,
+      status: resolved.status,
+      resolvedAt: resolved.resolvedAt?.toISOString() ?? null,
+      resolvedBy: null
     };
   });
 }
@@ -371,6 +426,14 @@ export async function executeJoinRequestAction(input: {
       } catch {
         // Keep the request pending when Telegram state cannot be confirmed.
       }
+    }
+
+    if (error instanceof TelegramApiError && error.message.includes(REQUEST_GONE_ERROR)) {
+      return await expireRequest({
+        requestId: existing.id,
+        actingAdminId: input.actingAdminId,
+        attemptedAction: input.action
+      });
     }
 
     const message =

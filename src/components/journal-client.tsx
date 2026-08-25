@@ -96,6 +96,7 @@ const actionLabels: Record<string, string> = {
   JOIN_REQUEST_ACTION_FAILED: "Ошибка обработки заявки на вступление",
   JOIN_REQUEST_APPROVED: "Заявка на вступление одобрена",
   JOIN_REQUEST_DECLINED: "Заявка на вступление отклонена",
+  JOIN_REQUEST_EXPIRED: "Заявка на вступление устарела в Telegram",
   ADMIN_TELEGRAM_LINKED: "Администратор привязал Telegram-аккаунт",
   ADMIN_TELEGRAM_UNLINKED: "Администратор отвязал Telegram-аккаунт",
   MODERATION_NOTIFICATION_PROFILES_UPDATED: "Изменены глобальные профили уведомлений",

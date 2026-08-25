@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Check, RefreshCw, Search, UserRoundCheck, X } from "lucide-react";
 import { TelegramAvatar } from "@/components/telegram-avatar";
 
-type Status = "PENDING" | "APPROVED" | "DECLINED";
+type Status = "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED";
 type JoinRequest = {
   id: string;
   status: Status;
@@ -29,7 +29,8 @@ type ResponseData = {
 const statusLabels: Record<Status, string> = {
   PENDING: "Ожидает",
   APPROVED: "Принята",
-  DECLINED: "Отклонена"
+  DECLINED: "Отклонена",
+  EXPIRED: "Устарела в Telegram"
 };
 
 function formatDate(value: string) {
@@ -152,6 +153,7 @@ export function JoinRequestsClient({
               <option value="PENDING">Ожидают</option>
               <option value="APPROVED">Приняты</option>
               <option value="DECLINED">Отклонены</option>
+              <option value="EXPIRED">Устарели в Telegram</option>
             </select>
             {lockChat ? null : (
               <select className="select-control" value={chatId} onChange={(event) => { setChatId(event.target.value); setPage(1); setLoading(true); }}>
@@ -180,7 +182,7 @@ export function JoinRequestsClient({
                       <td><Link className="table-link" href={`/chats/${item.chat.id}`}>{item.chat.title}</Link></td>
                       <td className="join-request-bio">{item.bio ?? "—"}</td>
                       <td>{item.hasInviteLink ? "Invite link" : "Запрос чата"}</td>
-                      <td><span className={`badge ${item.status === "APPROVED" ? "badge--active" : item.status === "DECLINED" ? "badge--danger" : "badge--warning"}`}>{statusLabels[item.status]}</span>{item.telegramError ? <small className="row-note">{item.telegramError}</small> : null}</td>
+                      <td><span className={`badge ${item.status === "APPROVED" ? "badge--active" : item.status === "DECLINED" ? "badge--danger" : item.status === "EXPIRED" ? "badge--muted" : "badge--warning"}`}>{statusLabels[item.status]}</span>{item.telegramError ? <small className="row-note">{item.telegramError}</small> : null}</td>
                       <td>{formatDate(item.requestedAt)}{item.resolvedBy ? <small className="row-note">{item.resolvedBy}</small> : null}</td>
                       <td>
                         {item.status === "PENDING" && canModerate ? (

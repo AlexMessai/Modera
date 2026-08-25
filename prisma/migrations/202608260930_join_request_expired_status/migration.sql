@@ -1,0 +1,1 @@
+ALTER TYPE "JoinRequestStatus" ADD VALUE 'EXPIRED';

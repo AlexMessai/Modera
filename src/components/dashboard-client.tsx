@@ -83,6 +83,7 @@ const actionLabels: Record<string, string> = {
   MEMBER_TAG_UPDATE_FAILED: "Ошибка изменения тега",
   JOIN_REQUEST_APPROVED: "Заявка принята",
   JOIN_REQUEST_DECLINED: "Заявка отклонена",
+  JOIN_REQUEST_EXPIRED: "Заявка устарела в Telegram",
   MODERATION_ACTION_FAILED: "Ошибка модерации",
   MODERATION_RECONCILIATION_CHECK_FAILED: "Ошибка сверки Telegram",
   AUTOMOD_DELETE_FAILED: "Ошибка автомодерации",
