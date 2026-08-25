@@ -80,6 +80,7 @@ export type TelegramChatAdministratorRights = {
   can_delete_stories: boolean;
   can_manage_topics: boolean;
   can_manage_tags: boolean;
+  can_send_welcome_messages: boolean;
 };
 
 // Requested when adding the bot to a group -- everything except anonymity
@@ -106,7 +107,8 @@ export const GROUP_ADMIN_RIGHTS: TelegramChatAdministratorRights = {
   can_edit_stories: true,
   can_delete_stories: true,
   can_manage_topics: true,
-  can_manage_tags: true
+  can_manage_tags: true,
+  can_send_welcome_messages: true
 };
 
 // Telegram's deep-link spec (core.telegram.org/api/links) joins requested
