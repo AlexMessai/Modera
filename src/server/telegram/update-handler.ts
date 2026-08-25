@@ -190,21 +190,18 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
 const GROUP_START_NOISE_PATTERN = /^\/start(?:@\w+)?(?:\s+\S+)?\s*$/i;
 
 // Every moderation command shares one shape: /command[@bot] [targets…] [duration] [reason].
-// Which of those trailing pieces apply (duration only for /mute today) is decided by
+// Which of those trailing pieces apply (duration for /mute and /ban) is decided by
 // GROUP_MODERATION_COMMANDS below, then command-parser.ts does the actual argument split.
+// Duration syntax is unified: <number><m|h|d> (10m, 2h, 3d); omitted entirely means
+// permanent; a bare number with no unit fails the command (see durationUnitMissing).
 const GROUP_MODERATION_COMMAND_PATTERN = /^\/(warn|unwarn|mute|unmute|ban|unban|kick)(?:@\w+)?(?:\s+([\s\S]*))?$/i;
 
-const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand; allowDuration: boolean; requireDurationUnit?: boolean }> = {
+const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand; allowDuration: boolean }> = {
   warn: { action: "WARNING", allowDuration: false },
   unwarn: { action: "UNWARN", allowDuration: false },
   mute: { action: "MUTE", allowDuration: true },
   unmute: { action: "UNMUTE", allowDuration: false },
-  // Ban's duration is optional (a bare /ban stays permanent) — unlike mute,
-  // there's no "укажите срок" requirement blocking the command without one.
-  // requireDurationUnit: BAN has no legacy bare-minutes syntax to preserve,
-  // so require an explicit unit (7d/3h) rather than risk misreading a reason
-  // that starts with a digit as a duration.
-  ban: { action: "BAN", allowDuration: true, requireDurationUnit: true },
+  ban: { action: "BAN", allowDuration: true },
   unban: { action: "UNBAN", allowDuration: false },
   kick: { action: "KICK", allowDuration: false }
 };
@@ -314,7 +311,9 @@ async function applyModerationCommandToTarget(input: {
     admin: { text: input.telegramActor.displayName ?? input.telegramActor.username ?? "Администратор", telegramUserId: input.telegramActor.telegramUserId },
     target: { text: input.target.displayName, telegramUserId: input.target.telegramUserId },
     reason: input.reason ?? "",
-    duration: (input.action === "MUTE" || input.action === "BAN") && input.durationMinutes ? formatMinutes(input.durationMinutes) : "",
+    duration: input.action === "MUTE" || input.action === "BAN"
+      ? (input.durationMinutes ? formatMinutes(input.durationMinutes) : "навсегда")
+      : "",
     warns,
     warnsLimit,
     amount: String(input.amount)
@@ -414,7 +413,7 @@ async function processGroupModerationCommand(input: {
   const commandName = commandMatch[1].toLowerCase();
   const config = GROUP_MODERATION_COMMANDS[commandName];
   if (!config) return false;
-  const { action, allowDuration, requireDurationUnit } = config;
+  const { action, allowDuration } = config;
 
   const { settings } = await resolveEffectiveManualModerationSettings(input.chatId);
   const commandProfile = settings.commands.find((profile) => profile.command === COMMAND_KEY_BY_ACTION[action])!;
@@ -434,9 +433,9 @@ async function processGroupModerationCommand(input: {
     }
   }
 
-  const { targetTokens, durationMinutes, reason } = parseModerationCommandArguments(
+  const { targetTokens, durationMinutes, durationUnitMissing, reason } = parseModerationCommandArguments(
     commandArguments,
-    { allowDuration, requireDurationUnit }
+    { allowDuration }
   );
 
   // Validation hints, per-target errors, and the admin's own action summary
@@ -486,8 +485,8 @@ async function processGroupModerationCommand(input: {
     return true;
   }
 
-  if (action === "MUTE" && !durationMinutes) {
-    await privateReply("Укажите срок mute, например: /mute @user 3h причина (или в минутах: /mute 180 причина)");
+  if (durationUnitMissing) {
+    await privateReply("Укажите единицу времени у срока: 10m, 2h или 3d. Без срока наказание будет постоянным.");
     return true;
   }
 

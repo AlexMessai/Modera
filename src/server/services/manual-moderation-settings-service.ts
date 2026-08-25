@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { applyOptionalTemplateClauses } from "@/server/telegram/formatted-text";
 
 const GLOBAL_MANUAL_MODERATION_PROFILE_ID = "global";
 
@@ -36,13 +37,13 @@ export type ManualModerationCommandProfile = {
 
 const COMMAND_KEYS: ManualModerationCommandKey[] = ["warn", "unwarn", "mute", "unmute", "ban", "unban", "kick"];
 const DEFAULT_TEMPLATES: Record<ManualModerationCommandKey, string> = {
-  warn: "%admin% выдал предупреждение %target%. Причина: %reason%",
+  warn: "%admin% выдал предупреждение %target%.[ Причина: %reason%]",
   unwarn: "У %target% снято предупреждений: %amount%. Осталось: %warns%/%warns_limit%",
-  mute: "%admin% ограничил %target% на %duration%. Причина: %reason%",
+  mute: "%admin% ограничил %target% на %duration%.[ Причина: %reason%]",
   unmute: "%admin% снял ограничение с %target%.",
-  ban: "%admin% заблокировал %target%. Причина: %reason%",
+  ban: "%admin% заблокировал %target%.[ Причина: %reason%]",
   unban: "%admin% разблокировал %target%.",
-  kick: "%admin% исключил %target% из чата. Причина: %reason%"
+  kick: "%admin% исключил %target% из чата.[ Причина: %reason%]"
 };
 
 export const DEFAULT_MANUAL_COMMAND_PROFILES: ManualModerationCommandProfile[] = COMMAND_KEYS.map((command) => ({
@@ -78,22 +79,22 @@ export type ManualModerationVisibilitySettingsValue = {
 // the in-chat commands the rest of this settings shape covers. Kept here
 // because the per-action data shape already matches exactly.
 export const DEFAULT_MANUAL_MODERATION_SETTINGS: ManualModerationSettingsValue = {
-  warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%). %reason%",
+  warnMessageTemplate: "⚠️ %target% получил(а) предупреждение (%warns% из %warns_limit%).[ %reason%]",
   warnDeleteTargetMessage: false,
-  warnEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: предупреждение. %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
+  warnEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: предупреждение.[ %reason%]\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unwarnMessageTemplate: "✅ С %target% снято предупреждение (осталось %warns% из %warns_limit%).",
   unwarnDeleteTargetMessage: false,
-  muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%. %reason%",
+  muteMessageTemplate: "🔇 %target% получил(а) mute на %duration%.[ %reason%]",
   muteDeleteTargetMessage: false,
-  muteEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: временное ограничение (mute). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
+  muteEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: временное ограничение (mute).[ %reason%]\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unmuteMessageTemplate: "🔊 С %target% снят mute.",
   unmuteDeleteTargetMessage: false,
-  banMessageTemplate: "⛔ %target% заблокирован(а). %reason%",
+  banMessageTemplate: "⛔ %target% заблокирован(а).[ %reason%]",
   banDeleteTargetMessage: false,
-  banEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: блокировка (ban). %reason%\n\nЧтобы оспорить или узнать детали, напишите %contact%",
+  banEphemeralMessageTemplate: "⚠️ В чате «%chat%» вам выдано: блокировка (ban).[ %reason%]\n\nЧтобы оспорить или узнать детали, напишите %contact%",
   unbanMessageTemplate: "✅ С %target% снята блокировка.",
   unbanDeleteTargetMessage: false,
-  kickMessageTemplate: "👢 %target% исключён(а) из чата. %reason%",
+  kickMessageTemplate: "👢 %target% исключён(а) из чата.[ %reason%]",
   kickDeleteTargetMessage: false,
   commands: DEFAULT_MANUAL_COMMAND_PROFILES
 };
@@ -343,6 +344,11 @@ export async function resolveEffectiveManualModerationSettings(chatId: string) {
   };
 }
 
+const MANUAL_TEMPLATE_TOKEN_KEYS: Record<string, string> = {
+  "%admin%": "admin", "%target%": "target", "%reason%": "reason", "%duration%": "duration",
+  "%warns_limit%": "warnsLimit", "%warns%": "warns", "%amount%": "amount", "%chat%": "chat", "%contact%": "contact"
+};
+
 export function renderManualModerationTemplate(
   template: string,
   placeholders: {
@@ -357,7 +363,11 @@ export function renderManualModerationTemplate(
     contact?: string;
   }
 ) {
-  return template
+  const withClauses = applyOptionalTemplateClauses(template, (token) => {
+    const key = MANUAL_TEMPLATE_TOKEN_KEYS[token.toLowerCase()];
+    return !key || !(placeholders as Record<string, string | undefined>)[key];
+  });
+  return withClauses
     .replaceAll("%admin%", placeholders.admin ?? "")
     .replaceAll("%target%", placeholders.target ?? "")
     .replaceAll("%reason%", placeholders.reason ?? "")

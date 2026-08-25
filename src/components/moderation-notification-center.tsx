@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { BellRing, Bot, Check, MessageCircle, Radio, ShieldCheck, UserRound } from "lucide-react";
 import { SettingsRow } from "@/components/settings-row";
 import { FormattedTextarea } from "@/components/formatted-textarea";
-import { parseTelegramHtml } from "@/server/telegram/formatted-text";
+import { applyOptionalTemplateClauses, parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 export type ModerationNotificationEvent = "WARNING" | "UNWARN" | "MUTE" | "UNMUTE" | "BAN" | "UNBAN" | "KICK";
 export type ModerationNotificationAudience = "OFFENDER" | "PUBLIC" | "MODERATOR";
@@ -36,7 +36,8 @@ const SAMPLE: Record<string, string> = {
 };
 
 function preview(text: string, source: ModerationNotificationSource) {
-  const parts = text.split(/(%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%)/g);
+  const withClauses = applyOptionalTemplateClauses(text, (token) => (token === "%admin%" && source === "AUTOMATED") || !SAMPLE[token]);
+  const parts = withClauses.split(/(%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%chat%|%contact%)/g);
   return parts.map((part, index) => {
     const value = SAMPLE[part];
     if (!value) return parseTelegramHtml(part).text;

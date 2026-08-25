@@ -1,5 +1,26 @@
 import type { TelegramMessageEntity } from "@/server/telegram/types";
 
+/**
+ * Optional clauses in a message template: text wrapped in [...] is kept
+ * (brackets stripped, content left in place for the real placeholder
+ * substitution that runs afterward) only if every %placeholder% token inside
+ * it resolves to a non-empty value -- otherwise the whole bracketed segment,
+ * brackets included, is dropped. Lets "Причина: %reason%" or "на %duration%"
+ * disappear cleanly when that field is empty, instead of leaving a dangling
+ * "Причина: " with nothing after it. Runs once, before any renderer
+ * substitutes placeholders, so every template system in this codebase (plain
+ * text or Telegram-HTML) gets this for free without its own conditional
+ * logic. A `[...]` with no %token% inside isn't a conditional clause -- it's
+ * left untouched as literal bracket text.
+ */
+export function applyOptionalTemplateClauses(template: string, isEmpty: (token: string) => boolean): string {
+  return template.replace(/\[([^[\]]*)]/g, (whole, inner: string) => {
+    const tokens = inner.match(/%[a-z_]+%/gi);
+    if (!tokens) return whole;
+    return tokens.some((token) => isEmpty(token)) ? "" : inner;
+  });
+}
+
 export function escapeTelegramHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

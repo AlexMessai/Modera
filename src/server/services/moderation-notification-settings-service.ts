@@ -3,7 +3,7 @@ import { prisma } from "@/server/db/prisma";
 import { DEFAULT_LEGACY_MANUAL_MODERATION_SETTINGS, DEFAULT_MANUAL_MODERATION_SETTINGS, renderManualModerationTemplate } from "@/server/services/manual-moderation-settings-service";
 import { getTelegramClient } from "@/server/telegram/client";
 import type { TelegramMessageEntity } from "@/server/telegram/types";
-import { escapeTelegramHtml, parseTelegramHtml } from "@/server/telegram/formatted-text";
+import { applyOptionalTemplateClauses, escapeTelegramHtml, parseTelegramHtml } from "@/server/telegram/formatted-text";
 
 export const MODERATION_NOTIFICATION_EVENTS = ["WARNING", "UNWARN", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationNotificationEvent = (typeof MODERATION_NOTIFICATION_EVENTS)[number];
@@ -57,17 +57,17 @@ const OFFENDER_DEFAULTS: Record<ModerationNotificationEvent, string> = {
   UNMUTE: "🔊 В чате «%chat%» с вас снят mute. Вы снова можете отправлять сообщения.",
   BAN: DEFAULT_MANUAL_MODERATION_SETTINGS.banEphemeralMessageTemplate,
   UNBAN: "✅ В чате «%chat%» с вас снята блокировка.",
-  KICK: "👢 Вы были исключены из чата «%chat%». %reason%"
+  KICK: "👢 Вы были исключены из чата «%chat%».[ %reason%]"
 };
 
 const MANUAL_PUBLIC_DEFAULTS: Record<ModerationNotificationEvent, string> = {
-  WARNING: "%admin% выдал предупреждение пользователю %target%. Причина: %reason%",
+  WARNING: "%admin% выдал предупреждение пользователю %target%.[ Причина: %reason%]",
   UNWARN: "%admin% снял предупреждение с %target%.",
-  MUTE: "%admin% ограничил %target% на %duration%. Причина: %reason%",
+  MUTE: "%admin% ограничил %target% на %duration%.[ Причина: %reason%]",
   UNMUTE: "%admin% снял ограничение с %target%.",
-  BAN: "%admin% заблокировал %target%. Причина: %reason%",
+  BAN: "%admin% заблокировал %target%.[ Причина: %reason%]",
   UNBAN: "%admin% снял блокировку с %target%.",
-  KICK: "%admin% исключил %target% из чата. Причина: %reason%"
+  KICK: "%admin% исключил %target% из чата.[ Причина: %reason%]"
 };
 
 function template(value: unknown, fallback: string) {
@@ -228,12 +228,18 @@ export function renderTelegramTemplate(
     "%admin%": "admin", "%target%": "target", "%reason%": "reason", "%duration%": "duration",
     "%warns_limit%": "warnsLimit", "%warns%": "warns", "%amount%": "amount", "%chat%": "chat", "%contact%": "contact"
   };
+  const withClauses = applyOptionalTemplateClauses(templateText, (token) => {
+    const key = tokens[token.toLowerCase()];
+    if (!key) return true;
+    const value = placeholders[key];
+    return typeof value === "object" ? !value?.text : !value;
+  });
   const tokenPattern = /%admin%|%target%|%reason%|%duration%|%warns_limit%|%warns%|%amount%|%chat%|%contact%/g;
   let formatted = "";
   let cursor = 0;
-  for (const match of templateText.matchAll(tokenPattern)) {
+  for (const match of withClauses.matchAll(tokenPattern)) {
     const index = match.index ?? 0;
-    formatted += templateText.slice(cursor, index);
+    formatted += withClauses.slice(cursor, index);
     const value = placeholders[tokens[match[0]]];
     const replacement = typeof value === "object" && value ? value.text : value ?? "";
     if (typeof value === "object" && value && replacement) {
@@ -243,7 +249,7 @@ export function renderTelegramTemplate(
     }
     cursor = index + match[0].length;
   }
-  formatted += templateText.slice(cursor);
+  formatted += withClauses.slice(cursor);
   return parseTelegramHtml(formatted);
 }
 

@@ -19,7 +19,7 @@ test("empty notification profiles preserve legacy visibility and templates", () 
   assert.equal(warning?.channels.OFFENDER.enabled, true);
   assert.equal(warning?.channels.OFFENDER.templates.MANUAL, legacy.warnEphemeralMessageTemplate);
   assert.equal(warning?.channels.OFFENDER.templates.AUTOMATED, legacy.warnEphemeralMessageTemplate);
-  assert.equal(warning?.channels.MODERATOR.templates.MANUAL, "%admin% выдал предупреждение пользователю %target%. Причина: %reason%");
+  assert.equal(warning?.channels.MODERATOR.templates.MANUAL, "%admin% выдал предупреждение пользователю %target%.[ Причина: %reason%]");
   assert.equal(warning?.channels.MODERATOR.templates.AUTOMATED, legacy.warnMessageTemplate);
   assert.equal(unmute?.channels.OFFENDER.enabled, false, "new channels must stay opt-in during migration");
 });
