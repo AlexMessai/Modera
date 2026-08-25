@@ -1701,7 +1701,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         // reliably echo ephemeral_message_id back on callback_query.message.
         const ephemeralMessageId = result.ephemeralMessageId;
         if (result.deleteAfterVerification && ephemeralMessageId !== null) {
-          await client.deleteEphemeralMessage(Number(chat.id), ephemeralMessageId).catch((error) => {
+          await client.deleteEphemeralMessage(Number(chat.id), targetTelegramUserId, ephemeralMessageId).catch((error) => {
             console.warn("[captcha] failed to delete ephemeral challenge after verification", {
               chatId: chat.id,
               ephemeralMessageId,

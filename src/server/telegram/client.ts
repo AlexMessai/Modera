@@ -251,9 +251,14 @@ export class TelegramClient {
 
   // Ephemeral messages (Bot API 10.2) use their own delete method keyed by
   // ephemeral_message_id -- deleteMessage's message_id is always 0 for them.
-  deleteEphemeralMessage(chatId: number, ephemeralMessageId: number) {
+  // receiver_user_id is required by Telegram alongside chat_id -- without it
+  // the call is rejected outright (confirmed against the current Bot API
+  // reference, since this was silently missing before and every deletion
+  // attempt failed).
+  deleteEphemeralMessage(chatId: number, receiverUserId: number, ephemeralMessageId: number) {
     return this.call<boolean>("deleteEphemeralMessage", {
       chat_id: chatId,
+      receiver_user_id: receiverUserId,
       ephemeral_message_id: ephemeralMessageId
     });
   }
@@ -330,7 +335,10 @@ export class TelegramClient {
     replyMarkup?: TelegramInlineKeyboardMarkup;
     entities?: TelegramMessageEntity[];
     // Bot API 10.2: sent by a chat administrator, makes the message visible
-    // only to this one non-bot member instead of the whole chat.
+    // only to this one non-bot member instead of the whole chat. Bot API 10.3
+    // (2026-08-24) replaced the bare receiver_user_id/callback_query_id
+    // params with the wrapped ephemeral_message_parameters object -- the old
+    // top-level field is gone, not just deprecated.
     receiverUserId?: number;
   }) {
     return this.call<TelegramMessage>("sendMessage", {
@@ -338,7 +346,7 @@ export class TelegramClient {
       text: input.text,
       ...(input.entities?.length ? { entities: input.entities } : {}),
       ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
-      ...(input.receiverUserId ? { receiver_user_id: input.receiverUserId } : {})
+      ...(input.receiverUserId ? { ephemeral_message_parameters: { receiver_user_id: input.receiverUserId } } : {})
     });
   }
 
