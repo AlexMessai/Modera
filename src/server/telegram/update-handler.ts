@@ -30,6 +30,7 @@ import {
   listWarningsForMember,
   applyAutomodRulePunishment,
   recordAutomodViolationAndEscalate,
+  RULE_LABELS,
   type ManualWarningEscalation
 } from "@/server/services/moderation-escalation-service";
 import { resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
@@ -127,7 +128,7 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
       admin: "",
       target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
       chat: input.message.chat.title ?? "",
-      reason: "",
+      reason: `Автомодерация: ${RULE_LABELS.MEDIA ?? "нарушение правила"}`,
       duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
       warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
       warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""
@@ -175,7 +176,7 @@ async function runAutomod(input: { chatId: string; message: TelegramMessage; isE
   const notification = renderTelegramModerationNotification(profile.channels.PUBLIC, "AUTOMATED", {
     admin: "",
     target: { text: telegramDisplayName(input.message.from), telegramUserId: input.message.from.id },
-    reason: "",
+    reason: `Автомодерация: ${RULE_LABELS[rule] ?? "нарушение правила"}`,
     duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
     warns: String(escalation.activeWarningCount ?? escalation.warningCount ?? ""),
     warnsLimit: escalation.threshold !== undefined ? String(escalation.threshold) : ""

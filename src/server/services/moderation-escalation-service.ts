@@ -62,7 +62,7 @@ export type WarningEscalationResult = {
   error?: string;
 };
 
-const RULE_LABELS: Record<string, string> = {
+export const RULE_LABELS: Record<string, string> = {
   LINK: "запрещённая ссылка",
   TERM: "запрещённое слово или фраза",
   MEDIA: "запрещённый тип контента",
