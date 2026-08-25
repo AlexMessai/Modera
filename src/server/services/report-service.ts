@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/prisma";
 import { executeModerationAction, ModerationError } from "@/server/services/moderation-service";
+import { escalateManualWarningAndAnnounce } from "@/server/services/moderation-escalation-service";
 import { resolveEffectiveReportSettings } from "@/server/services/report-settings-service";
 import { listTelegramModeratorsForChat } from "@/server/services/chat-admin-access-service";
 import { getTelegramClient } from "@/server/telegram/client";
@@ -236,23 +237,35 @@ export async function resolveReport(input: {
   }
 
   const member = await prisma.chatMember.findFirst({
-    where: { chatId: report.chatId, userId: report.reportedUserId }
+    where: { chatId: report.chatId, userId: report.reportedUserId },
+    include: { user: true }
   });
   if (!member) throw new ReportError("MEMBER_NOT_FOUND", "Участник не найден в этом чате.");
 
   const actionMap = { WARN: "WARNING", MUTE: "MUTE", BAN: "BAN" } as const;
   const { settings: reportSettings } = await resolveEffectiveReportSettings(report.chatId);
+  const reason = report.reason ?? "Жалоба от участника чата";
   try {
     await executeModerationAction({
       membershipId: member.id,
       actingAdminId: input.actingAdminId,
       action: actionMap[input.action],
-      reason: report.reason ?? "Жалоба от участника чата",
+      reason,
       muteDurationMinutes: input.action === "MUTE" ? reportSettings.muteDurationMinutes : undefined
     });
   } catch (error) {
     if (error instanceof ModerationError) throw new ReportError(error.code, error.message);
     throw error;
+  }
+
+  if (input.action === "WARN") {
+    await escalateManualWarningAndAnnounce({
+      chatId: report.chatId,
+      telegramChatId: report.chat.telegramChatId,
+      targetTelegramUserId: Number(member.user.telegramUserId),
+      targetDisplayName: member.user.displayName,
+      reason
+    }).catch(() => undefined);
   }
 
   const saved = await finalizeReport({

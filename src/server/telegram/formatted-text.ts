@@ -21,6 +21,12 @@ export function applyOptionalTemplateClauses(template: string, isEmpty: (token: 
   });
 }
 
+export function formatMinutes(minutes: number) {
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)} дн.`;
+  if (minutes % 60 === 0) return `${minutes / 60} ч.`;
+  return `${minutes} мин.`;
+}
+
 export function escapeTelegramHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

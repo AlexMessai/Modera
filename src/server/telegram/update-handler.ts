@@ -52,7 +52,7 @@ import { isTrustedTelegramMember, TRUSTED_INTERNAL_ROLE } from "@/server/service
 import { parseDurationToken, parseModerationCommandArguments } from "@/server/telegram/command-parser";
 import { SILENCE_DEFAULT_MINUTES, SilenceError, startSilence, stopSilence } from "@/server/services/silence-service";
 import { buildAdminRightsDeepLinkParam, getTelegramBotProfile, getTelegramClient, GROUP_ADMIN_RIGHTS, TelegramApiError } from "@/server/telegram/client";
-import { parseTelegramHtml } from "@/server/telegram/formatted-text";
+import { formatMinutes, parseTelegramHtml } from "@/server/telegram/formatted-text";
 import type { TelegramChat, TelegramChatMember, TelegramChatMemberUpdated, TelegramInlineKeyboardMarkup, TelegramMessage, TelegramMessageEntity, TelegramUpdate } from "@/server/telegram/types";
 
 const BOT_CHAT_REFRESH_MS = 5 * 60 * 1000;
@@ -228,12 +228,6 @@ function telegramDisplayName(user: { first_name?: string; last_name?: string; us
   if (name) return name;
   if (user.username) return `@${user.username}`;
   return `Telegram ${user.id}`;
-}
-
-function formatMinutes(minutes: number) {
-  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)} дн.`;
-  if (minutes % 60 === 0) return `${minutes / 60} ч.`;
-  return `${minutes} мин.`;
 }
 
 /** `adminOnly` keeps internal diagnostics (e.g. a failed auto-punishment) out of the public chat announcement — only the admin who ran the command needs to see them. */

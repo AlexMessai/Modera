@@ -12,6 +12,9 @@ import {
   isProtectedMemberStatus,
   ModerationError
 } from "@/server/services/moderation-service";
+import { getModerationNotificationProfile, renderTelegramModerationNotification } from "@/server/services/moderation-notification-settings-service";
+import { getTelegramClient } from "@/server/telegram/client";
+import { formatMinutes } from "@/server/telegram/formatted-text";
 import {
   countActiveWarningRecords,
   linkWarningToTriggeredPunishment
@@ -478,6 +481,53 @@ export async function escalateAfterManualWarning(input: {
     attemptedAction: escalation.attemptedAction,
     error: escalation.error
   };
+}
+
+/**
+ * The one entry point every manually-issued warning (Telegram /warn command,
+ * web-panel "Выдать предупреждение", /report → выдать варн) should call after
+ * recording the warning itself -- runs the exact same threshold check automod
+ * uses (escalateAfterManualWarning -> applyWarningEscalation) and, if it
+ * crosses a rule, announces the resulting mute/ban publicly the same way
+ * automod's own scan-triggered escalations do (executeAutomatedModerationAction
+ * always runs with source "SYSTEM", which never posts its own public
+ * announcement -- see executeTelegramBackedAction -- so every escalation path
+ * has to build this announcement itself). Gated by announceEscalationEnabled
+ * so a chat that turned automated announcements off doesn't get one just
+ * because the warning happened to come from outside a chat command.
+ */
+export async function escalateManualWarningAndAnnounce(input: {
+  chatId: string;
+  telegramChatId: bigint;
+  targetTelegramUserId: number;
+  targetDisplayName?: string | null;
+  reason: string;
+  warningActionId?: string;
+}): Promise<ManualWarningEscalation> {
+  const escalation = await escalateAfterManualWarning({
+    chatId: input.chatId,
+    targetTelegramUserId: input.targetTelegramUserId,
+    reason: input.reason,
+    warningActionId: input.warningActionId
+  });
+  if (!escalation.escalated || !escalation.action) return escalation;
+
+  const { settings } = await resolveEffectiveModerationSettings(input.chatId);
+  if (!settings.announceEscalationEnabled) return escalation;
+
+  const profile = await getModerationNotificationProfile(escalation.action);
+  if (!profile.channels.PUBLIC.enabled) return escalation;
+
+  const notification = renderTelegramModerationNotification(profile.channels.PUBLIC, "AUTOMATED", {
+    admin: "",
+    target: { text: input.targetDisplayName ?? "Участник", telegramUserId: input.targetTelegramUserId },
+    reason: `Достигнут порог ${escalation.threshold ?? escalation.warnsLimit} предупреждений.`,
+    duration: escalation.action === "MUTE" && escalation.muteDurationMinutes ? formatMinutes(escalation.muteDurationMinutes) : "",
+    warns: String(escalation.activeWarningCount),
+    warnsLimit: escalation.warnsLimit !== null ? String(escalation.warnsLimit) : ""
+  });
+  await getTelegramClient().sendMessage({ chatId: Number(input.telegramChatId), ...notification }).catch(() => undefined);
+  return escalation;
 }
 
 /**

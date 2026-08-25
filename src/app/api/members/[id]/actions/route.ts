@@ -4,6 +4,7 @@ import { canModerate } from "@/server/auth/permissions";
 import { isSameOrigin } from "@/server/http/origin";
 import { prisma } from "@/server/db/prisma";
 import { executeAdminWarningRevoke, executeModerationAction, ModerationError } from "@/server/services/moderation-service";
+import { escalateManualWarningAndAnnounce } from "@/server/services/moderation-escalation-service";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           muteDurationMinutes: parsed.data.action === "mute" ? parsed.data.muteDurationMinutes : null,
           banDurationMinutes: parsed.data.action === "ban" ? parsed.data.banDurationMinutes : null
         });
+
+    if (parsed.data.action === "warning") {
+      const member = await prisma.chatMember.findUnique({ where: { id }, include: { user: true, chat: true } });
+      if (member) {
+        await escalateManualWarningAndAnnounce({
+          chatId: member.chatId,
+          telegramChatId: member.chat.telegramChatId,
+          targetTelegramUserId: Number(member.user.telegramUserId),
+          targetDisplayName: member.user.displayName,
+          reason: parsed.data.reason ?? "Предупреждение от администратора"
+        }).catch(() => undefined);
+      }
+    }
+
     return Response.json({ data: result });
   } catch (error) {
     if (error instanceof ModerationError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.httpStatus });
