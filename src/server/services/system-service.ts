@@ -252,6 +252,10 @@ export async function getSystemDiagnostics() {
       telegramBotTokenConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
       telegramWebhookSecretConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
       telegramWebhookUrlConfigured: Boolean(expectedWebhookUrl()),
+      // Without this, /api/cron/moderation-expirations 401s forever and
+      // nothing (expired mutes/bans, captcha timeouts, raid cooldowns,
+      // Silence) ever gets swept -- with no error visible anywhere else.
+      cronSecretConfigured: Boolean(process.env.CRON_SECRET),
       adminEmailConfigured: Boolean(process.env.ADMIN_EMAIL),
       adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD),
       environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",

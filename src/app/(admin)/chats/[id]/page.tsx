@@ -55,7 +55,6 @@ const eventLabels: Record<string, string> = {
   CAPTCHA_CHALLENGE_SENT: "Отправлена капча новому участнику",
   CAPTCHA_PASSED: "Капча пройдена",
   CAPTCHA_TIMEOUT_KICK: "Исключён за непройденную капчу",
-  CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
   CAPTCHA_SETTINGS_UPDATED: "Настройки капчи изменены",
   NEW_MEMBER_BLOCKED: "Новый участник временно заблокирован",
   NEW_MEMBER_MUTED: "Новый участник временно заглушён",

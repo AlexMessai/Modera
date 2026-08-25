@@ -285,6 +285,19 @@ export async function processExpiredCaptchaChallenges(input?: { now?: Date; limi
             action: "CAPTCHA_TIMEOUT_KICK",
             metadata: {}
           }
+        }),
+        // Same ban+unban mechanics as moderation-service.ts's own KICK, so it
+        // gets the same ModerationAction record every other kick gets.
+        prisma.moderationAction.create({
+          data: {
+            chatId: member.chatId,
+            affectedUserId: member.userId,
+            source: "SYSTEM",
+            type: "KICK",
+            status: "SUCCEEDED",
+            completedAt: now,
+            metadata: { trigger: "CAPTCHA_TIMEOUT" }
+          }
         })
       ]);
 

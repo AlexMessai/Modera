@@ -1065,6 +1065,7 @@ const HELP_TEXT = [
   "/status — ваш текущий статус и история наказаний",
   "/unmute — самостоятельно снять mute (до 3 раз в каждом чате)",
   "/appeal — подать апелляцию на бан или предупреждение",
+  "/link <код> — привязать этот Telegram-аккаунт к своему аккаунту в веб-панели (нужно для /settings в группе и для апелляций/жалоб в личных сообщениях); код выдаётся в панели",
   "/help — этот список команд"
 ].join("\n");
 
@@ -1082,11 +1083,9 @@ const START_TEXT = [
 // the group is picked, instead of adding the bot as a powerless member. But
 // whether they show pre-checked (so the user can just tap through) or
 // unchecked (needs manual toggling) is controlled separately, by the bot's
-// *default* administrator rights (setMyDefaultAdministratorRights) -- the
-// admin= param alone only decides which rights are shown, not their initial
-// state. GROUP_ADMIN_RIGHTS/buildAdminRightsDeepLinkParam keep both in sync
-// from one definition; see ensureGroupAdminRightsDefault below for the
-// setMyDefaultAdministratorRights half.
+// *default* administrator rights -- set once via scripts/set-default-admin-rights.ts
+// (run as part of vercel-build), not by anything in this file. GROUP_ADMIN_RIGHTS/
+// buildAdminRightsDeepLinkParam keep both call sites in sync from one definition.
 const REQUIRED_ADMIN_RIGHTS = buildAdminRightsDeepLinkParam(GROUP_ADMIN_RIGHTS);
 
 function addToGroupButton(botUsername?: string): TelegramInlineKeyboardMarkup | undefined {

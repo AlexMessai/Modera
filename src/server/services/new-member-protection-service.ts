@@ -49,20 +49,26 @@ export async function applyNewMemberProtection(input: {
 
   if (reason) {
     const until = Math.floor(Date.now() / 1000) + 60;
+    const now = new Date();
     await client.banChatMember({ chatId: Number(input.telegramChatId), userId: input.user.id, untilDate: until, revokeMessages: true });
     await prisma.$transaction([
-      prisma.chatMember.update({ where: { id: input.membershipId }, data: { status: "BANNED", punishmentState: "BANNED", punishmentExpiresAt: new Date(until * 1000), lastModerationAt: new Date() } }),
-      prisma.auditLog.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", action: "NEW_MEMBER_BLOCKED", reason, metadata: { reason } } })
+      prisma.chatMember.update({ where: { id: input.membershipId }, data: { status: "BANNED", punishmentState: "BANNED", punishmentExpiresAt: new Date(until * 1000), lastModerationAt: now } }),
+      prisma.auditLog.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", action: "NEW_MEMBER_BLOCKED", reason, metadata: { reason } } }),
+      // A real punitive action against a member -- recorded here (not just AuditLog)
+      // so it shows up in the member's moderation history like every other ban.
+      prisma.moderationAction.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", type: "BAN", status: "SUCCEEDED", reason, expiresAt: new Date(until * 1000), completedAt: now, metadata: { reason, trigger: "NEW_MEMBER_PROTECTION" } } })
     ]);
     return { outcome: "blocked" as const, reason };
   }
 
   if (settings.muteNewMembersMinutes > 0 && !captcha.settings.enabled) {
     const untilDate = new Date(input.joinedAt.getTime() + settings.muteNewMembersMinutes * 60_000);
+    const now = new Date();
     await client.restrictChatMember({ chatId: Number(input.telegramChatId), userId: input.user.id, permissions: MUTED_CHAT_PERMISSIONS, untilDate: Math.floor(untilDate.getTime() / 1000) });
     await prisma.$transaction([
-      prisma.chatMember.update({ where: { id: input.membershipId }, data: { status: "RESTRICTED", punishmentState: "MUTED", punishmentExpiresAt: untilDate, lastModerationAt: new Date() } }),
-      prisma.auditLog.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", action: "NEW_MEMBER_MUTED", metadata: { durationMinutes: settings.muteNewMembersMinutes } } })
+      prisma.chatMember.update({ where: { id: input.membershipId }, data: { status: "RESTRICTED", punishmentState: "MUTED", punishmentExpiresAt: untilDate, lastModerationAt: now } }),
+      prisma.auditLog.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", action: "NEW_MEMBER_MUTED", metadata: { durationMinutes: settings.muteNewMembersMinutes } } }),
+      prisma.moderationAction.create({ data: { chatId: input.chatId, affectedUserId: input.userId, source: "SYSTEM", type: "MUTE", status: "SUCCEEDED", expiresAt: untilDate, completedAt: now, metadata: { durationMinutes: settings.muteNewMembersMinutes, trigger: "NEW_MEMBER_PROTECTION" } } })
     ]);
     return { outcome: "muted" as const };
   }
@@ -88,10 +94,12 @@ export async function reviewExistingMembers(chatId: string) {
     if (!reason) continue;
     try {
       const until = Math.floor(Date.now() / 1000) + 60;
+      const now = new Date();
       await getTelegramClient().banChatMember({ chatId: Number(chat.telegramChatId), userId: user.id, untilDate: until, revokeMessages: true });
       await prisma.$transaction([
-        prisma.chatMember.update({ where: { id: membership.id }, data: { status: "BANNED", punishmentState: "BANNED", punishmentExpiresAt: new Date(until * 1000), lastModerationAt: new Date() } }),
-        prisma.auditLog.create({ data: { chatId, affectedUserId: membership.userId, source: "SYSTEM", action: "EXISTING_MEMBER_BLOCKED", reason, metadata: { reason } } })
+        prisma.chatMember.update({ where: { id: membership.id }, data: { status: "BANNED", punishmentState: "BANNED", punishmentExpiresAt: new Date(until * 1000), lastModerationAt: now } }),
+        prisma.auditLog.create({ data: { chatId, affectedUserId: membership.userId, source: "SYSTEM", action: "EXISTING_MEMBER_BLOCKED", reason, metadata: { reason } } }),
+        prisma.moderationAction.create({ data: { chatId, affectedUserId: membership.userId, source: "SYSTEM", type: "BAN", status: "SUCCEEDED", reason, expiresAt: new Date(until * 1000), completedAt: now, metadata: { reason, trigger: "EXISTING_MEMBER_REVIEW" } } })
       ]);
       blocked += 1;
     } catch { /* Best effort: one Telegram failure must not stop the review. */ }

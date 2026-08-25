@@ -63,7 +63,6 @@ const actionLabels: Record<string, string> = {
   CAPTCHA_CHALLENGE_SENT: "Отправлена капча новому участнику",
   CAPTCHA_PASSED: "Капча пройдена",
   CAPTCHA_TIMEOUT_KICK: "Исключён за непройденную капчу",
-  CAPTCHA_TIMEOUT_BAN: "Заблокирован за непройденную капчу",
   CAPTCHA_SETTINGS_UPDATED: "Изменены настройки капчи чата",
   GLOBAL_CAPTCHA_SETTINGS_UPDATED: "Изменена глобальная политика капчи",
   MANUAL_MODERATION_SETTINGS_UPDATED: "Изменены шаблоны ручной модерации чата",
@@ -98,7 +97,15 @@ const actionLabels: Record<string, string> = {
   ADMIN_ACCOUNT_UPDATED: "Изменён аккаунт администратора",
   ADMIN_SESSIONS_REVOKED: "Отозваны сессии администратора",
   CHAT_DISCOVERED: "Бот добавлен в новый чат",
-  JOIN_REQUEST_ACTION_FAILED: "Ошибка обработки заявки на вступление"
+  JOIN_REQUEST_ACTION_FAILED: "Ошибка обработки заявки на вступление",
+  JOIN_REQUEST_APPROVED: "Заявка на вступление одобрена",
+  JOIN_REQUEST_DECLINED: "Заявка на вступление отклонена",
+  ADMIN_TELEGRAM_LINKED: "Администратор привязал Telegram-аккаунт",
+  ADMIN_TELEGRAM_UNLINKED: "Администратор отвязал Telegram-аккаунт",
+  MODERATION_NOTIFICATION_PROFILES_UPDATED: "Изменены глобальные профили уведомлений",
+  NEW_MEMBER_BLOCKED: "Новый участник заблокирован при входе",
+  NEW_MEMBER_MUTED: "Новый участник ограничен при входе",
+  EXISTING_MEMBER_BLOCKED: "Участник заблокирован повторной проверкой"
 };
 
 const pendingLabels: Record<string, string> = {

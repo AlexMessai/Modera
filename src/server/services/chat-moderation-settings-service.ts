@@ -63,8 +63,10 @@ export async function getChatModerationProfile(chatId: string) {
             "CAPTCHA_CHALLENGE_SENT",
             "CAPTCHA_PASSED",
             "CAPTCHA_TIMEOUT_KICK",
-            "CAPTCHA_TIMEOUT_BAN",
-            "CAPTCHA_SETTINGS_UPDATED"
+            "CAPTCHA_SETTINGS_UPDATED",
+            "NEW_MEMBER_BLOCKED",
+            "NEW_MEMBER_MUTED",
+            "EXISTING_MEMBER_BLOCKED"
           ]
         }
       },

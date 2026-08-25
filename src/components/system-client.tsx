@@ -38,6 +38,7 @@ type Diagnostics = {
     telegramBotTokenConfigured: boolean;
     telegramWebhookSecretConfigured: boolean;
     telegramWebhookUrlConfigured: boolean;
+    cronSecretConfigured: boolean;
     adminEmailConfigured: boolean;
     adminPasswordConfigured: boolean;
     environment: string;
@@ -200,6 +201,7 @@ export function SystemClient() {
             <ConfigRow label="TELEGRAM_BOT_TOKEN" ok={data.configuration.telegramBotTokenConfigured} />
             <ConfigRow label="TELEGRAM_WEBHOOK_SECRET" ok={data.configuration.telegramWebhookSecretConfigured} />
             <ConfigRow label="TELEGRAM_WEBHOOK_URL" ok={data.configuration.telegramWebhookUrlConfigured} detail={data.configuration.telegramWebhookUrlConfigured ? data.checks.webhook.expectedUrl : null} />
+            <ConfigRow label="CRON_SECRET" ok={data.configuration.cronSecretConfigured} detail={data.configuration.cronSecretConfigured ? null : "Без неё ежедневная очистка (муты/баны/капча/рейды/тишина) не запускается вообще"} />
             <ConfigRow label="APP_URL" ok={data.configuration.appUrlConfigured} detail={data.configuration.appUrl} />
             <ConfigRow label="ADMIN_EMAIL" ok={data.configuration.adminEmailConfigured} />
             <ConfigRow label="ADMIN_PASSWORD" ok={data.configuration.adminPasswordConfigured} />
