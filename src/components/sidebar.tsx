@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { TelegramChatAvatar } from "@/components/telegram-avatar";
 import {
+  ChevronRight,
   LayoutDashboard,
   LogOut,
   MessageCircleQuestion,
@@ -72,13 +73,13 @@ export function Sidebar({
   // admin -- GLOBAL or CHAT-scoped -- sees both links.
   const onTopNavPage = topNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) && !activeChatId;
 
-  // The chat menu should keep showing while browsing pages reached from inside a chat
-  // (e.g. a member profile) that aren't themselves under /chats/[id] -- so once a chat
-  // is opened, remember it and only swap when the URL points at a *different* chat.
-  // It's explicitly dropped when landing on one of the top-level nav pages (Группы grid,
-  // Обзор, Журнал) rather than a specific chat. Setting state during render (not in an
-  // effect) is React's documented pattern for this "adjust state when a derived value
-  // changes" case.
+  // The "which chat's tab is highlighted" concept keeps working while browsing pages
+  // reached from inside a chat (e.g. a member profile) that aren't themselves under
+  // /chats/[id] -- so once a chat is opened, remember it and only swap when the URL
+  // points at a *different* chat. It's explicitly dropped when landing on one of the
+  // top-level nav pages (Группы grid, Обзор, Журнал) rather than a specific chat.
+  // Setting state during render (not in an effect) is React's documented pattern for
+  // this "adjust state when a derived value changes" case.
   const [rememberedChatId, setRememberedChatId] = useState<string | null>(activeChatId);
   if (activeChatId && activeChatId !== rememberedChatId) {
     setRememberedChatId(activeChatId);
@@ -87,8 +88,26 @@ export function Sidebar({
   }
 
   const shownChatId = activeChatId ?? rememberedChatId;
-  const activeChat = shownChatId ? chats.find((chat) => chat.id === shownChatId) ?? null : null;
   const activeTab = activeChatId ? (searchParams.get("tab") ?? "overview") : null;
+
+  // Every connected chat is always listed in the sidebar; each expands independently
+  // (approved chat-first design) rather than only showing tabs for the one chat you
+  // happen to be viewing. Opening a chat via a direct link/navigation auto-expands it
+  // here without collapsing whichever other chats the admin already had open -- same
+  // render-time "adjust state when a derived value changes" pattern as rememberedChatId above.
+  const [openChatIds, setOpenChatIds] = useState<Set<string>>(() => new Set(activeChatId ? [activeChatId] : []));
+  if (shownChatId && !openChatIds.has(shownChatId)) {
+    setOpenChatIds(new Set(openChatIds).add(shownChatId));
+  }
+
+  function toggleChat(chatId: string) {
+    setOpenChatIds((current) => {
+      const next = new Set(current);
+      if (next.has(chatId)) next.delete(chatId);
+      else next.add(chatId);
+      return next;
+    });
+  }
 
   // A CHAT-scoped admin, even with the inert VIEWER role, must never see
   // system-wide account management.
@@ -120,31 +139,44 @@ export function Sidebar({
           </Link>
         </nav>
 
-        {activeChat ? (
-          <>
-            <hr className="sidebar-divider" />
-            <div className="group-header">
-              <TelegramChatAvatar chatId={activeChat.id} displayName={activeChat.title} size={28} className="group-avatar" />
-              <span className="group-name">{activeChat.title}</span>
-              <span className={statusDotClass(activeChat.status)} title={activeChat.status} />
-            </div>
-            <nav className="nav-list group-tabs--static" aria-label={`Вкладки чата ${activeChat.title}`}>
-              {chatTabs.map((item) => {
-                const Icon = item.icon;
-                const active = activeTab === item.tab;
-                return (
-                  <Link
-                    key={item.tab}
-                    className={`group-tab ${active ? "is-active" : ""}`}
-                    href={`/chats/${activeChat.id}?tab=${item.tab}`}
-                  >
-                    <Icon size={14} strokeWidth={1.8} /><span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-          </>
-        ) : null}
+        <hr className="sidebar-divider" />
+        <div className="section-label"><span>Чаты</span><span className="count">{chats.length}</span></div>
+        <div className="groups-list">
+          {chats.map((chat) => {
+            const isOpen = openChatIds.has(chat.id);
+            const isShownChat = chat.id === shownChatId;
+            return (
+              <div className="group-node" key={chat.id}>
+                <button
+                  type="button"
+                  className={`group-row ${isOpen ? "is-open" : ""} ${isShownChat ? "is-active-parent" : ""}`}
+                  aria-expanded={isOpen}
+                  onClick={() => toggleChat(chat.id)}
+                >
+                  <TelegramChatAvatar chatId={chat.id} displayName={chat.title} size={28} className="group-avatar" />
+                  <span className="group-name">{chat.title}</span>
+                  <span className={statusDotClass(chat.status)} title={chat.status} />
+                  <ChevronRight size={14} strokeWidth={2} className="group-chevron" />
+                </button>
+                <nav className={`group-tabs ${isOpen ? "is-open" : ""}`} aria-label={`Вкладки чата ${chat.title}`}>
+                  {chatTabs.map((item) => {
+                    const Icon = item.icon;
+                    const active = isShownChat && activeTab === item.tab;
+                    return (
+                      <Link
+                        key={item.tab}
+                        className={`group-tab ${active ? "is-active" : ""}`}
+                        href={`/chats/${chat.id}?tab=${item.tab}`}
+                      >
+                        <Icon size={14} strokeWidth={1.8} /><span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="sidebar-footer">
