@@ -111,6 +111,12 @@ function normalizeTemplate(value: string, fallback: string) {
   return trimmed ? trimmed.slice(0, 1000) : fallback;
 }
 
+// /unwarn, /unmute, /unban reverse a punishment -- there's no sense in which
+// the message the moderator replied to (or the target's messages generally)
+// should be deleted for lifting a restriction, so these three never offer
+// the "delete target message" option at all, regardless of stored input.
+const DELETE_TARGET_MESSAGE_COMMANDS = new Set<ManualModerationCommandKey>(["warn", "mute", "ban", "kick"]);
+
 function normalizeCommandProfiles(value: unknown): ManualModerationCommandProfile[] {
   const raw = Array.isArray(value) ? value : [];
   const profiles = DEFAULT_MANUAL_COMMAND_PROFILES.map((fallback) => {
@@ -127,7 +133,7 @@ function normalizeCommandProfiles(value: unknown): ManualModerationCommandProfil
       command: fallback.command,
       allowAmount: typeof candidate?.allowAmount === "boolean" ? candidate.allowAmount : fallback.allowAmount,
       deleteCommandMessage: typeof candidate?.deleteCommandMessage === "boolean" ? candidate.deleteCommandMessage : fallback.deleteCommandMessage,
-      deleteTargetMessage: typeof candidate?.deleteTargetMessage === "boolean" ? candidate.deleteTargetMessage : fallback.deleteTargetMessage,
+      deleteTargetMessage: DELETE_TARGET_MESSAGE_COMMANDS.has(fallback.command) && (typeof candidate?.deleteTargetMessage === "boolean" ? candidate.deleteTargetMessage : fallback.deleteTargetMessage),
       deleteAllTargetMessages: (fallback.command === "mute" || fallback.command === "ban") && candidate?.deleteAllTargetMessages === true,
       notifications: { TARGET: channel("TARGET"), PUBLIC: channel("PUBLIC"), MODERATOR: channel("MODERATOR") }
     };
