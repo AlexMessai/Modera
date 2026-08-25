@@ -43,13 +43,13 @@ test("evaluateRaidOnJoin opens an incident once joins cross the threshold, and i
     // Below threshold: two joins inside the window doesn't open an incident.
     await fixtureJoin(chat.id, 900001001, now);
     await fixtureJoin(chat.id, 900001002, now);
-    const belowThreshold = await evaluateRaidOnJoin({ chatId: chat.id, at: now });
+    const belowThreshold = await evaluateRaidOnJoin({ chatId: chat.id, telegramChatId: Number(CHAT_ID), at: now });
     assert.equal(belowThreshold.raidActive, false);
     assert.equal(await isRaidForcingCaptcha(chat.id), false);
 
     // Third join crosses the threshold and opens an incident.
     await fixtureJoin(chat.id, 900001003, now);
-    const crossed = await evaluateRaidOnJoin({ chatId: chat.id, at: now });
+    const crossed = await evaluateRaidOnJoin({ chatId: chat.id, telegramChatId: Number(CHAT_ID), at: now });
     assert.equal(crossed.raidActive, true);
     assert.equal(crossed.justStarted, true);
     assert.ok(crossed.incidentId);
@@ -59,7 +59,7 @@ test("evaluateRaidOnJoin opens an incident once joins cross the threshold, and i
     assert.ok(startedLog);
 
     // A subsequent join below threshold does not clear the still-active incident.
-    const lull = await evaluateRaidOnJoin({ chatId: chat.id, at: new Date(now.getTime() + 1000) });
+    const lull = await evaluateRaidOnJoin({ chatId: chat.id, telegramChatId: Number(CHAT_ID), at: new Date(now.getTime() + 1000) });
     assert.equal(lull.raidActive, true);
     assert.equal(lull.justStarted, false);
     assert.equal(lull.incidentId, crossed.incidentId);

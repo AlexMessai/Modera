@@ -224,6 +224,7 @@ function renderAntiRaidDetail(settings: AntiRaidSettingsValue, telegramChatId: n
     rows.push(stepperRow("Окно, сек", settings.windowSeconds, "window", "protection.antiraid", telegramChatId, 5));
     rows.push(stepperRow("Затишье", settings.cooldownMinutes, "cooldown", "protection.antiraid", telegramChatId, 5));
     rows.push(toggleRow(`Капча во время рейда: ${settings.forceCaptcha ? "✅ вкл" : "⬜ выкл"}`, "protection.antiraid.forcecaptcha", telegramChatId));
+    rows.push(toggleRow(`Блокировать чат во время рейда: ${settings.lockChat ? "✅ вкл" : "⬜ выкл"}`, "protection.antiraid.lockchat", telegramChatId));
   }
   rows.push(backRow("protection", telegramChatId));
   return {
@@ -744,6 +745,8 @@ async function renderProtectionSection(input: { chatId: string; chatTitle: strin
       patch = { enabled: !settings.enabled };
     } else if (path === "protection.antiraid.forcecaptcha") {
       patch = { forceCaptcha: !settings.forceCaptcha };
+    } else if (path === "protection.antiraid.lockchat") {
+      patch = { lockChat: !settings.lockChat };
     } else {
       const stepperMatch = /^protection\.antiraid\.(threshold|window|cooldown)\.([+-]\d+)$/.exec(path);
       if (stepperMatch) {

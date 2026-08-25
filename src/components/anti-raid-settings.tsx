@@ -9,6 +9,7 @@ export type AntiRaidSettingsValue = {
   windowSeconds: number;
   cooldownMinutes: number;
   forceCaptcha: boolean;
+  lockChat: boolean;
 };
 
 type Props = {
@@ -90,6 +91,16 @@ export function AntiRaidSettings({
               onChange={(event) => setSettings((current) => ({ ...current, forceCaptcha: event.target.checked }))}
             />
             <span><strong>Принудительная капча во время рейда</strong><small>Каждый новый участник проходит проверку «Я не бот», даже если капча в чате обычно выключена.</small></span>
+          </label>
+
+          <label className="automod-toggle-row automod-toggle-row--compact">
+            <input
+              type="checkbox"
+              checked={settings.lockChat}
+              disabled={fieldsDisabled}
+              onChange={(event) => setSettings((current) => ({ ...current, lockChat: event.target.checked }))}
+            />
+            <span><strong>Блокировать чат во время рейда</strong><small>Пока рейд активен, обычные участники не смогут писать в чат (как /silence) — модераторы и админы пишут как обычно. Снимается автоматически по истечении затишья.</small></span>
           </label>
         </> : null}
       </div>

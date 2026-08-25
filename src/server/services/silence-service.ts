@@ -27,8 +27,9 @@ export async function startSilence(input: {
   chatId: string;
   telegramChatId: number;
   durationMinutes: number;
-  actorTelegramUserId: number;
-  actorDisplayName: string;
+  actorTelegramUserId?: number;
+  actorDisplayName?: string;
+  source?: "TELEGRAM" | "SYSTEM";
 }) {
   if (!Number.isFinite(input.durationMinutes) || input.durationMinutes < 1 || input.durationMinutes > SILENCE_DURATION_MINUTES_MAX) {
     throw new SilenceError("INVALID_DURATION", `Срок должен быть от 1 минуты до ${Math.floor(SILENCE_DURATION_MINUTES_MAX / 60 / 24)} дней.`);
@@ -54,20 +55,20 @@ export async function startSilence(input: {
           chatId: input.chatId,
           expiresAt,
           previousPermissions: previousPermissions ?? undefined,
-          startedByTelegramUserId: BigInt(input.actorTelegramUserId),
+          startedByTelegramUserId: input.actorTelegramUserId !== undefined ? BigInt(input.actorTelegramUserId) : undefined,
           startedByDisplayName: input.actorDisplayName
         },
         update: {
           expiresAt,
           previousPermissions: previousPermissions ?? undefined,
-          startedByTelegramUserId: BigInt(input.actorTelegramUserId),
+          startedByTelegramUserId: input.actorTelegramUserId !== undefined ? BigInt(input.actorTelegramUserId) : undefined,
           startedByDisplayName: input.actorDisplayName
         }
       });
       await tx.auditLog.create({
         data: {
           chatId: input.chatId,
-          source: "TELEGRAM",
+          source: input.source ?? "TELEGRAM",
           action: "SILENCE_STARTED",
           metadata: {
             durationMinutes: input.durationMinutes,

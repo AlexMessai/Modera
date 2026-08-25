@@ -447,6 +447,12 @@ model ChatAntiRaidSettings {
   // expiry (no more-frequent cron on the free Vercel plan, see docs/STAGE_2.md).
   cooldownMinutes  Int      @default(15)
   forceCaptcha     Boolean  @default(true)
+  // While a raid is active, lock the whole chat down via the same
+  // setChatPermissions mechanism /silence uses (moderators/admins keep
+  // posting on their own native rights) -- re-applied on every join while
+  // the raid stays active so the lock's expiry tracks cooldownMinutes, and
+  // self-lifts through the existing silence-expiry cron once joins stop.
+  lockChat         Boolean  @default(false)
   createdAt        DateTime @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime @updatedAt @db.Timestamptz(3)
   chat             Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)

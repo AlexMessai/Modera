@@ -14,7 +14,8 @@ const settingsSchema = z.object({
   joinThreshold: z.number().int().min(3).max(500),
   windowSeconds: z.number().int().min(5).max(600),
   cooldownMinutes: z.number().int().min(1).max(1440),
-  forceCaptcha: z.boolean()
+  forceCaptcha: z.boolean(),
+  lockChat: z.boolean()
 });
 
 export async function GET(

@@ -9,6 +9,8 @@ export type AntiRaidSettingsValue = {
   cooldownMinutes: number;
   /** Forces CAPTCHA on for new joiners while a raid is active, even if the chat's own CAPTCHA is off. */
   forceCaptcha: boolean;
+  /** Locks the whole chat down (like /silence) for the duration of an active raid, on top of forceCaptcha. */
+  lockChat: boolean;
 };
 
 export const DEFAULT_ANTI_RAID_SETTINGS: AntiRaidSettingsValue = {
@@ -16,7 +18,8 @@ export const DEFAULT_ANTI_RAID_SETTINGS: AntiRaidSettingsValue = {
   joinThreshold: 30,
   windowSeconds: 20,
   cooldownMinutes: 15,
-  forceCaptcha: true
+  forceCaptcha: true,
+  lockChat: false
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,7 +35,8 @@ export function normalizeAntiRaidSettings(input: AntiRaidSettingsValue): AntiRai
     joinThreshold: boundedInteger(input.joinThreshold, 3, 500),
     windowSeconds: boundedInteger(input.windowSeconds, 5, 600),
     cooldownMinutes: boundedInteger(input.cooldownMinutes, 1, 1440),
-    forceCaptcha: Boolean(input.forceCaptcha)
+    forceCaptcha: Boolean(input.forceCaptcha),
+    lockChat: Boolean(input.lockChat)
   };
 }
 
@@ -42,7 +46,8 @@ export function serializeAntiRaidSettings(settings: AntiRaidSettingsValue): Anti
     joinThreshold: settings.joinThreshold,
     windowSeconds: settings.windowSeconds,
     cooldownMinutes: settings.cooldownMinutes,
-    forceCaptcha: settings.forceCaptcha
+    forceCaptcha: settings.forceCaptcha,
+    lockChat: settings.lockChat
   };
 }
 

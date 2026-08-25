@@ -1,0 +1,2 @@
+ALTER TABLE "ChatAntiRaidSettings"
+ADD COLUMN "lockChat" BOOLEAN NOT NULL DEFAULT false;

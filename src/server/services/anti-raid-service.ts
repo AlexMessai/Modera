@@ -1,5 +1,12 @@
 import { prisma } from "@/server/db/prisma";
 import { resolveEffectiveAntiRaidSettings } from "@/server/services/anti-raid-settings-service";
+import { startSilence } from "@/server/services/silence-service";
+
+/** Best-effort chat lockdown for an active raid -- reuses /silence's own setChatPermissions
+ * mechanism and expiry cron, so a stuck Telegram call here never blocks raid detection itself. */
+async function lockChatForRaid(chatId: string, telegramChatId: number, cooldownMinutes: number) {
+  await startSilence({ chatId, telegramChatId, durationMinutes: cooldownMinutes, source: "SYSTEM" }).catch(() => undefined);
+}
 
 /**
  * Called on every new-member join (update-handler.ts, alongside the CAPTCHA
@@ -8,7 +15,7 @@ import { resolveEffectiveAntiRaidSettings } from "@/server/services/anti-raid-se
  * join-events table needed) and opens/updates a RaidIncident once the count
  * crosses `joinThreshold`.
  */
-export async function evaluateRaidOnJoin(input: { chatId: string; at: Date }): Promise<{
+export async function evaluateRaidOnJoin(input: { chatId: string; telegramChatId: number; at: Date }): Promise<{
   raidActive: boolean;
   justStarted: boolean;
   incidentId?: string;
@@ -35,6 +42,9 @@ export async function evaluateRaidOnJoin(input: { chatId: string; at: Date }): P
           peakJoinCount: Math.max(active.peakJoinCount, recentJoins)
         }
       });
+      // Re-applied on every join while the raid stays active, extending the
+      // lock's expiry so it tracks cooldownMinutes instead of lapsing mid-raid.
+      if (settings.lockChat) await lockChatForRaid(input.chatId, input.telegramChatId, settings.cooldownMinutes);
       return { raidActive: true, justStarted: false, incidentId: updated.id };
     }
 
@@ -53,12 +63,14 @@ export async function evaluateRaidOnJoin(input: { chatId: string; at: Date }): P
             joinCount: recentJoins,
             windowSeconds: settings.windowSeconds,
             joinThreshold: settings.joinThreshold,
-            forceCaptcha: settings.forceCaptcha
+            forceCaptcha: settings.forceCaptcha,
+            lockChat: settings.lockChat
           }
         }
       });
       return incident;
     });
+    if (settings.lockChat) await lockChatForRaid(input.chatId, input.telegramChatId, settings.cooldownMinutes);
     return { raidActive: true, justStarted: true, incidentId: created.id };
   }
 
