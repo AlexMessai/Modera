@@ -328,3 +328,86 @@ export async function revokeAdminSessions(input: {
 
   return { revokedSessionCount: result };
 }
+
+export type TelegramIdentityResolution =
+  | { outcome: "ok"; admin: NonNullable<Awaited<ReturnType<typeof prisma.adminUser.findUnique>>> }
+  | { outcome: "not_linked" }
+  | { outcome: "no_admin_chats" };
+
+/**
+ * Shared by every "log in as whoever this Telegram identity is" entry point
+ * (today: the /login page's bot-deep-link flow, telegram-login-request-service.ts) --
+ * kept as one implementation so self-registration behaves identically everywhere it
+ * can happen. An existing, active AdminUser with this telegramUserId just resolves to
+ * itself. Otherwise, self-registers a new CHAT-scoped account IF this Telegram user is
+ * a live CREATOR/ADMINISTRATOR of at least one chat the bot is still present in
+ * (cached ChatMember status, not a live Bot API fan-out) -- granting ChatAdminAccess
+ * for exactly those chats, "AUTO"-sourced same as the old widget-based flow.
+ */
+export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
+  id: number;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+}): Promise<TelegramIdentityResolution> {
+  const telegramUserId = BigInt(telegramUser.id);
+  const existing = await prisma.adminUser.findUnique({ where: { telegramUserId } });
+
+  if (existing && !existing.isActive) {
+    return { outcome: "not_linked" };
+  }
+  if (existing) {
+    return { outcome: "ok", admin: existing };
+  }
+
+  const adminChatMemberships = await prisma.chatMember.findMany({
+    where: {
+      user: { telegramUserId },
+      status: { in: ["CREATOR", "ADMINISTRATOR"] },
+      chat: { botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } } }
+    },
+    select: { chatId: true, status: true }
+  });
+
+  if (adminChatMemberships.length === 0) {
+    return { outcome: "no_admin_chats" };
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const newAdmin = await tx.adminUser.create({
+      data: {
+        scope: "CHAT",
+        role: "VIEWER",
+        email: null,
+        passwordHash: null,
+        displayName: [telegramUser.firstName, telegramUser.lastName].filter(Boolean).join(" ").trim() || telegramUser.username || `Telegram ${telegramUser.id}`,
+        telegramUserId,
+        telegramUsername: telegramUser.username ?? null,
+        telegramFirstName: telegramUser.firstName ?? null,
+        isActive: true
+      }
+    });
+
+    await tx.chatAdminAccess.createMany({
+      data: adminChatMemberships.map((membership) => ({
+        chatId: membership.chatId,
+        adminId: newAdmin.id,
+        role: membership.status === "CREATOR" ? "OWNER" : "ADMIN",
+        grantedVia: "AUTO"
+      }))
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actingAdminId: newAdmin.id,
+        source: "ADMIN",
+        action: "ADMIN_ACCOUNT_SELF_REGISTERED",
+        metadata: { chatCount: adminChatMemberships.length, telegramUsername: telegramUser.username ?? null }
+      }
+    });
+
+    return newAdmin;
+  });
+
+  return { outcome: "ok", admin: created };
+}
