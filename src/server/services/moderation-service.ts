@@ -12,8 +12,9 @@ import {
 import { extractBotPermissions } from "@/server/telegram/status";
 import { isBanExpired, isMuteExpired } from "@/server/services/punishment-state";
 import type { TelegramChatMember } from "@/server/telegram/types";
-import { revokeWarningRecord } from "@/server/services/warning-service";
+import { countActiveWarningRecords, revokeWarningRecord } from "@/server/services/warning-service";
 import { sendPublicModerationNotification } from "@/server/services/moderation-notification-settings-service";
+import { nextEscalationThreshold, resolveEffectiveModerationSettings } from "@/server/services/global-moderation-service";
 
 export const MODERATION_ACTIONS = ["WARNING", "MUTE", "UNMUTE", "BAN", "UNBAN", "KICK"] as const;
 export type ModerationActionValue = (typeof MODERATION_ACTIONS)[number];
@@ -194,6 +195,8 @@ async function recordWarning(input: {
     userId: string;
     status: string;
     punishmentState: string | null;
+    lastAutoEscalationWarningCount: number;
+    warningsResetAt: Date | null;
     chat: { title: string; telegramChatId: bigint };
     user: { telegramUserId: bigint; displayName?: string };
   };
@@ -256,13 +259,23 @@ async function recordWarning(input: {
   }).catch(() => undefined);
 
   if (input.source === "ADMIN") {
+    const { settings } = await resolveEffectiveModerationSettings(input.member.chatId);
+    const activeWarningCount = await countActiveWarningRecords({
+      chatId: input.member.chatId,
+      affectedUserId: input.member.userId,
+      warningExpiryDays: settings.warningExpiryDays,
+      warningsResetAt: input.member.warningsResetAt,
+      now
+    });
+    const warnsLimit = nextEscalationThreshold(settings.escalationRules, input.member.lastAutoEscalationWarningCount);
     await sendPublicModerationNotification({
       event: "WARNING",
       telegramChatId: input.member.chat.telegramChatId,
       target: input.member.user.displayName ?? input.member.user.telegramUserId.toString(),
       targetTelegramUserId: input.member.user.telegramUserId,
       reason: input.reason,
-      warns: String(result.membership.warningCount)
+      warns: String(activeWarningCount),
+      warnsLimit: warnsLimit !== null ? String(warnsLimit) : undefined
     }).catch(() => undefined);
   }
 
