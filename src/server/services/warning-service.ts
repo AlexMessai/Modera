@@ -26,11 +26,18 @@ export async function countActiveWarningRecords(input: {
   chatId: string;
   affectedUserId: string;
   warningExpiryDays: number;
+  warningsResetAt?: Date | null;
   now?: Date;
 }) {
-  const cutoff = input.warningExpiryDays > 0
+  const expiryCutoff = input.warningExpiryDays > 0
     ? new Date((input.now ?? new Date()).getTime() - input.warningExpiryDays * 24 * 60 * 60 * 1000)
     : null;
+  // Whichever floor is later wins: a per-level escalation reset always beats
+  // an older expiry-days cutoff, since it's a strictly more recent "nothing
+  // before this counts" point.
+  const cutoff = expiryCutoff && input.warningsResetAt
+    ? (expiryCutoff > input.warningsResetAt ? expiryCutoff : input.warningsResetAt)
+    : expiryCutoff ?? input.warningsResetAt ?? null;
 
   return prisma.moderationAction.count({
     where: {

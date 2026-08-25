@@ -14,7 +14,8 @@ const escalationRuleSchema = z.object({
   order: z.number().int().min(1).max(20),
   thresholdWarnings: z.number().int().min(1).max(999),
   action: z.enum(["MUTE", "BAN"]),
-  durationMinutes: z.number().int().min(1).max(527040).nullable()
+  durationMinutes: z.number().int().min(1).max(527040).nullable(),
+  resetWarningsOnTrigger: z.boolean()
 });
 
 const mediaFilterRuleSchema = z.object({

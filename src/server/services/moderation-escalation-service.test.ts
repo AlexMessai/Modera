@@ -5,6 +5,7 @@ import {
   countActiveWarnings,
   describeWarningStanding,
   escalateAfterManualWarning,
+  listWarningsForMember,
   recordAutomodViolationAndEscalate,
   warningCutoff
 } from "./moderation-escalation-service";
@@ -402,4 +403,44 @@ test("warning cutoff is disabled at zero and stable for positive days", () => {
     warningCutoff(now, 30)?.toISOString(),
     "2026-07-19T12:00:00.000Z"
   );
+});
+
+test("warningsResetAt hides warnings recorded before it from the active count, but not from history", async () => {
+  const data = await fixture(9);
+  try {
+    const before = new Date("2026-08-01T00:00:00.000Z");
+    const resetAt = new Date("2026-08-15T00:00:00.000Z");
+    const after = new Date("2026-08-20T00:00:00.000Z");
+
+    // Two warnings before the reset point, one after -- as if a prior
+    // escalation level already fired and reset the member's slate.
+    await prisma.moderationAction.createMany({
+      data: [
+        { chatId: data.chat.id, affectedUserId: data.user.id, source: "SYSTEM", type: "WARNING", status: "SUCCEEDED", createdAt: before, completedAt: before },
+        { chatId: data.chat.id, affectedUserId: data.user.id, source: "SYSTEM", type: "WARNING", status: "SUCCEEDED", createdAt: before, completedAt: before },
+        { chatId: data.chat.id, affectedUserId: data.user.id, source: "SYSTEM", type: "WARNING", status: "SUCCEEDED", createdAt: after, completedAt: after }
+      ]
+    });
+    await prisma.chatMember.update({
+      where: { id: data.member.id },
+      data: { warningCount: 3, warningsResetAt: resetAt, lastAutoEscalationWarningCount: 0 }
+    });
+
+    const standing = await describeWarningStanding({ chatId: data.chat.id, affectedUserId: data.user.id });
+    // Only the post-reset warning counts toward escalation...
+    assert.equal(standing.activeWarningCount, 1);
+    // ...and the threshold is back to the lowest configured level, not the
+    // one the member had already climbed past before the reset.
+    assert.equal(standing.warnsLimit, 5);
+
+    const forMember = await listWarningsForMember({ chatId: data.chat.id, telegramUserId: Number(data.user.telegramUserId) });
+    assert.equal(forMember?.activeWarningCount, 1);
+    // Full lifetime history is untouched -- all three rows still show up.
+    assert.equal(forMember?.recent.length, 3);
+    assert.equal(forMember?.totalWarningCount, 3);
+  } finally {
+    await prisma.moderationAction.deleteMany({ where: { chatId: data.chat.id } });
+    await prisma.chat.delete({ where: { id: data.chat.id } });
+    await prisma.telegramUser.delete({ where: { id: data.user.id } });
+  }
 });

@@ -82,13 +82,14 @@ export async function describeWarningStanding(input: { chatId: string; affectedU
     resolveEffectiveModerationSettings(input.chatId),
     prisma.chatMember.findFirst({
       where: { chatId: input.chatId, userId: input.affectedUserId },
-      select: { lastAutoEscalationWarningCount: true }
+      select: { lastAutoEscalationWarningCount: true, warningsResetAt: true }
     })
   ]);
   const activeWarningCount = await countActiveWarnings({
     chatId: input.chatId,
     affectedUserId: input.affectedUserId,
-    warningExpiryDays: resolved.settings.warningExpiryDays
+    warningExpiryDays: resolved.settings.warningExpiryDays,
+    warningsResetAt: member?.warningsResetAt ?? null
   });
   return {
     activeWarningCount,
@@ -100,7 +101,7 @@ export async function describeWarningStanding(input: { chatId: string; affectedU
 export async function listWarningsForMember(input: { chatId: string; telegramUserId: number }) {
   const member = await prisma.chatMember.findFirst({
     where: { chatId: input.chatId, user: { telegramUserId: BigInt(input.telegramUserId) } },
-    select: { userId: true, warningCount: true, lastAutoEscalationWarningCount: true }
+    select: { userId: true, warningCount: true, lastAutoEscalationWarningCount: true, warningsResetAt: true }
   });
   if (!member) return null;
 
@@ -109,7 +110,8 @@ export async function listWarningsForMember(input: { chatId: string; telegramUse
     countActiveWarnings({
       chatId: input.chatId,
       affectedUserId: member.userId,
-      warningExpiryDays: resolved.settings.warningExpiryDays
+      warningExpiryDays: resolved.settings.warningExpiryDays,
+      warningsResetAt: member.warningsResetAt
     }),
     prisma.moderationAction.findMany({
       where: { chatId: input.chatId, affectedUserId: member.userId, type: "WARNING" },
@@ -131,6 +133,7 @@ export async function countActiveWarnings(input: {
   chatId: string;
   affectedUserId: string;
   warningExpiryDays: number;
+  warningsResetAt?: Date | null;
   now?: Date;
 }) {
   return countActiveWarningRecords(input);
@@ -174,7 +177,10 @@ export async function recordAutomodViolationAndEscalate(input: {
 
   const reason = `Автомодерация: ${RULE_LABELS[input.rule] ?? "нарушение правила"}`;
   const now = new Date();
-  const cutoff = warningCutoff(now, policy.warningExpiryDays);
+  const expiryCutoff = warningCutoff(now, policy.warningExpiryDays);
+  const cutoff = expiryCutoff && member.warningsResetAt
+    ? (expiryCutoff > member.warningsResetAt ? expiryCutoff : member.warningsResetAt)
+    : expiryCutoff ?? member.warningsResetAt ?? null;
 
   const warning = await prisma.$transaction(async (tx) => {
     const updated = await tx.chatMember.update({
@@ -411,6 +417,7 @@ export async function escalateAfterManualWarning(input: {
       status: true,
       warningCount: true,
       lastAutoEscalationWarningCount: true,
+      warningsResetAt: true,
       user: { select: { id: true, isBot: true } }
     }
   });
@@ -422,6 +429,7 @@ export async function escalateAfterManualWarning(input: {
     chatId: input.chatId,
     affectedUserId: member.user.id,
     warningExpiryDays: policy.warningExpiryDays,
+    warningsResetAt: member.warningsResetAt,
     now
   });
 
@@ -567,6 +575,17 @@ export async function applyWarningEscalation(input: {
     });
     if (input.warningActionId) {
       await linkWarningToTriggeredPunishment(input.warningActionId, result.id);
+    }
+    if (triggered.resetWarningsOnTrigger) {
+      // Deliberately doesn't touch ChatMember.warningCount or any
+      // ModerationAction row -- /warns, /info, and the member profile keep
+      // showing the full lifetime history. Only the escalation-relevant
+      // window (countActiveWarningRecords) and the marker restart, so the
+      // member's next warning re-enters the chain at its lowest level.
+      await prisma.chatMember.update({
+        where: { id: input.membershipId },
+        data: { lastAutoEscalationWarningCount: 0, warningsResetAt: new Date() }
+      }).catch(() => undefined);
     }
     return {
       enabled: true,

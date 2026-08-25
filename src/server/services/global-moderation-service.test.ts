@@ -56,8 +56,8 @@ test("rule enabled flags and delete outcomes share one state", () => {
 
 test("findTriggeredEscalationRule picks the highest crossed-but-not-fired threshold", () => {
   const rules = [
-    { order: 1, thresholdWarnings: 3, action: "MUTE" as const, durationMinutes: 10 },
-    { order: 2, thresholdWarnings: 6, action: "BAN" as const, durationMinutes: null }
+    { order: 1, thresholdWarnings: 3, action: "MUTE" as const, durationMinutes: 10, resetWarningsOnTrigger: false },
+    { order: 2, thresholdWarnings: 6, action: "BAN" as const, durationMinutes: null, resetWarningsOnTrigger: false }
   ];
   // Below both thresholds.
   assert.equal(findTriggeredEscalationRule(rules, 2, 0), null);
@@ -75,8 +75,8 @@ test("lowestEscalationThreshold returns the smallest configured threshold, or nu
   assert.equal(lowestEscalationThreshold([]), null);
   assert.equal(
     lowestEscalationThreshold([
-      { order: 1, thresholdWarnings: 6, action: "BAN", durationMinutes: null },
-      { order: 2, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 }
+      { order: 1, thresholdWarnings: 6, action: "BAN", durationMinutes: null, resetWarningsOnTrigger: false },
+      { order: 2, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10, resetWarningsOnTrigger: false }
     ]),
     3
   );

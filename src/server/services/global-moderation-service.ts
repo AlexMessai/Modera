@@ -16,6 +16,10 @@ export type EscalationRuleValue = {
   action: EscalationRuleAction;
   /** Minutes; null = permanent (indefinite mute, or permanent ban). */
   durationMinutes: number | null;
+  /** When this level fires, restart the warning count from 0 instead of leaving
+   * it at this threshold — the member's next warning re-enters the chain at its
+   * lowest configured level rather than climbing toward the next one. */
+  resetWarningsOnTrigger: boolean;
 };
 
 // Keep these in sync with moderation-service.ts's MUTE_DURATION_MINUTES_MAX /
@@ -112,8 +116,8 @@ export const DEFAULT_MODERATION_SETTINGS = {
   ignoreAdmins: true,
   autoEscalationEnabled: false,
   escalationRules: [
-    { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10 },
-    { order: 2, thresholdWarnings: 6, action: "BAN", durationMinutes: null }
+    { order: 1, thresholdWarnings: 3, action: "MUTE", durationMinutes: 10, resetWarningsOnTrigger: false },
+    { order: 2, thresholdWarnings: 6, action: "BAN", durationMinutes: null, resetWarningsOnTrigger: false }
   ] as EscalationRuleValue[],
   warningExpiryDays: 0,
   announceEscalationEnabled: false,
@@ -206,7 +210,7 @@ export function normalizeEscalationRules(input: unknown): EscalationRuleValue[] 
     const durationMinutes = candidate.durationMinutes === null || candidate.durationMinutes === undefined
       ? null
       : boundedInteger(Number(candidate.durationMinutes), 1, ESCALATION_DURATION_MAX_BY_ACTION[action]);
-    rules.push({ order: rules.length + 1, thresholdWarnings, action, durationMinutes });
+    rules.push({ order: rules.length + 1, thresholdWarnings, action, durationMinutes, resetWarningsOnTrigger: Boolean(candidate.resetWarningsOnTrigger) });
   }
   return rules;
 }

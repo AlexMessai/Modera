@@ -215,6 +215,13 @@ model ChatMember {
   messageCount                   Int               @default(0)
   warningCount                   Int               @default(0)
   lastAutoEscalationWarningCount Int               @default(0)
+  // Per-level "reset counter on trigger" (EscalationRuleValue.resetWarningsOnTrigger)
+  // sets this to now() instead of leaving lastAutoEscalationWarningCount at the
+  // fired threshold. countActiveWarningRecords/countActiveWarnings then floor
+  // their window at max(warningExpiryDays cutoff, this) -- older WARNING rows
+  // stay in history (/warns, /info, member profile) untouched, they just stop
+  // counting toward the next escalation cycle.
+  warningsResetAt                DateTime?         @db.Timestamptz(3)
   selfUnmuteCount                Int               @default(0)
   punishmentState                String?
   punishmentExpiresAt            DateTime?         @db.Timestamptz(3)
