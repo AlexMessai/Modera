@@ -1,6 +1,5 @@
 import { prisma } from "@/server/db/prisma";
 import { consumeLinkCode } from "@/server/services/admin-link-service";
-import { resolveTelegramLoginRequest } from "@/server/services/telegram-login-request-service";
 import { canAdminModerateChat } from "@/server/services/chat-admin-access-service";
 import { getAppealMessages, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
 import { AppealError, resolveAppeal, submitLatestAppeal } from "@/server/services/appeal-service";
@@ -1096,8 +1095,7 @@ async function processMsgCommand(input: {
 }
 
 const APPEAL_COMMAND_PATTERN = /^\/appeal(?:@\w+)?(?:\s+([\s\S]*))?$/i;
-const START_COMMAND_PATTERN = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/i;
-const LOGIN_START_PAYLOAD_PATTERN = /^login_(.+)$/;
+const START_COMMAND_PATTERN = /^\/start(?:@\w+)?\s*$/i;
 const HELP_COMMAND_PATTERN = /^\/help(?:@\w+)?\s*$/i;
 const STATUS_COMMAND_PATTERN = /^\/status(?:@\w+)?\s*$/i;
 const UNMUTE_COMMAND_PATTERN = /^\/unmute(?:@\w+)?(?:\s+(\d+))?\s*$/i;
@@ -1176,26 +1174,7 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
 
   const text = message.text?.trim() ?? "";
 
-  const startMatch = START_COMMAND_PATTERN.exec(text);
-  if (startMatch) {
-    const loginPayloadMatch = startMatch[1] ? LOGIN_START_PAYLOAD_PATTERN.exec(startMatch[1]) : null;
-    if (loginPayloadMatch) {
-      const resolution = await resolveTelegramLoginRequest(loginPayloadMatch[1], {
-        id: message.from.id,
-        username: message.from.username,
-        firstName: message.from.first_name,
-        lastName: message.from.last_name
-      });
-      const loginReplyText = {
-        ok: "✅ Вход подтверждён — вернитесь в браузер, страница обновится сама.",
-        not_linked: "❌ Этот Telegram-аккаунт не привязан ни к одному администратору. Войдите по email и привяжите Telegram в разделе «Система → Аккаунты».",
-        no_admin_chats: "❌ Вы не администратор ни одного чата, подключённого к Modera.",
-        not_found: "❌ Ссылка для входа устарела или уже использована — вернитесь в браузер и запросите новую."
-      }[resolution.outcome];
-      await client.sendMessage({ chatId: message.from.id, text: loginReplyText }).catch(() => undefined);
-      return { accepted: true, ignored: false };
-    }
-
+  if (START_COMMAND_PATTERN.test(text)) {
     await client.sendMessage({ chatId: message.from.id, text: START_TEXT, replyMarkup: addToGroupButton(botUsername) }).catch(() => undefined);
     return { accepted: true, ignored: false };
   }

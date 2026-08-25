@@ -183,8 +183,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .auth-divider { position: relative; width: 100%; text-align: center; }
 .auth-divider::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--line); }
 .auth-divider span { position: relative; padding: 0 10px; background: var(--surface); color: var(--muted); font-size: 12px; }
-.auth-telegram-status { display: grid; gap: 10px; }
-.auth-telegram-status small { color: var(--muted); font-size: 12px; text-align: center; }
 .telegram-login-widget { display: flex; justify-content: center; }
 
 @media (max-width: 1100px) {

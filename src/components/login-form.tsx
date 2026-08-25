@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TelegramAppLogin } from "@/components/telegram-app-login";
+import { TelegramLoginWidget, type TelegramAuthUser } from "@/components/telegram-login-widget";
 
 export function LoginForm({ telegramBotUsername }: { telegramBotUsername?: string | null }) {
   const router = useRouter();
@@ -32,6 +32,24 @@ export function LoginForm({ telegramBotUsername }: { telegramBotUsername?: strin
     router.refresh();
   }
 
+  async function onTelegramAuth(user: TelegramAuthUser) {
+    setLoading(true);
+    setError(null);
+    const response = await fetch("/api/auth/telegram", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(user)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setError(payload?.error?.message ?? "Не удалось войти через Telegram.");
+      setLoading(false);
+      return;
+    }
+    router.replace("/overview");
+    router.refresh();
+  }
+
   return (
     <form className="auth-form" onSubmit={onSubmit}>
       <label className="field">
@@ -50,7 +68,7 @@ export function LoginForm({ telegramBotUsername }: { telegramBotUsername?: strin
       {telegramBotUsername ? (
         <div className="auth-divider-block">
           <div className="auth-divider"><span>или</span></div>
-          <TelegramAppLogin botUsername={telegramBotUsername} />
+          <TelegramLoginWidget botUsername={telegramBotUsername} onAuth={(user) => void onTelegramAuth(user)} />
         </div>
       ) : null}
     </form>

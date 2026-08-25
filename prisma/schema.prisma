@@ -812,7 +812,6 @@ model AdminUser {
   resolvedReports           Report[]           @relation("ReportResolver")
   chatAdminAccess           ChatAdminAccess[]  @relation("ChatAdminAccessAdmin")
   grantedChatAdminAccess    ChatAdminAccess[]  @relation("ChatAdminAccessGrantedBy")
-  telegramLoginRequests     TelegramLoginRequest[]
 
   @@index([role, isActive])
   @@index([scope])
@@ -839,25 +838,6 @@ model ChatAdminAccess {
   @@unique([chatId, adminId])
   @@index([adminId])
   @@index([chatId])
-}
-
-// Backs the "Войти через Telegram" login flow via a t.me/<bot>?start=login_<token>
-// deep link (see telegram-login-request-service.ts) rather than Telegram's JS login
-// widget -- opening a t.me link lets Telegram's own app handle picking which of the
-// user's signed-in accounts to use, which the widget (tied to whatever browser
-// session is active) can't offer. Single-use: resolveTelegramLoginRequest only ever
-// matches a row still in PENDING, so a second /start with the same token is a no-op.
-model TelegramLoginRequest {
-  id              String    @id @default(uuid()) @db.Uuid
-  tokenHash       String    @unique
-  status          String    @default("PENDING") // PENDING | COMPLETED | FAILED
-  resolvedAdminId String?   @db.Uuid
-  errorCode       String?
-  expiresAt       DateTime  @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
-  resolvedAdmin   AdminUser? @relation(fields: [resolvedAdminId], references: [id], onDelete: SetNull)
-
-  @@index([expiresAt])
 }
 
 model AdminSession {
