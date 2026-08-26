@@ -321,7 +321,7 @@ export function MembersClient({
               <thead>
                 <tr>
                   <th>Участник</th>
-                  <th>Чат</th>
+                  {lockChat ? null : <th>Чат</th>}
                   <th>Статус</th>
                   <th>Исключение</th>
                   <th>Сообщения</th>
@@ -358,12 +358,14 @@ export function MembersClient({
                           </div>
                         </div>
                       </td>
-                      <td>
-                        <div className="stacked-cell">
-                          <strong>{member.chat.title}</strong>
-                          <span className="mono">{member.chat.telegramChatId}</span>
-                        </div>
-                      </td>
+                      {lockChat ? null : (
+                        <td>
+                          <div className="stacked-cell">
+                            <strong>{member.chat.title}</strong>
+                            <span className="mono">{member.chat.telegramChatId}</span>
+                          </div>
+                        </td>
+                      )}
                       <td>
                         <span className={`badge ${memberStatusBadgeClass(member.status)}`}>
                           {memberStatusLabel(member.status)}
@@ -396,7 +398,16 @@ export function MembersClient({
                       <td>{member.messageCount.toLocaleString("ru-RU")}</td>
                       <td>{member.warningCount.toLocaleString("ru-RU")}</td>
                       <td>{formatDate(member.lastSeenAt)}</td>
-                      <td className="mono">{member.user.telegramUserId}</td>
+                      <td className="mono">
+                        <a
+                          className="table-link"
+                          href={telegramProfileUrl(member.user)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {member.user.telegramUserId}
+                        </a>
+                      </td>
                     </tr>
                   );
                 })}
@@ -436,6 +447,10 @@ export function MembersClient({
       ) : null}
     </section>
   );
+}
+
+function telegramProfileUrl(user: { telegramUserId: string; username: string | null }) {
+  return user.username ? `https://t.me/${user.username}` : `tg://user?id=${user.telegramUserId}`;
 }
 
 function formatDate(value: string) {
