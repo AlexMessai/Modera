@@ -84,15 +84,16 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .page-header h1 { margin: 3px 0 5px; font-size: 28px; line-height: 1.16; letter-spacing: -0.035em; }
 .page-header p, .panel-header p, .status-row p, .state-box p { margin: 0; color: var(--muted); }
 .eyebrow { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
-.page-tabs { display: flex; flex-wrap: wrap; width: fit-content; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 20px; }
+.page-tabs { display: flex; flex-wrap: wrap; width: fit-content; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-bottom: 20px; }
 .settings-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
 .settings-toolbar .page-tabs { margin-bottom: 0; }
-.page-tabs--secondary { padding: 0 2px; border-color: transparent; }
-.page-tabs--secondary .page-tab { padding: 5px 11px; font-size: 12.5px; color: var(--muted); }
-.page-tabs--secondary .page-tab--active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
-.page-tab { border: 0; border-radius: 6px; padding: 7px 14px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; }
-.page-tab:hover { background: var(--surface-2); color: var(--text); }
-.page-tab--active { background: var(--surface-2); color: var(--text); }
+.page-tabs--secondary { padding: 3px; border-radius: 9px; }
+.page-tabs--secondary .page-tab { min-height: 30px; padding: 0 11px; font-size: 12.5px; }
+.page-tabs--secondary .page-tab--active { background: var(--accent-soft); color: var(--accent); }
+.page-tab { min-height: 34px; display: inline-flex; align-items: center; border: 0; border-radius: 7px; padding: 0 13px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; }
+.page-tab:hover { color: var(--text); background: var(--surface-2); }
+.page-tab--active { color: var(--text); background: var(--surface-2); }
+.page-tab:disabled { cursor: wait; opacity: .6; }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .metric-card, .panel { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); }
 .metric-card { min-height: 132px; padding: 17px; display: flex; flex-direction: column; }
