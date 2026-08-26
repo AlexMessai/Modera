@@ -430,50 +430,6 @@ test("renderSettingsMenu: Logs section, toggle and unlink work once a channel is
   }
 });
 
-test("renderSettingsMenu: Users/Roles section lists roles and a permission toggle persists to the chat's own role row", async () => {
-  await cleanup();
-  const chat = await prisma.chat.create({
-    data: { telegramChatId: CHAT_ID, title: "Settings Menu CI", type: "supergroup" }
-  });
-  const admin = await prisma.adminUser.create({
-    data: { email: ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
-  });
-
-  try {
-    const rolesList = await renderSettingsMenu({
-      chatId: chat.id,
-      chatTitle: chat.title,
-      telegramChatId: Number(CHAT_ID),
-      actingAdminId: admin.id,
-      path: "users.roles"
-    });
-    assert.ok(rolesList?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("Модератор"))));
-
-    const before = await renderSettingsMenu({
-      chatId: chat.id,
-      chatTitle: chat.title,
-      telegramChatId: Number(CHAT_ID),
-      actingAdminId: admin.id,
-      path: "users.roles.moderator"
-    });
-    assert.ok(before?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("⬜") && button.text.includes("Управлять автомодерацией"))));
-
-    const toggled = await renderSettingsMenu({
-      chatId: chat.id,
-      chatTitle: chat.title,
-      telegramChatId: Number(CHAT_ID),
-      actingAdminId: admin.id,
-      path: "users.roles.moderator.am.toggle"
-    });
-    assert.ok(toggled?.keyboard?.inline_keyboard.some((row) => row.some((button) => button.text.includes("✅") && button.text.includes("Управлять автомодерацией"))));
-
-    const role = await prisma.chatRole.findUnique({ where: { chatId_key: { chatId: chat.id, key: "moderator" } } });
-    assert.ok(role?.permissions.includes("automod.manage"));
-  } finally {
-    await cleanup();
-  }
-});
-
 test("renderSettingsMenu: Chat section, welcome toggle persists", async () => {
   await cleanup();
   const chat = await prisma.chat.create({

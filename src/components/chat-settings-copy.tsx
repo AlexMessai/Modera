@@ -10,7 +10,6 @@ type CopyableSection =
   | "antiraid"
   | "manual"
   | "appeals"
-  | "roles"
   | "reports";
 
 const SECTION_OPTIONS: Array<{ value: CopyableSection; label: string }> = [
@@ -19,8 +18,7 @@ const SECTION_OPTIONS: Array<{ value: CopyableSection; label: string }> = [
   { value: "antiraid", label: "Anti-Raid" },
   { value: "manual", label: "Ручная модерация" },
   { value: "appeals", label: "Апелляции" },
-  { value: "reports", label: "Жалобы" },
-  { value: "roles", label: "Роли" }
+  { value: "reports", label: "Жалобы" }
 ];
 
 type ChatOption = { id: string; title: string };

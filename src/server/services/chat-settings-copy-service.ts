@@ -6,9 +6,8 @@ import { getChatAntiRaidProfile, updateChatAntiRaidSettings } from "@/server/ser
 import { getChatManualModerationProfile, updateChatManualModerationProfile } from "@/server/services/manual-moderation-settings-service";
 import { getChatAppealProfile, updateChatAppealProfile } from "@/server/services/chat-appeal-settings-service";
 import { getChatReportProfile, updateChatReportSettings } from "@/server/services/report-settings-service";
-import { listChatRoles, updateChatRolePermissions } from "@/server/services/chat-role-service";
 
-export const COPYABLE_SETTINGS_SECTIONS = ["automod", "newusers", "antiraid", "manual", "appeals", "roles", "reports"] as const;
+export const COPYABLE_SETTINGS_SECTIONS = ["automod", "newusers", "antiraid", "manual", "appeals", "reports"] as const;
 export type CopyableSettingsSection = (typeof COPYABLE_SETTINGS_SECTIONS)[number];
 
 export function isCopyableSettingsSection(value: string): value is CopyableSettingsSection {
@@ -107,27 +106,6 @@ export async function copyChatSettings(input: {
         if (!source) break;
         await updateChatReportSettings({ chatId: input.targetChatId, actingAdminId: input.actingAdminId, settings: source.settings });
         applied.push(section);
-        break;
-      }
-      case "roles": {
-        const [sourceRoles, targetRoles] = await Promise.all([
-          listChatRoles(input.sourceChatId),
-          listChatRoles(input.targetChatId)
-        ]);
-        let matchedAny = false;
-        for (const sourceRole of sourceRoles) {
-          const match = targetRoles.find((role) => role.key === sourceRole.key)
-            ?? (sourceRole.isCustom ? targetRoles.find((role) => role.isCustom && role.label === sourceRole.label) : undefined);
-          if (!match) continue;
-          await updateChatRolePermissions({
-            chatId: input.targetChatId,
-            roleId: match.id,
-            actingAdminId: input.actingAdminId,
-            permissions: sourceRole.permissions
-          });
-          matchedAny = true;
-        }
-        if (matchedAny) applied.push(section);
         break;
       }
     }

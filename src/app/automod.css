@@ -48,7 +48,6 @@
 .automod-field textarea:disabled, .automod-field input:disabled, .automod-field select:disabled { background: var(--surface-2); color: #9aa0aa; }
 .automod-number-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 170px)); gap: 8px; }
 .automod-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.role-permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; }
 .automod-media-option { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }

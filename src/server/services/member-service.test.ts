@@ -266,7 +266,7 @@ test("resolveTelegramTargets resolves @username/ID only within the given chat an
   }
 });
 
-test("getInfoCardBasics returns the /info card's profile fields, including the assigned ChatRole label", async () => {
+test("getInfoCardBasics returns the /info card's profile fields", async () => {
   const telegramChatId = -1009000000020n;
   const telegramUserId = 900000020;
   const chat = await prisma.chat.create({
@@ -281,16 +281,11 @@ test("getInfoCardBasics returns the /info card's profile fields, including the a
       updateId: 600
     });
 
-    const role = await prisma.chatRole.findFirstOrThrow({
-      where: { chatId: chat.id, key: "member" }
-    });
-
     const basics = await getInfoCardBasics(chat.id, telegramUserId);
     assert.ok(basics);
     assert.equal(basics?.user.username, "info_target");
     assert.equal(basics?.user.displayName, "Info");
     assert.equal(basics?.user.telegramUserId, BigInt(telegramUserId));
-    assert.equal(basics?.chatRole?.label, role.label);
     assert.equal(basics?.messageCount, 0);
 
     assert.equal(await getInfoCardBasics(chat.id, 999999999), null);

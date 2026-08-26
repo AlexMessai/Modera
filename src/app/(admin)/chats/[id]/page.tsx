@@ -9,7 +9,6 @@ import { ManualModerationSettings } from "@/components/manual-moderation-setting
 import { AntiRaidSettings } from "@/components/anti-raid-settings";
 import { ReportSettings } from "@/components/report-settings";
 import { LogChannelSettings } from "@/components/log-channel-settings";
-import { ChatRolesSettings } from "@/components/chat-roles-settings";
 import { ContentSettings } from "@/components/content-settings";
 import { ChatStatistics } from "@/components/chat-statistics-client";
 import { MembersClient } from "@/components/members-client";
@@ -28,7 +27,6 @@ import { getChatAppealProfile } from "@/server/services/chat-appeal-settings-ser
 import { getChatAntiRaidProfile } from "@/server/services/anti-raid-settings-service";
 import { getChatReportProfile } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile } from "@/server/services/log-channel-service";
-import { listChatRoles } from "@/server/services/chat-role-service";
 import { getChatContentProfile } from "@/server/services/content-settings-service";
 import { getActiveSilence } from "@/server/services/silence-service";
 import { AutoResponseSettings } from "@/components/auto-response-settings";
@@ -73,7 +71,6 @@ const SETTINGS_SECTIONS = [
   { key: "antiraid", label: "Anti-Raid" },
   { key: "manual", label: "Ручная модерация" },
   { key: "appeals", label: "Апелляции" },
-  { key: "roles", label: "Роли" },
   { key: "team", label: "Команда" },
   { key: "reports", label: "Жалобы" },
   { key: "logchannel", label: "Канал логов" },
@@ -99,7 +96,7 @@ export default async function ChatDetailPage({
   const tab = typeof query.tab === "string" ? query.tab : "overview";
   const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
 
-  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, roles, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -108,7 +105,6 @@ export default async function ChatDetailPage({
     getChatAntiRaidProfile(id),
     getChatReportProfile(id),
     getChatLogChannelProfile(id),
-    listChatRoles(id),
     getChatContentProfile(id),
     getActiveSilence(id),
     listAutoResponseRules(id),
@@ -173,13 +169,6 @@ export default async function ChatDetailPage({
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Апелляции</h2><p>Команда /appeal боту в личные сообщения: включение для этого чата и уведомления вокруг апелляций.</p></div></div>
               <ChatAppealSettings chatId={appealProfile.chat.id} initial={appealProfile.settings} canEdit={canEdit} />
-            </section>
-          ) : null}
-
-          {section === "roles" ? (
-            <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Роли</h2><p>Права каждой роли этого чата. Роль назначается автоматически по статусу в Telegram (владелец/администратор) или вручную доверенным участникам.</p></div></div>
-              {roles.length > 0 ? <ChatRolesSettings chatId={id} initial={roles} canEdit={canEdit} /> : <div className="state-box state-box--compact"><strong>Ролей пока нет</strong></div>}
             </section>
           ) : null}
 

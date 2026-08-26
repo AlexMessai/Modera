@@ -11,7 +11,7 @@ import { findMatchingAutoResponse } from "@/server/services/auto-response-servic
 import { findCustomCommand } from "@/server/services/custom-command-service";
 import { sendWelcomeMessage } from "@/server/services/welcome-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
-import { hasChatPermission, type ChatPermission } from "@/server/services/chat-role-service";
+import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { applyNewMemberProtection } from "@/server/services/new-member-protection-service";
@@ -210,16 +210,6 @@ const GROUP_MODERATION_COMMANDS: Record<string, { action: GroupModerationCommand
 
 /** /unwarn is not a ModerationActionValue — it only takes a warning back locally. */
 type GroupModerationCommand = ModerationActionValue | "UNWARN";
-
-const CHAT_PERMISSION_BY_ACTION: Record<GroupModerationCommand, ChatPermission> = {
-  WARNING: "moderation.warn",
-  UNWARN: "moderation.warn",
-  MUTE: "moderation.mute",
-  UNMUTE: "moderation.mute",
-  BAN: "moderation.ban",
-  UNBAN: "moderation.ban",
-  KICK: "moderation.kick"
-};
 
 const COMMAND_KEY_BY_ACTION = {
   WARNING: "warn", UNWARN: "unwarn", MUTE: "mute", UNMUTE: "unmute", BAN: "ban", UNBAN: "unban", KICK: "kick"
@@ -447,12 +437,7 @@ async function processGroupModerationCommand(input: {
   // the command succeeds, fails permission/format checks, or errors out.
   if (commandProfile.deleteCommandMessage) await input.client.deleteMessage(input.telegramChatId, input.message.message_id).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: CHAT_PERMISSION_BY_ACTION[action]
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await privateReply("❌ У вас нет прав администратора в этом чате.");
     return true;
@@ -579,12 +564,7 @@ async function processWarnsCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "history.view"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав администратора в этом чате.");
     return true;
@@ -686,12 +666,7 @@ async function processInfoCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "users.view"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав администратора в этом чате.");
     return true;
@@ -729,7 +704,6 @@ async function processInfoCommand(input: {
   lines.push(`ID: ${basics.user.telegramUserId}`);
   if (context) {
     lines.push(`Статус: ${MEMBERSHIP_STATUS_LABELS[context.status] ?? context.status}`);
-    if (basics.chatRole) lines.push(`Роль: ${basics.chatRole.label}`);
     if (context.punishmentState === "MUTED") {
       lines.push(`Наказание: mute${context.punishmentExpiresAt ? ` до ${formatDateTime(context.punishmentExpiresAt)}` : " (бессрочно)"}`);
     } else if (context.punishmentState === "BANNED") {
@@ -788,12 +762,7 @@ async function processCustomCommand(input: {
   if (!command) return false;
 
   if (command.adminOnly) {
-    const allowed = await hasChatPermission({
-      chatId: input.chatId,
-      chatTelegramId: input.telegramChatId,
-      telegramUserId: from.id,
-      permission: "automod.manage"
-    });
+    const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
     if (!allowed) return false;
   }
 
@@ -830,12 +799,7 @@ async function processSilenceCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "moderation.mute"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав ограничивать участников в этом чате.");
     return true;
@@ -881,12 +845,7 @@ async function processUnsilenceCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "moderation.mute"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав ограничивать участников в этом чате.");
     return true;
@@ -1010,12 +969,7 @@ async function processSettingsCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "automod.manage"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав изменять настройки этого чата.");
     return true;
@@ -1075,12 +1029,7 @@ async function processMsgCommand(input: {
   const reply = (replyText: string) =>
     input.client.sendMessage({ chatId: input.telegramChatId, text: replyText, receiverUserId: from.id }).catch(() => undefined);
 
-  const allowed = await hasChatPermission({
-    chatId: input.chatId,
-    chatTelegramId: input.telegramChatId,
-    telegramUserId: from.id,
-    permission: "automod.manage"
-  });
+  const allowed = await isLiveTelegramChatAdmin(input.telegramChatId, from.id);
   if (!allowed) {
     await reply("❌ У вас нет прав отправлять сообщения от имени бота в этом чате.");
     return true;
@@ -1447,12 +1396,7 @@ async function processSettingsCallback(
 
   // Re-checked on every tap, not just at /settings time -- admin rights can
   // change between opening the menu and pressing a button minutes later.
-  const allowed = await hasChatPermission({
-    chatId: chat.id,
-    chatTelegramId: parsed.telegramChatId,
-    telegramUserId: callbackQuery.from.id,
-    permission: "automod.manage"
-  });
+  const allowed = await isLiveTelegramChatAdmin(parsed.telegramChatId, callbackQuery.from.id);
   if (!allowed) {
     await client.answerCallbackQuery({ callbackQueryId: callbackQuery.id, text: "У вас нет прав изменять настройки этого чата.", showAlert: true }).catch(() => undefined);
     return { accepted: true, ignored: false };

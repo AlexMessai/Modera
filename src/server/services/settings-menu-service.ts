@@ -4,7 +4,6 @@ import { getChatCaptchaProfile, updateChatCaptchaProfile, type CaptchaSettingsVa
 import { getChatAntiRaidProfile, updateChatAntiRaidSettings, type AntiRaidSettingsValue } from "@/server/services/anti-raid-settings-service";
 import { getChatReportProfile, updateChatReportSettings, type ReportSettingsValue } from "@/server/services/report-settings-service";
 import { getChatLogChannelProfile, startLogChannelLink, unlinkLogChannel, updateChatLogChannelSettings, type LogChannelSettingsValue } from "@/server/services/log-channel-service";
-import { CHAT_PERMISSION_LABELS, listChatRoles, updateChatRolePermissions, type ChatPermission, type ChatRoleSummary } from "@/server/services/chat-role-service";
 import { getChatContentProfile, updateChatContentSettings, type ContentSettingsValue } from "@/server/services/content-settings-service";
 import { getActiveSilence } from "@/server/services/silence-service";
 import { listAutoResponseRules } from "@/server/services/auto-response-service";
@@ -75,7 +74,6 @@ function renderRoot(chatTitle: string, telegramChatId: number) {
         [{ text: "🔐 Защита", callback_data: buildSettingsCallbackData(telegramChatId, "protection") }],
         [{ text: "🚩 Жалобы", callback_data: buildSettingsCallbackData(telegramChatId, "reports") }],
         [{ text: "📋 Логи", callback_data: buildSettingsCallbackData(telegramChatId, "logs") }],
-        [{ text: "👥 Пользователи", callback_data: buildSettingsCallbackData(telegramChatId, "users") }],
         [{ text: "💬 Чат", callback_data: buildSettingsCallbackData(telegramChatId, "chat") }],
         [{ text: "🤖 Автоматизация", callback_data: buildSettingsCallbackData(telegramChatId, "automation") }],
         [{ text: "✖️ Закрыть", callback_data: buildSettingsCallbackData(telegramChatId, "close") }]
@@ -422,95 +420,6 @@ async function renderLogsSection(input: { chatId: string; chatTitle: string; tel
   return renderLogsDetail(settings, input.telegramChatId);
 }
 
-// Short, callback_data-safe codes for each ChatPermission -- the full dotted
-// names ("moderation.delete") would push a role-detail toggle path close to
-// the 64-byte callback_data cap once combined with the role key and chat id.
-const PERMISSION_CODES: Array<{ code: string; permission: ChatPermission }> = [
-  { code: "mw", permission: "moderation.warn" },
-  { code: "mm", permission: "moderation.mute" },
-  { code: "mb", permission: "moderation.ban" },
-  { code: "mk", permission: "moderation.kick" },
-  { code: "md", permission: "moderation.delete" },
-  { code: "uv", permission: "users.view" },
-  { code: "hv", permission: "history.view" },
-  { code: "am", permission: "automod.manage" },
-  { code: "sm", permission: "settings.manage" },
-  { code: "rm", permission: "roles.manage" },
-  { code: "lv", permission: "logs.view" }
-];
-
-function renderUsersMenu(telegramChatId: number) {
-  return {
-    text: "👥 Пользователи\n\nРоль назначается автоматически по статусу в Telegram (владелец/администратор) или доверенным участникам. Здесь можно посмотреть и изменить, какие права даёт каждая роль.",
-    keyboard: {
-      inline_keyboard: [
-        [{ text: "🎭 Роли", callback_data: buildSettingsCallbackData(telegramChatId, "users.roles") }],
-        backRow("root", telegramChatId)
-      ]
-    } satisfies TelegramInlineKeyboardMarkup
-  };
-}
-
-function renderRolesListDetail(roles: ChatRoleSummary[], telegramChatId: number) {
-  const rows = roles.map((role) => [{
-    text: `${role.label}: ${role.permissions.length} прав`,
-    callback_data: buildSettingsCallbackData(telegramChatId, `users.roles.${role.key}`)
-  }]);
-  rows.push(backRow("users", telegramChatId));
-  return {
-    text: "🎭 Роли чата\n\nВыберите роль, чтобы посмотреть или изменить её права.",
-    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
-  };
-}
-
-function renderRoleDetail(role: ChatRoleSummary, telegramChatId: number) {
-  const rows = PERMISSION_CODES.map(({ code, permission }) =>
-    toggleRow(`${role.permissions.includes(permission) ? "✅" : "⬜"} ${CHAT_PERMISSION_LABELS[permission]}`, `users.roles.${role.key}.${code}.toggle`, telegramChatId)
-  );
-  rows.push(backRow("users.roles", telegramChatId));
-  return {
-    text: `🎭 ${role.label}\n\nПрава этой роли — изменения сразу действуют на всех участников с ней.`,
-    keyboard: { inline_keyboard: rows } satisfies TelegramInlineKeyboardMarkup
-  };
-}
-
-async function renderUsersSection(input: { chatId: string; chatTitle: string; telegramChatId: number; actingAdminId: string; path: string }) {
-  const { path } = input;
-  if (path === "users") return renderUsersMenu(input.telegramChatId);
-  if (path === "users.roles") {
-    const roles = await listChatRoles(input.chatId);
-    if (roles.length === 0) return null;
-    return renderRolesListDetail(roles, input.telegramChatId);
-  }
-
-  const roleMatch = /^users\.roles\.([a-z]+)(?:\.([a-z]{2})\.toggle)?$/.exec(path);
-  if (roleMatch) {
-    const [, roleKey, code] = roleMatch;
-    const roles = await listChatRoles(input.chatId);
-    let role = roles.find((item) => item.key === roleKey);
-    if (!role) return null;
-
-    if (code) {
-      const permission = PERMISSION_CODES.find((item) => item.code === code)?.permission;
-      if (permission) {
-        const nextPermissions = role.permissions.includes(permission)
-          ? role.permissions.filter((item) => item !== permission)
-          : [...role.permissions, permission];
-        const saved = await updateChatRolePermissions({
-          chatId: input.chatId,
-          roleId: role.id,
-          actingAdminId: input.actingAdminId,
-          permissions: nextPermissions
-        });
-        role = saved ?? { ...role, permissions: nextPermissions };
-      }
-    }
-    return renderRoleDetail(role, input.telegramChatId);
-  }
-
-  return null;
-}
-
 function renderChatMenu(settings: ContentSettingsValue, telegramChatId: number) {
   return {
     text: "💬 Чат\n\nВыберите раздел, чтобы посмотреть или изменить его.",
@@ -802,9 +711,6 @@ export async function renderSettingsMenu(input: {
   }
   if (input.path === "logs" || input.path.startsWith("logs.")) {
     return (await renderLogsSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
-  }
-  if (input.path === "users" || input.path.startsWith("users.")) {
-    return (await renderUsersSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
   }
   if (input.path === "chat" || input.path.startsWith("chat.")) {
     return (await renderChatSection(input)) ?? renderRoot(input.chatTitle, input.telegramChatId);
