@@ -217,7 +217,7 @@ export default async function ChatDetailPage({
         </>
       ) : null}
 
-      {tab === "members" ? <MembersClient initialChatId={id} lockChat canManageTrust={canEdit} /> : null}
+      {tab === "members" ? <MembersClient chatId={id} canManageTrust={canEdit} /> : null}
       {tab === "requests" ? <JoinRequestsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
       {tab === "appeals" ? <AppealsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
       {tab === "messages" ? <MessagesClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}

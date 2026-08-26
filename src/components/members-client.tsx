@@ -56,12 +56,6 @@ type MembersResponse = {
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 };
 
-type ChatFilterItem = {
-  id: string;
-  title: string;
-  telegramChatId: string;
-};
-
 const statusOptions: Array<{ value: MemberStatus | ""; label: string }> = [
   { value: "", label: "Все статусы" },
   { value: "MEMBER", label: "Участники" },
@@ -100,46 +94,22 @@ async function requestMembers(input: {
   return payload.data as MembersResponse;
 }
 
-async function requestChats(): Promise<ChatFilterItem[]> {
-  const response = await fetch("/api/chats?page=1&pageSize=100", {
-    cache: "no-store"
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) return [];
-  return (payload.data?.items ?? []) as ChatFilterItem[];
-}
-
 export function MembersClient({
-  canManageTrust = false,
-  initialChatId = "",
-  lockChat = false
+  chatId,
+  canManageTrust = false
 }: {
+  chatId: string;
   canManageTrust?: boolean;
-  initialChatId?: string;
-  lockChat?: boolean;
 }) {
   const [data, setData] = useState<MembersResponse | null>(null);
-  const [chats, setChats] = useState<ChatFilterItem[]>([]);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
-  const [chatId, setChatId] = useState(initialChatId);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [trustingId, setTrustingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (lockChat) return;
-    let active = true;
-    void requestChats().then((items) => {
-      if (active) setChats(items);
-    });
-    return () => {
-      active = false;
-    };
-  }, [lockChat]);
 
   useEffect(() => {
     let active = true;
@@ -232,12 +202,6 @@ export function MembersClient({
     }
   }
 
-  function changeChat(nextChatId: string) {
-    setLoading(true);
-    setPage(1);
-    setChatId(nextChatId);
-  }
-
   function changeStatus(nextStatus: string) {
     setLoading(true);
     setPage(1);
@@ -257,21 +221,6 @@ export function MembersClient({
           />
         </form>
         <div className="toolbar-filters">
-          {lockChat ? null : (
-            <select
-              className="select-control"
-              value={chatId}
-              onChange={(event) => changeChat(event.target.value)}
-              aria-label="Фильтр по чату"
-            >
-              <option value="">Все чаты</option>
-              {chats.map((chat) => (
-                <option value={chat.id} key={chat.id}>
-                  {chat.title}
-                </option>
-              ))}
-            </select>
-          )}
           <select
             className="select-control"
             value={status}
@@ -321,7 +270,6 @@ export function MembersClient({
               <thead>
                 <tr>
                   <th>Участник</th>
-                  {lockChat ? null : <th>Чат</th>}
                   <th>Статус</th>
                   <th>Исключение</th>
                   <th>Сообщения</th>
@@ -358,14 +306,6 @@ export function MembersClient({
                           </div>
                         </div>
                       </td>
-                      {lockChat ? null : (
-                        <td>
-                          <div className="stacked-cell">
-                            <strong>{member.chat.title}</strong>
-                            <span className="mono">{member.chat.telegramChatId}</span>
-                          </div>
-                        </td>
-                      )}
                       <td>
                         <span className={`badge ${memberStatusBadgeClass(member.status)}`}>
                           {memberStatusLabel(member.status)}
