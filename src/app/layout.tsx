@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Onest } from "next/font/google";
+import { Manrope, Inter } from "next/font/google";
 import "./globals.css";
 import "./members.css";
 import "./automod.css";
@@ -15,9 +15,15 @@ import "./appeals.css";
 import "./commands.css";
 import "./chats.css";
 
-const onest = Onest({
+const manrope = Manrope({
   subsets: ["cyrillic", "latin"],
-  variable: "--font-onest",
+  variable: "--font-heading",
+  display: "swap"
+});
+
+const inter = Inter({
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-body",
   display: "swap"
 });
 
@@ -29,7 +35,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru">
-      <body className={onest.variable}>{children}</body>
+      <body className={`${manrope.variable} ${inter.variable}`}>{children}</body>
     </html>
   );
 }
