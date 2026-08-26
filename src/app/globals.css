@@ -32,7 +32,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .brand-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: var(--text); color: white; font-size: 14px; }
 .nav-list { display: grid; gap: 3px; margin-top: 22px; }
 .nav-list--footer { margin-top: 0; margin-bottom: 6px; }
-.nav-item { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border-radius: 9px; color: #555c69; font-weight: 500; transition: 120ms ease; }
+.nav-item { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border-radius: 9px; color: #555c69; font-weight: 500; transition: background-color 120ms ease, color 120ms ease; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item--active { background: #e9edf5; color: #17233d; }
 
@@ -72,8 +72,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .account-copy { min-width: 0; display: grid; }
 .account-copy strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .account-copy span { color: var(--muted); font-size: 12px; }
-.icon-button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.icon-button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; transition: transform 140ms ease-out, background-color 140ms ease, color 140ms ease; }
 .icon-button:hover { background: var(--surface-2); color: var(--text); }
+.icon-button:active { transform: scale(0.95); }
 .admin-main { min-width: 0; }
 .page { width: min(100%, 1500px); margin: 0 auto; padding: 34px 36px 56px; }
 .page-header { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
@@ -120,8 +121,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .status-row strong { display: block; margin-bottom: 3px; }
 .status-dot { width: 9px; height: 9px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: #b7bbc3; box-shadow: 0 0 0 4px #f0f1f3; }
 .status-dot--ok { background: var(--success); box-shadow: 0 0 0 4px var(--success-soft); }
-.button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font-weight: 600; cursor: pointer; }
+.button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font-weight: 600; cursor: pointer; transition: transform 140ms ease-out, background-color 140ms ease; }
 .button:hover { background: var(--surface-2); }
+.button:active:not(:disabled) { transform: scale(0.97); }
 .button:disabled { opacity: .55; cursor: default; }
 .button--primary { background: var(--text); border-color: var(--text); color: white; }
 .button--primary:hover { background: #2b2e35; }
@@ -204,4 +206,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .panel-header, .toolbar { align-items: stretch; flex-direction: column; }
   .search-box { width: 100%; }
   .table-footer { align-items: flex-start; flex-direction: column; justify-content: center; padding: 10px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-card, .group-chevron { transition: none; }
+  .chat-card:hover { transform: none; }
+  .group-row.is-open .group-chevron { transform: none; }
 }

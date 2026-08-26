@@ -4,7 +4,10 @@
   padding: 16px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);
   transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
-.chat-card:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: 0 6px 16px -10px rgba(15, 17, 21, .25); }
+@media (hover: hover) and (pointer: fine) {
+  .chat-card:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: 0 6px 16px -10px rgba(15, 17, 21, .25); }
+}
+.chat-card:hover { border-color: var(--line-strong); }
 .chat-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .chat-card-avatar { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; background: #e9edf5; color: #17233d; font-weight: 700; font-size: 15px; }
 .chat-card h3 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }

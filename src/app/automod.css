@@ -174,8 +174,17 @@
 .automod-rule-chevron { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: #fafbfc; transition: color .16s ease, transform .16s ease; }
 .automod-rule-open:hover .automod-rule-chevron { color: var(--accent); transform: translateX(2px); }
 
-.automod-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(18, 25, 36, .42); backdrop-filter: blur(3px); }
-.automod-modal { width: min(720px, 100%); max-height: min(820px, calc(100vh - 40px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid rgba(255,255,255,.55); border-radius: 16px; background: var(--surface); box-shadow: 0 26px 80px rgba(10, 18, 28, .28); }
+.automod-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(18, 25, 36, .42); backdrop-filter: blur(3px); opacity: 1; transition: opacity 180ms ease-out; }
+.automod-modal { width: min(720px, 100%); max-height: min(820px, calc(100vh - 40px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid rgba(255,255,255,.55); border-radius: 16px; background: var(--surface); box-shadow: 0 26px 80px rgba(10, 18, 28, .28); transform-origin: center; opacity: 1; transform: scale(1); transition: opacity 200ms ease-out, transform 200ms ease-out; }
+/* Entry animation via @starting-style: no JS needed to detect "just mounted" --
+   this only fires the transition on elements newly added to the DOM (the
+   React {open ? <div> : null} pattern every modal here uses), never on the
+   instant unmount (browsers without @starting-style support just render
+   in place, same as before -- progressive enhancement, no fallback needed). */
+@starting-style {
+  .automod-modal-backdrop { opacity: 0; }
+  .automod-modal { opacity: 0; transform: scale(0.96); }
+}
 .automod-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 19px 20px; border-bottom: 1px solid var(--line); }
 .automod-modal-heading { min-width: 0; display: flex; align-items: center; gap: 12px; }
 .automod-modal-heading > span { flex: 0 0 auto; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--accent); background: var(--accent-soft); }
@@ -218,6 +227,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .automod-rule-card, .automod-rule-chevron, .filter-decision-option { transition: none; }
+  .automod-modal { transition: opacity 180ms ease-out; transform: none; }
+  @starting-style {
+    .automod-modal { transform: none; }
+  }
 }
 
 @media (max-width: 900px) {
