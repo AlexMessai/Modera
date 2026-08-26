@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { consumeLinkCode } from "@/server/services/admin-link-service";
 import { resolveTelegramLoginRequest } from "@/server/services/telegram-login-request-service";
+import { resolveAppBaseUrl } from "@/server/telegram/webhook-url";
 import { canAdminModerateChat } from "@/server/services/chat-admin-access-service";
 import { getAppealMessages, parseAppealCallbackData } from "@/server/services/appeal-notification-service";
 import { AppealError, resolveAppeal, submitLatestAppeal } from "@/server/services/appeal-service";
@@ -1192,7 +1193,14 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
         no_admin_chats: "❌ Вы не администратор ни одного чата, подключённого к Modera.",
         not_found: "❌ Ссылка для входа устарела или уже использована — вернитесь в браузер и запросите новую."
       }[resolution.outcome];
-      await client.sendMessage({ chatId: message.from.id, text: loginReplyText }).catch(() => undefined);
+      // The browser tab polling for completion usually picks this up within
+      // ~2s on its own, but a direct link covers the case where that tab was
+      // already closed or the poll hasn't caught up yet.
+      const appBaseUrl = resolveAppBaseUrl();
+      const loginReplyMarkup = resolution.outcome === "ok" && appBaseUrl
+        ? { inline_keyboard: [[{ text: "🌐 Личный кабинет", url: `${appBaseUrl}/overview` }]] }
+        : undefined;
+      await client.sendMessage({ chatId: message.from.id, text: loginReplyText, replyMarkup: loginReplyMarkup }).catch(() => undefined);
       return { accepted: true, ignored: false };
     }
 
