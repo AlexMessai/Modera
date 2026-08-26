@@ -332,7 +332,7 @@ test("listChatsForAdmin returns null for a GLOBAL admin and the exact chat-ID ar
   }
 });
 
-test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regular ADMINISTRATOR), revokes on ownership loss, and leaves MANUAL grants alone", async () => {
+test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regular ADMINISTRATOR), revokes AUTO on ownership loss, and revokes MANUAL too once its holder stops being a live admin there", async () => {
   await cleanup();
   const { chat, otherChat, globalAdmin, knownUser, knownUserMembership } = await setup();
   try {
@@ -342,7 +342,7 @@ test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regul
     await prisma.botChat.create({ data: { botId: bot.id, chatId: chat.id, status: "ACTIVE" } });
     // Also an admin of `otherChat`, purely so the MANUAL-grant fixture below is
     // allowed under the new "must currently be an admin here" rule.
-    await prisma.chatMember.create({
+    const otherChatMembership = await prisma.chatMember.create({
       data: { chatId: otherChat.id, userId: knownUser.id, status: "ADMINISTRATOR", joinedAt: new Date() }
     });
     const chatAdminUser = await prisma.adminUser.create({
@@ -356,8 +356,8 @@ test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regul
       }
     });
 
-    // A MANUAL grant for an unrelated chat -- must never be touched by the
-    // auto-sync, regardless of direction.
+    // A MANUAL grant for an unrelated chat -- must survive the auto-sync
+    // *while* its holder is still a live admin of that chat.
     const manualGrant = await grantChatAccessByUsername({
       chatId: otherChat.id,
       actingAdminId: globalAdmin.id,
@@ -388,8 +388,9 @@ test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regul
     const syncLog = await prisma.auditLog.findFirst({ where: { actingAdminId: chatAdminUser.id, action: "CHAT_ADMIN_ACCESS_AUTO_SYNCED" } });
     assert.ok(syncLog);
 
-    // Ownership lost (demoted to a regular member) -- the AUTO grant for
-    // `chat` must disappear, but the unrelated MANUAL grant must survive.
+    // Ownership lost (demoted to a regular member in `chat`) -- the AUTO
+    // grant for `chat` must disappear, but the MANUAL grant for `otherChat`
+    // must survive, since knownUser is still ADMINISTRATOR there.
     await prisma.chatMember.update({ where: { id: knownUserMembership.id }, data: { status: "MEMBER" } });
     await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
 
@@ -397,6 +398,15 @@ test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regul
     assert.equal(afterDemotion.length, 1);
     assert.equal(afterDemotion[0].id, manualGrant.id);
     assert.equal(afterDemotion[0].grantedVia, "MANUAL");
+
+    // Now also demoted in `otherChat` itself -- by default nobody but the
+    // real owner should keep standing access, so the MANUAL grant must be
+    // revoked too, the same way the AUTO one was.
+    await prisma.chatMember.update({ where: { id: otherChatMembership.id }, data: { status: "MEMBER" } });
+    await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
+
+    const afterManualDemotion = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id } });
+    assert.equal(afterManualDemotion.length, 0);
   } finally {
     await cleanup();
   }

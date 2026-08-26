@@ -269,20 +269,26 @@ export async function revokeChatAccess(input: {
 }
 
 /**
- * Keeps a self-registered admin's AUTO-granted chat access in sync with their
- * current cached CREATOR status. Full ("Владелец") panel access is deliberately
- * owner-only, so this only ever grants for chats where they're the live creator --
- * being promoted to a regular Telegram ADMINISTRATOR never grants panel access by
- * itself, the owner has to add that by hand on the Команда tab. ChatAdminAccess is
- * otherwise only ever granted once (at self-registration) and never automatically
- * revoked -- so a former owner (chat ownership transferred, or removed) would keep
- * their web-panel access forever unless someone remembers to revoke it by hand.
- * Called on every Telegram-bot login (not just first self-registration) to close
- * that gap. Never touches "MANUAL" grants -- those were added deliberately by the
- * owner and don't track Telegram status at all.
+ * Keeps a self-registered admin's chat access in sync with their current
+ * cached Telegram status, for BOTH grant paths:
+ * - AUTO (full "Владелец" access): only ever granted for a chat where this
+ *   Telegram user is the live CREATOR -- being promoted to a regular
+ *   ADMINISTRATOR never grants panel access by itself, the owner has to add
+ *   that by hand on the Команда tab.
+ * - MANUAL (owner-granted ADMIN/MODERATOR): re-validated against live
+ *   Telegram status too -- a manual grant was only ever allowed while the
+ *   person was a live chat admin (grantChatAccessByUsername enforces that at
+ *   grant time), but nothing used to recheck it afterwards, so a demoted
+ *   admin quietly kept web-panel access forever. User's explicit call: by
+ *   default nobody but the real owner should have standing access, so a
+ *   manual grant is revoked the same way an AUTO one is once its holder is
+ *   no longer CREATOR/ADMINISTRATOR of that chat.
+ * Called on every Telegram-bot login (not just first self-registration) --
+ * this is eventual, not instant: a demoted admin's access disappears the
+ * next time *they* log in, not the moment Telegram demotes them.
  */
 export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: bigint) {
-  const [ownedChats, existingAutoAccess] = await Promise.all([
+  const [ownedChats, existingAutoAccess, manualAccess] = await Promise.all([
     prisma.chatMember.findMany({
       where: {
         user: { telegramUserId },
@@ -294,6 +300,10 @@ export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: b
     prisma.chatAdminAccess.findMany({
       where: { adminId, grantedVia: "AUTO" },
       select: { id: true, chatId: true }
+    }),
+    prisma.chatAdminAccess.findMany({
+      where: { adminId, grantedVia: "MANUAL" },
+      select: { id: true, chatId: true }
     })
   ]);
 
@@ -301,8 +311,22 @@ export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: b
   const existingChatIds = new Set(existingAutoAccess.map((access) => access.chatId));
 
   const toGrant = ownedChats.filter((membership) => !existingChatIds.has(membership.chatId));
-  const toRevoke = existingAutoAccess.filter((access) => !ownedChatIds.has(access.chatId));
+  const toRevokeAuto = existingAutoAccess.filter((access) => !ownedChatIds.has(access.chatId));
 
+  let toRevokeManual: typeof manualAccess = [];
+  if (manualAccess.length > 0) {
+    const currentMemberships = await prisma.chatMember.findMany({
+      where: { user: { telegramUserId }, chatId: { in: manualAccess.map((access) => access.chatId) } },
+      select: { chatId: true, status: true }
+    });
+    const statusByChat = new Map(currentMemberships.map((member) => [member.chatId, member.status]));
+    toRevokeManual = manualAccess.filter((access) => {
+      const status = statusByChat.get(access.chatId);
+      return status !== "CREATOR" && status !== "ADMINISTRATOR";
+    });
+  }
+
+  const toRevoke = [...toRevokeAuto, ...toRevokeManual];
   if (toGrant.length === 0 && toRevoke.length === 0) return;
 
   await prisma.$transaction(async (tx) => {
@@ -325,7 +349,11 @@ export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: b
         actingAdminId: adminId,
         source: "ADMIN",
         action: "CHAT_ADMIN_ACCESS_AUTO_SYNCED",
-        metadata: { granted: toGrant.map((m) => m.chatId), revoked: toRevoke.map((a) => a.chatId) }
+        metadata: {
+          granted: toGrant.map((m) => m.chatId),
+          revokedAuto: toRevokeAuto.map((a) => a.chatId),
+          revokedManual: toRevokeManual.map((a) => a.chatId)
+        }
       }
     });
   });
