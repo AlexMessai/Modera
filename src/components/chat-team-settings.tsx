@@ -29,6 +29,7 @@ type Props = {
   chatId: string;
   initial: { native: ChatTeamNativeAdminValue[]; custom: ChatTeamCustomAdminValue[] };
   canEdit: boolean;
+  currentAdminId: string;
 };
 
 const ROLE_LABELS: Record<ChatAdminAccessRoleValue, string> = {
@@ -37,9 +38,11 @@ const ROLE_LABELS: Record<ChatAdminAccessRoleValue, string> = {
   MODERATOR: "Модератор"
 };
 
-const ROLE_OPTIONS: ChatAdminAccessRoleValue[] = ["OWNER", "ADMIN", "MODERATOR"];
+// "Владелец" is never manually assignable -- it's granted automatically, only
+// to the chat's real Telegram creator (see chat-admin-access-service.ts).
+const GRANTABLE_ROLE_OPTIONS: ChatAdminAccessRoleValue[] = ["ADMIN", "MODERATOR"];
 
-export function ChatTeamSettings({ chatId, initial, canEdit }: Props) {
+export function ChatTeamSettings({ chatId, initial, canEdit, currentAdminId }: Props) {
   const [custom, setCustom] = useState(initial.custom);
   const [handle, setHandle] = useState("");
   const [role, setRole] = useState<ChatAdminAccessRoleValue>("ADMIN");
@@ -148,47 +151,50 @@ export function ChatTeamSettings({ chatId, initial, canEdit }: Props) {
         {custom.length === 0 ? (
           <div className="state-box state-box--compact"><strong>Никого не добавлено</strong><p>Добавьте известного боту пользователя по @username ниже.</p></div>
         ) : (
-          custom.map((item) => (
-            <div className="automod-toggle-row automod-toggle-row--compact" key={item.accessId} style={{ justifyContent: "space-between" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="account-avatar"><UserRound size={16} /></span>
-                <span>
-                  <strong>{item.displayName}</strong>
-                  <br />
-                  <small>{item.telegramUsername ? `@${item.telegramUsername}` : "Telegram"} · {item.grantedVia === "AUTO" ? "автоматически (администратор Telegram)" : "добавлен вручную"}</small>
+          custom.map((item) => {
+            const isSelf = item.adminId === currentAdminId;
+            return (
+              <div className="automod-toggle-row automod-toggle-row--compact" key={item.accessId} style={{ justifyContent: "space-between" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span className="account-avatar"><UserRound size={16} /></span>
+                  <span>
+                    <strong>{item.displayName}{isSelf ? " (вы)" : ""}</strong>
+                    <br />
+                    <small>{item.telegramUsername ? `@${item.telegramUsername}` : "Telegram"} · {item.grantedVia === "AUTO" ? "автоматически (владелец чата)" : "добавлен вручную"}</small>
+                  </span>
                 </span>
-              </span>
-              {canEdit ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <select
-                    value={item.role}
-                    disabled={savingId === item.accessId}
-                    onChange={(event) => void updateRole(item.accessId, event.target.value as ChatAdminAccessRoleValue)}
-                  >
-                    {ROLE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{ROLE_LABELS[option]}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="button button--danger button--compact"
-                    type="button"
-                    onClick={() => void remove(item.accessId)}
-                    disabled={removingId === item.accessId}
-                  >
-                    <Trash2 size={14} />{removingId === item.accessId ? "Удаляю…" : "Убрать"}
-                  </button>
-                </span>
-              ) : (
-                <span className="badge">{ROLE_LABELS[item.role]}</span>
-              )}
-            </div>
-          ))
+                {canEdit && !isSelf && item.role !== "OWNER" ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <select
+                      value={item.role}
+                      disabled={savingId === item.accessId}
+                      onChange={(event) => void updateRole(item.accessId, event.target.value as ChatAdminAccessRoleValue)}
+                    >
+                      {GRANTABLE_ROLE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>{ROLE_LABELS[option]}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="button button--danger button--compact"
+                      type="button"
+                      onClick={() => void remove(item.accessId)}
+                      disabled={removingId === item.accessId}
+                    >
+                      <Trash2 size={14} />{removingId === item.accessId ? "Удаляю…" : "Убрать"}
+                    </button>
+                  </span>
+                ) : (
+                  <span className="badge">{ROLE_LABELS[item.role]}</span>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
       {canEdit ? (
         <div className="automod-rule">
-          <div className="automod-rule-heading"><strong>Добавить по @username</strong><small>Только для пользователей, уже известных боту</small></div>
+          <div className="automod-rule-heading"><strong>Добавить по @username</strong><small>Только для тех, кто сейчас администратор этого чата в Telegram</small></div>
           <div className="automod-number-grid">
             <label className="automod-field">
               <span>Username</span>
@@ -203,7 +209,7 @@ export function ChatTeamSettings({ chatId, initial, canEdit }: Props) {
             <label className="automod-field">
               <span>Роль</span>
               <select value={role} disabled={adding} onChange={(event) => setRole(event.target.value as ChatAdminAccessRoleValue)}>
-                {ROLE_OPTIONS.map((option) => (
+                {GRANTABLE_ROLE_OPTIONS.map((option) => (
                   <option key={option} value={option}>{ROLE_LABELS[option]}</option>
                 ))}
               </select>

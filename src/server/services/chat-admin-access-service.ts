@@ -99,9 +99,12 @@ export async function resolveTelegramUserByHandle(handle: string) {
 
 /**
  * Resolves the handle; if the person isn't known to the bot, throws a typed
- * error (no pending-invite mechanism, per product decision). If known,
- * finds-or-creates a CHAT-scoped AdminUser for them and upserts their
- * ChatAdminAccess row.
+ * error (no pending-invite mechanism, per product decision). Full ("Владелец")
+ * panel access is owner-only and only ever granted automatically from the
+ * chat's real Telegram creator -- this manual path can only reach someone who
+ * is currently a live Telegram admin of this exact chat, and can only give
+ * them ADMIN or MODERATOR. If known and eligible, finds-or-creates a
+ * CHAT-scoped AdminUser for them and upserts their ChatAdminAccess row.
  */
 export async function grantChatAccessByUsername(input: {
   chatId: string;
@@ -109,11 +112,31 @@ export async function grantChatAccessByUsername(input: {
   handle: string;
   role: ChatAdminAccessRole;
 }) {
+  if (input.role === "OWNER") {
+    throw new ChatAdminAccessError(
+      "OWNER_ROLE_NOT_GRANTABLE",
+      "Роль «Владелец» нельзя выдать вручную — её получает только реальный создатель чата в Telegram.",
+      422
+    );
+  }
+
   const telegramUser = await resolveTelegramUserByHandle(input.handle);
   if (!telegramUser) {
     throw new ChatAdminAccessError(
       "TELEGRAM_USER_UNKNOWN",
       "Этот пользователь ещё не известен боту. Он должен хотя бы раз написать в чате или боту, прежде чем его можно будет добавить в команду.",
+      422
+    );
+  }
+
+  const membership = await prisma.chatMember.findFirst({
+    where: { chatId: input.chatId, userId: telegramUser.id },
+    select: { status: true }
+  });
+  if (!membership || (membership.status !== "CREATOR" && membership.status !== "ADMINISTRATOR")) {
+    throw new ChatAdminAccessError(
+      "NOT_CHAT_ADMIN",
+      "Доступ к панели можно выдать только тому, кто сейчас администратор этого чата в Telegram — сначала назначьте его администратором в самой группе.",
       422
     );
   }
@@ -176,6 +199,25 @@ export async function updateChatAccessRole(input: {
   const existing = await prisma.chatAdminAccess.findUnique({ where: { id: input.accessId } });
   if (!existing || existing.chatId !== input.chatId) return null;
 
+  // Only the owner can reach this (canManageChatTeam gates the whole feature),
+  // so a matching adminId here always means "the owner is acting on their own
+  // row" -- block it outright rather than let them accidentally demote or
+  // lock themselves out.
+  if (existing.adminId === input.actingAdminId) {
+    throw new ChatAdminAccessError(
+      "CANNOT_MODIFY_SELF",
+      "Нельзя изменить собственный доступ к панели.",
+      403
+    );
+  }
+  if (input.role === "OWNER") {
+    throw new ChatAdminAccessError(
+      "OWNER_ROLE_NOT_GRANTABLE",
+      "Роль «Владелец» нельзя выдать вручную — её получает только реальный создатель чата в Telegram.",
+      422
+    );
+  }
+
   return prisma.$transaction(async (tx) => {
     const updated = await tx.chatAdminAccess.update({
       where: { id: input.accessId },
@@ -202,6 +244,14 @@ export async function revokeChatAccess(input: {
   const existing = await prisma.chatAdminAccess.findUnique({ where: { id: input.accessId } });
   if (!existing || existing.chatId !== input.chatId) return false;
 
+  if (existing.adminId === input.actingAdminId) {
+    throw new ChatAdminAccessError(
+      "CANNOT_MODIFY_SELF",
+      "Нельзя удалить собственный доступ к панели.",
+      403
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.chatAdminAccess.delete({ where: { id: input.accessId } });
     await tx.auditLog.create({
@@ -220,24 +270,26 @@ export async function revokeChatAccess(input: {
 
 /**
  * Keeps a self-registered admin's AUTO-granted chat access in sync with their
- * current cached CREATOR/ADMINISTRATOR status. ChatAdminAccess is otherwise
- * only ever granted once (at self-registration) and never automatically
- * revoked -- so a member demoted or removed as a Telegram admin keeps their
- * web-panel access to that chat forever unless someone remembers to revoke it
- * by hand on the Команда tab. Called on every Telegram-bot login (not just
- * first self-registration) to close that gap. Never touches "MANUAL" grants
- * -- those were added deliberately by another admin and don't track Telegram
- * status at all.
+ * current cached CREATOR status. Full ("Владелец") panel access is deliberately
+ * owner-only, so this only ever grants for chats where they're the live creator --
+ * being promoted to a regular Telegram ADMINISTRATOR never grants panel access by
+ * itself, the owner has to add that by hand on the Команда tab. ChatAdminAccess is
+ * otherwise only ever granted once (at self-registration) and never automatically
+ * revoked -- so a former owner (chat ownership transferred, or removed) would keep
+ * their web-panel access forever unless someone remembers to revoke it by hand.
+ * Called on every Telegram-bot login (not just first self-registration) to close
+ * that gap. Never touches "MANUAL" grants -- those were added deliberately by the
+ * owner and don't track Telegram status at all.
  */
 export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: bigint) {
-  const [currentAdminChats, existingAutoAccess] = await Promise.all([
+  const [ownedChats, existingAutoAccess] = await Promise.all([
     prisma.chatMember.findMany({
       where: {
         user: { telegramUserId },
-        status: { in: ["CREATOR", "ADMINISTRATOR"] },
+        status: "CREATOR",
         chat: { botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } } }
       },
-      select: { chatId: true, status: true }
+      select: { chatId: true }
     }),
     prisma.chatAdminAccess.findMany({
       where: { adminId, grantedVia: "AUTO" },
@@ -245,11 +297,11 @@ export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: b
     })
   ]);
 
-  const currentByChatId = new Map(currentAdminChats.map((membership) => [membership.chatId, membership.status]));
+  const ownedChatIds = new Set(ownedChats.map((membership) => membership.chatId));
   const existingChatIds = new Set(existingAutoAccess.map((access) => access.chatId));
 
-  const toGrant = currentAdminChats.filter((membership) => !existingChatIds.has(membership.chatId));
-  const toRevoke = existingAutoAccess.filter((access) => !currentByChatId.has(access.chatId));
+  const toGrant = ownedChats.filter((membership) => !existingChatIds.has(membership.chatId));
+  const toRevoke = existingAutoAccess.filter((access) => !ownedChatIds.has(access.chatId));
 
   if (toGrant.length === 0 && toRevoke.length === 0) return;
 
@@ -259,7 +311,7 @@ export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: b
         data: toGrant.map((membership) => ({
           chatId: membership.chatId,
           adminId,
-          role: membership.status === "CREATOR" ? "OWNER" : "ADMIN",
+          role: "OWNER",
           grantedVia: "AUTO"
         })),
         skipDuplicates: true

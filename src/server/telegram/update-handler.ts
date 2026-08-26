@@ -1190,7 +1190,7 @@ async function processPrivateMessage(message: TelegramMessage, botTelegramId: nu
       const loginReplyText = {
         ok: "✅ Вход подтверждён — вернитесь в браузер, страница обновится сама.",
         not_linked: "❌ Этот Telegram-аккаунт не привязан ни к одному администратору. Войдите по email и привяжите Telegram в разделе «Система → Аккаунты».",
-        no_admin_chats: "❌ Вы не администратор ни одного чата, подключённого к Modera.",
+        no_admin_chats: "❌ Вы не владелец ни одного чата, подключённого к Modera. Если вы администратор чата, доступ к панели должен выдать владелец вручную (Настройки чата → Команда).",
         not_found: "❌ Ссылка для входа устарела или уже использована — вернитесь в браузер и запросите новую."
       }[resolution.outcome];
       // The browser tab polling for completion usually picks this up within

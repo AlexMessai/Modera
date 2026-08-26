@@ -46,7 +46,14 @@ async function setup() {
   const globalAdmin = await prisma.adminUser.create({
     data: { email: GLOBAL_ADMIN_EMAIL, displayName: "CI Owner", passwordHash: "not-used-in-test", role: "OWNER" }
   });
-  return { chat, otherChat, knownUser, globalAdmin };
+  // grantChatAccessByUsername now requires the target to currently be a live
+  // Telegram admin of the chat they're being granted access to -- most tests
+  // below need this in place for `chat` (not `otherChat`, which stays
+  // available for testing the "not an admin here" rejection).
+  const knownUserMembership = await prisma.chatMember.create({
+    data: { chatId: chat.id, userId: knownUser.id, status: "ADMINISTRATOR", joinedAt: new Date() }
+  });
+  return { chat, otherChat, knownUser, knownUserMembership, globalAdmin };
 }
 
 test("resolveTelegramUserByHandle: @-strip, case-insensitive username, numeric id, unknown returns null", async () => {
@@ -88,6 +95,118 @@ test("grantChatAccessByUsername rejects an unknown username with a typed, honest
         return true;
       }
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("grantChatAccessByUsername rejects a known user who isn't currently a Telegram admin of this chat", async () => {
+  await cleanup();
+  const { otherChat, globalAdmin } = await setup();
+  try {
+    // `otherChat` deliberately has no ChatMember row for knownUser at all.
+    await assert.rejects(
+      () =>
+        grantChatAccessByUsername({
+          chatId: otherChat.id,
+          actingAdminId: globalAdmin.id,
+          handle: KNOWN_USERNAME,
+          role: "ADMIN"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChatAdminAccessError);
+        assert.equal(error.code, "NOT_CHAT_ADMIN");
+        return true;
+      }
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("grantChatAccessByUsername and updateChatAccessRole both reject the OWNER role -- it's never manually assignable", async () => {
+  await cleanup();
+  const { chat, globalAdmin } = await setup();
+  try {
+    await assert.rejects(
+      () =>
+        grantChatAccessByUsername({
+          chatId: chat.id,
+          actingAdminId: globalAdmin.id,
+          handle: KNOWN_USERNAME,
+          role: "OWNER"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChatAdminAccessError);
+        assert.equal(error.code, "OWNER_ROLE_NOT_GRANTABLE");
+        return true;
+      }
+    );
+
+    const granted = await grantChatAccessByUsername({
+      chatId: chat.id,
+      actingAdminId: globalAdmin.id,
+      handle: KNOWN_USERNAME,
+      role: "ADMIN"
+    });
+
+    await assert.rejects(
+      () =>
+        updateChatAccessRole({
+          chatId: chat.id,
+          actingAdminId: globalAdmin.id,
+          accessId: granted.id,
+          role: "OWNER"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChatAdminAccessError);
+        assert.equal(error.code, "OWNER_ROLE_NOT_GRANTABLE");
+        return true;
+      }
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("updateChatAccessRole and revokeChatAccess both reject an admin acting on their own access row", async () => {
+  await cleanup();
+  const { chat, globalAdmin } = await setup();
+  try {
+    const granted = await grantChatAccessByUsername({
+      chatId: chat.id,
+      actingAdminId: globalAdmin.id,
+      handle: KNOWN_USERNAME,
+      role: "ADMIN"
+    });
+
+    await assert.rejects(
+      () =>
+        updateChatAccessRole({
+          chatId: chat.id,
+          actingAdminId: granted.adminId,
+          accessId: granted.id,
+          role: "MODERATOR"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChatAdminAccessError);
+        assert.equal(error.code, "CANNOT_MODIFY_SELF");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () => revokeChatAccess({ chatId: chat.id, actingAdminId: granted.adminId, accessId: granted.id }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChatAdminAccessError);
+        assert.equal(error.code, "CANNOT_MODIFY_SELF");
+        return true;
+      }
+    );
+
+    // Untouched -- neither rejected call should have mutated or deleted the row.
+    const stillThere = await prisma.chatAdminAccess.findUnique({ where: { id: granted.id } });
+    assert.equal(stillThere?.role, "ADMIN");
   } finally {
     await cleanup();
   }
@@ -137,9 +256,9 @@ test("grantChatAccessByUsername/updateChatAccessRole/revokeChatAccess round-trip
       chatId: chat.id,
       actingAdminId: globalAdmin.id,
       accessId: granted.id,
-      role: "OWNER"
+      role: "ADMIN"
     });
-    assert.equal(updated?.role, "OWNER");
+    assert.equal(updated?.role, "ADMIN");
     const updateLog = await prisma.auditLog.findFirst({ where: { chatId: chat.id, action: "CHAT_ADMIN_ACCESS_UPDATED" } });
     assert.ok(updateLog);
 
@@ -213,16 +332,18 @@ test("listChatsForAdmin returns null for a GLOBAL admin and the exact chat-ID ar
   }
 });
 
-test("syncAutoChatAdminAccess grants for newly-cached admin chats, revokes when demoted, and leaves MANUAL grants alone", async () => {
+test("syncAutoChatAdminAccess only ever grants for the live CREATOR (not a regular ADMINISTRATOR), revokes on ownership loss, and leaves MANUAL grants alone", async () => {
   await cleanup();
-  const { chat, otherChat, globalAdmin, knownUser } = await setup();
+  const { chat, otherChat, globalAdmin, knownUser, knownUserMembership } = await setup();
   try {
     const bot = await prisma.telegramBot.create({
       data: { telegramBotId: 900004001n, username: "chat_admin_access_ci_bot", firstName: "CI Bot" }
     });
     await prisma.botChat.create({ data: { botId: bot.id, chatId: chat.id, status: "ACTIVE" } });
-    const chatMember = await prisma.chatMember.create({
-      data: { chatId: chat.id, userId: knownUser.id, status: "ADMINISTRATOR", joinedAt: new Date() }
+    // Also an admin of `otherChat`, purely so the MANUAL-grant fixture below is
+    // allowed under the new "must currently be an admin here" rule.
+    await prisma.chatMember.create({
+      data: { chatId: otherChat.id, userId: knownUser.id, status: "ADMINISTRATOR", joinedAt: new Date() }
     });
     const chatAdminUser = await prisma.adminUser.create({
       data: {
@@ -235,8 +356,8 @@ test("syncAutoChatAdminAccess grants for newly-cached admin chats, revokes when 
       }
     });
 
-    // A MANUAL grant for a chat this Telegram user has no cached admin status
-    // in at all -- must never be touched by the auto-sync, regardless of direction.
+    // A MANUAL grant for an unrelated chat -- must never be touched by the
+    // auto-sync, regardless of direction.
     const manualGrant = await grantChatAccessByUsername({
       chatId: otherChat.id,
       actingAdminId: globalAdmin.id,
@@ -244,12 +365,21 @@ test("syncAutoChatAdminAccess grants for newly-cached admin chats, revokes when 
       role: "MODERATOR"
     });
 
+    // Still just a regular ADMINISTRATOR of `chat` (setup()'s default) --
+    // syncing must NOT grant anything for it. Full access is owner-only.
+    await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
+    const whileAdministrator = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id } });
+    assert.equal(whileAdministrator.length, 1);
+    assert.equal(whileAdministrator[0].id, manualGrant.id);
+
+    // Promoted to CREATOR -- now the sync grants AUTO/OWNER for `chat`.
+    await prisma.chatMember.update({ where: { id: knownUserMembership.id }, data: { status: "CREATOR" } });
     await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
 
     const afterGrant = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id }, orderBy: { chatId: "asc" } });
     assert.equal(afterGrant.length, 2);
     const autoRow = afterGrant.find((row) => row.chatId === chat.id);
-    assert.equal(autoRow?.role, "ADMIN");
+    assert.equal(autoRow?.role, "OWNER");
     assert.equal(autoRow?.grantedVia, "AUTO");
     const stillManual = afterGrant.find((row) => row.id === manualGrant.id);
     assert.equal(stillManual?.grantedVia, "MANUAL");
@@ -258,9 +388,9 @@ test("syncAutoChatAdminAccess grants for newly-cached admin chats, revokes when 
     const syncLog = await prisma.auditLog.findFirst({ where: { actingAdminId: chatAdminUser.id, action: "CHAT_ADMIN_ACCESS_AUTO_SYNCED" } });
     assert.ok(syncLog);
 
-    // Demoted to a regular member -- the AUTO grant for `chat` must disappear,
-    // but the unrelated MANUAL grant for `otherChat` must survive untouched.
-    await prisma.chatMember.update({ where: { id: chatMember.id }, data: { status: "MEMBER" } });
+    // Ownership lost (demoted to a regular member) -- the AUTO grant for
+    // `chat` must disappear, but the unrelated MANUAL grant must survive.
+    await prisma.chatMember.update({ where: { id: knownUserMembership.id }, data: { status: "MEMBER" } });
     await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
 
     const afterDemotion = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id } });

@@ -183,7 +183,7 @@ export default async function ChatDetailPage({
           {section === "team" ? (
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Команда</h2><p>Реальные администраторы Telegram (только просмотр) и доступ к веб-панели по @username для этого чата.</p></div></div>
-              <ChatTeamSettings chatId={id} initial={team} canEdit={canEditTeam} />
+              <ChatTeamSettings chatId={id} initial={team} canEdit={canEditTeam} currentAdminId={admin.id} />
             </section>
           ) : null}
 

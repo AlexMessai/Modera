@@ -3,6 +3,7 @@ import { requireAdminApi, requireChatAccess, canManageChatTeam } from "@/server/
 import { isSameOrigin } from "@/server/http/origin";
 import {
   CHAT_ADMIN_ACCESS_ROLES,
+  ChatAdminAccessError,
   listChatTeam,
   revokeChatAccess,
   updateChatAccessRole
@@ -33,18 +34,25 @@ export async function PATCH(
   if (!parsed.success) {
     return Response.json({ error: { code: "VALIDATION_ERROR", message: "Проверьте выбранную роль." } }, { status: 400 });
   }
-  const updated = await updateChatAccessRole({
-    chatId: id,
-    actingAdminId: auth.admin.id,
-    accessId,
-    role: parsed.data.role
-  });
-  if (!updated) {
-    return Response.json({ error: { code: "ACCESS_NOT_FOUND", message: "Запись не найдена в этом чате." } }, { status: 404 });
+  try {
+    const updated = await updateChatAccessRole({
+      chatId: id,
+      actingAdminId: auth.admin.id,
+      accessId,
+      role: parsed.data.role
+    });
+    if (!updated) {
+      return Response.json({ error: { code: "ACCESS_NOT_FOUND", message: "Запись не найдена в этом чате." } }, { status: 404 });
+    }
+    const team = await listChatTeam(id);
+    const custom = team.custom.find((item) => item.accessId === updated.id) ?? null;
+    return Response.json({ data: custom });
+  } catch (error) {
+    if (error instanceof ChatAdminAccessError) {
+      return Response.json({ error: { code: error.code, message: error.message } }, { status: error.httpStatus });
+    }
+    return Response.json({ error: { code: "UNKNOWN", message: "Не удалось изменить роль." } }, { status: 500 });
   }
-  const team = await listChatTeam(id);
-  const custom = team.custom.find((item) => item.accessId === updated.id) ?? null;
-  return Response.json({ data: custom });
 }
 
 export async function DELETE(
@@ -62,9 +70,16 @@ export async function DELETE(
   if (!(await canManageChatTeam(auth.admin, id))) {
     return Response.json({ error: { code: "FORBIDDEN", message: "Убирать администраторов может только владелец команды этого чата." } }, { status: 403 });
   }
-  const revoked = await revokeChatAccess({ chatId: id, actingAdminId: auth.admin.id, accessId });
-  if (!revoked) {
-    return Response.json({ error: { code: "ACCESS_NOT_FOUND", message: "Запись не найдена в этом чате." } }, { status: 404 });
+  try {
+    const revoked = await revokeChatAccess({ chatId: id, actingAdminId: auth.admin.id, accessId });
+    if (!revoked) {
+      return Response.json({ error: { code: "ACCESS_NOT_FOUND", message: "Запись не найдена в этом чате." } }, { status: 404 });
+    }
+    return Response.json({ data: { deleted: true } });
+  } catch (error) {
+    if (error instanceof ChatAdminAccessError) {
+      return Response.json({ error: { code: error.code, message: error.message } }, { status: error.httpStatus });
+    }
+    return Response.json({ error: { code: "UNKNOWN", message: "Не удалось удалить администратора." } }, { status: 500 });
   }
-  return Response.json({ data: { deleted: true } });
 }

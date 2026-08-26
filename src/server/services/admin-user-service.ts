@@ -340,10 +340,12 @@ export type TelegramIdentityResolution =
  * (today: the /login page's bot-deep-link flow, telegram-login-request-service.ts) --
  * kept as one implementation so self-registration behaves identically everywhere it
  * can happen. An existing, active AdminUser with this telegramUserId just resolves to
- * itself. Otherwise, self-registers a new CHAT-scoped account IF this Telegram user is
- * a live CREATOR/ADMINISTRATOR of at least one chat the bot is still present in
- * (cached ChatMember status, not a live Bot API fan-out) -- granting ChatAdminAccess
- * for exactly those chats, "AUTO"-sourced same as the old widget-based flow.
+ * itself (re-syncing its AUTO chat access, see syncAutoChatAdminAccess). Otherwise,
+ * self-registers a new CHAT-scoped account IF this Telegram user is the live CREATOR
+ * of at least one chat the bot is still present in (cached ChatMember status, not a
+ * live Bot API fan-out) -- full panel access is deliberately owner-only; a chat's
+ * other Telegram admins/moderators never get it automatically, the owner has to grant
+ * it by hand on that chat's Команда tab.
  */
 export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
   id: number;
@@ -364,16 +366,16 @@ export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
     return { outcome: "ok", admin: existing };
   }
 
-  const adminChatMemberships = await prisma.chatMember.findMany({
+  const ownedChats = await prisma.chatMember.findMany({
     where: {
       user: { telegramUserId },
-      status: { in: ["CREATOR", "ADMINISTRATOR"] },
+      status: "CREATOR",
       chat: { botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } } }
     },
-    select: { chatId: true, status: true }
+    select: { chatId: true }
   });
 
-  if (adminChatMemberships.length === 0) {
+  if (ownedChats.length === 0) {
     return { outcome: "no_admin_chats" };
   }
 
@@ -393,10 +395,10 @@ export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
     });
 
     await tx.chatAdminAccess.createMany({
-      data: adminChatMemberships.map((membership) => ({
+      data: ownedChats.map((membership) => ({
         chatId: membership.chatId,
         adminId: newAdmin.id,
-        role: membership.status === "CREATOR" ? "OWNER" : "ADMIN",
+        role: "OWNER",
         grantedVia: "AUTO"
       }))
     });
@@ -406,7 +408,7 @@ export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
         actingAdminId: newAdmin.id,
         source: "ADMIN",
         action: "ADMIN_ACCOUNT_SELF_REGISTERED",
-        metadata: { chatCount: adminChatMemberships.length, telegramUsername: telegramUser.username ?? null }
+        metadata: { chatCount: ownedChats.length, telegramUsername: telegramUser.username ?? null }
       }
     });
 
