@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { forwardModerationEventToLogChannel } from "@/server/services/log-channel-service";
 
 const SERIALIZABLE_RETRY_LIMIT = 3;
 
@@ -70,7 +71,8 @@ export async function revokeWarningRecord(input: {
 }): Promise<WarningRevocationResult> {
   for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
     try {
-      return await prisma.$transaction(async (tx) => {
+      const forwardPayload: { value: { chatTitle: string; targetDisplayName: string } | null } = { value: null };
+      const result = await prisma.$transaction(async (tx) => {
         // Selection belongs to the same SERIALIZABLE transaction as the
         // claim. If two /unwarn calls select the same newest row, Postgres
         // aborts one transaction; the retry then selects the next warning
@@ -179,6 +181,15 @@ export async function revokeWarningRecord(input: {
           });
         }
 
+        const [chat, user] = await Promise.all([
+          tx.chat.findUnique({ where: { id: input.chatId }, select: { title: true } }),
+          tx.telegramUser.findUnique({ where: { id: input.affectedUserId }, select: { displayName: true, telegramUserId: true } })
+        ]);
+        forwardPayload.value = {
+          chatTitle: chat?.title ?? "Чат",
+          targetDisplayName: user?.displayName ?? user?.telegramUserId?.toString() ?? "Участник"
+        };
+
         return {
           outcome: "revoked" as const,
           warningActionId: candidate.id,
@@ -187,6 +198,19 @@ export async function revokeWarningRecord(input: {
           affectedUserId: input.affectedUserId
         };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+      if (forwardPayload.value) {
+        const payload = forwardPayload.value;
+        await forwardModerationEventToLogChannel({
+          chatId: input.chatId,
+          chatTitle: payload.chatTitle,
+          action: "UNWARN",
+          targetDisplayName: payload.targetDisplayName,
+          reason: null
+        }).catch(() => undefined);
+      }
+
+      return result;
     } catch (error) {
       const retryable =
         error instanceof WarningClaimConflict ||

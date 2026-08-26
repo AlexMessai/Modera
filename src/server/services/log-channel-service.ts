@@ -194,6 +194,7 @@ export async function completePendingLogChannelLink(input: {
 
 const ACTION_LABELS: Record<string, string> = {
   WARNING: "⚠️ Предупреждение",
+  UNWARN: "↩️ Снятие предупреждения",
   MUTE: "🔇 Mute",
   UNMUTE: "🔊 Снятие mute",
   BAN: "⛔ Блокировка",
