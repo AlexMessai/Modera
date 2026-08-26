@@ -4,11 +4,13 @@ import { SystemClient } from "@/components/system-client";
 import { AdminSettingsClient } from "@/components/admin-settings-client";
 import { ModerationNotificationCenter } from "@/components/moderation-notification-center";
 import { SystemMessagesSettings } from "@/components/system-messages-settings";
+import { ManualModerationVisibilitySettings } from "@/components/manual-moderation-visibility-settings";
 import { requireAdminPage } from "@/server/auth/guards";
 import { canManageAdmins, canManageChatSettings, canViewSystem } from "@/server/auth/permissions";
 import { getTelegramBotProfile } from "@/server/telegram/client";
 import { getModerationNotificationProfiles } from "@/server/services/moderation-notification-settings-service";
 import { getSystemMessages } from "@/server/services/system-messages-service";
+import { getManualModerationVisibility } from "@/server/services/manual-moderation-settings-service";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +39,9 @@ export default async function SystemPage({
       ? "notifications"
       : "diagnostics";
   const telegramBotUsername = tab === "accounts" ? await getTelegramBotUsername() : null;
-  const [notificationProfiles, systemMessages] = tab === "notifications"
-    ? await Promise.all([getModerationNotificationProfiles(), getSystemMessages()])
-    : [null, null];
+  const [notificationProfiles, systemMessages, punishmentVisibility] = tab === "notifications"
+    ? await Promise.all([getModerationNotificationProfiles(), getSystemMessages(), getManualModerationVisibility()])
+    : [null, null, null];
 
   return (
     <main className="page">
@@ -57,8 +59,9 @@ export default async function SystemPage({
       </nav>
       {tab === "accounts" ? (
         <AdminSettingsClient currentAdminId={admin.id} telegramBotUsername={telegramBotUsername} />
-      ) : tab === "notifications" && notificationProfiles && systemMessages ? (
+      ) : tab === "notifications" && notificationProfiles && systemMessages && punishmentVisibility ? (
         <>
+          <ManualModerationVisibilitySettings initial={punishmentVisibility} canEdit={canEditNotifications} />
           <ModerationNotificationCenter initial={notificationProfiles} canEdit={canEditNotifications} />
           <SystemMessagesSettings initial={systemMessages} canEdit={canEditNotifications} />
         </>
