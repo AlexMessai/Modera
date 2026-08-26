@@ -134,9 +134,22 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function systemActorLabel(item: { action: string; source: string }) {
-  if (item.source !== "SYSTEM") return "Система";
-  return "Автомодерация";
+function telegramActorName(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const record = metadata as Record<string, unknown>;
+  if (typeof record.telegramActorDisplayName === "string" && record.telegramActorDisplayName.trim()) {
+    return record.telegramActorDisplayName;
+  }
+  if (typeof record.telegramActorUsername === "string" && record.telegramActorUsername.trim()) {
+    return `@${record.telegramActorUsername}`;
+  }
+  return null;
+}
+
+function systemActorLabel(item: { action: string; source: string; metadata?: unknown }) {
+  if (item.source === "SYSTEM") return "Автомодерация";
+  if (item.source === "TELEGRAM") return telegramActorName(item.metadata) ?? "Telegram";
+  return "Система";
 }
 
 function pendingActorLabel(item: PendingItem) {
