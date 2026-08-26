@@ -40,11 +40,7 @@ export function ChatSettingsCopy({ chatId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function toggleOpen() {
-    if (open) {
-      setOpen(false);
-      return;
-    }
+  async function openModal() {
     setOpen(true);
     setError(null);
     setSuccess(null);
@@ -58,6 +54,11 @@ export function ChatSettingsCopy({ chatId }: Props) {
     } finally {
       setLoadingChats(false);
     }
+  }
+
+  function closeModal() {
+    if (applying) return;
+    setOpen(false);
   }
 
   function toggleSection(section: CopyableSection) {
@@ -92,69 +93,79 @@ export function ChatSettingsCopy({ chatId }: Props) {
     }
   }
 
-  if (!open) {
-    return (
-      <button className="button button--secondary button--compact" type="button" onClick={() => void toggleOpen()}>
+  return (
+    <>
+      <button className="button button--secondary button--compact" type="button" onClick={() => void openModal()}>
         <ClipboardCopy size={14} />Скопировать из другого чата
       </button>
-    );
-  }
 
-  return (
-    <div className="panel automod-settings chat-settings-copy">
-      <div className="panel-header">
-        <div>
-          <h2>Скопировать настройки из другого чата</h2>
-          <p>Разовое применение — после копирования чаты снова независимы. «Команда» и «Канал логов» не копируются: это привязка к конкретным людям и конкретному каналу.</p>
-        </div>
-        <button className="button button--secondary button--compact" type="button" onClick={() => void toggleOpen()}>
-          <X size={14} />Закрыть
-        </button>
-      </div>
-
-      <div className="settings-section">
-        <label className="automod-field">
-          <span>Чат-источник</span>
-          <select
-            className="select-control"
-            value={sourceChatId}
-            disabled={loadingChats}
-            onChange={(event) => setSourceChatId(event.target.value)}
-          >
-            <option value="">{loadingChats ? "Загрузка…" : "Выберите чат"}</option>
-            {chats.map((chat) => (
-              <option value={chat.id} key={chat.id}>{chat.title}</option>
-            ))}
-          </select>
-        </label>
-
-        <div className="chat-settings-copy-sections">
-          {SECTION_OPTIONS.map((option) => (
-            <label className="chat-settings-copy-checkbox" key={option.value}>
-              <input
-                type="checkbox"
-                checked={sections.has(option.value)}
-                onChange={() => toggleSection(option.value)}
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
-      {success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
-
-      <div className="automod-actions">
-        <button
-          className="button button--primary"
-          type="button"
-          onClick={() => void apply()}
-          disabled={applying || !sourceChatId || sections.size === 0}
+      {open ? (
+        <div
+          className="automod-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}
         >
-          <Check size={16} />{applying ? "Копирую…" : "Скопировать"}
-        </button>
-      </div>
-    </div>
+          <div className="automod-modal" role="dialog" aria-modal="true" aria-labelledby="chat-settings-copy-title">
+            <div className="automod-modal-header">
+              <div className="automod-modal-heading">
+                <span><ClipboardCopy size={19} /></span>
+                <div>
+                  <h3 id="chat-settings-copy-title">Скопировать настройки из другого чата</h3>
+                  <p>Разовое применение — после копирования чаты снова независимы.</p>
+                </div>
+              </div>
+              <button type="button" className="icon-button" aria-label="Закрыть" onClick={closeModal}><X size={18} /></button>
+            </div>
+
+            <div className="automod-modal-body">
+              <p className="automod-modal-note">«Команда» и «Канал логов» не копируются: это привязка к конкретным людям и конкретному каналу.</p>
+
+              <label className="automod-field">
+                <span>Чат-источник</span>
+                <select
+                  className="select-control"
+                  value={sourceChatId}
+                  disabled={loadingChats}
+                  onChange={(event) => setSourceChatId(event.target.value)}
+                >
+                  <option value="">{loadingChats ? "Загрузка…" : "Выберите чат"}</option>
+                  {chats.map((chat) => (
+                    <option value={chat.id} key={chat.id}>{chat.title}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="chat-settings-copy-sections">
+                {SECTION_OPTIONS.map((option) => (
+                  <label className="chat-settings-copy-checkbox" key={option.value}>
+                    <input
+                      type="checkbox"
+                      checked={sections.has(option.value)}
+                      onChange={() => toggleSection(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+
+              {error ? <div className="moderation-feedback moderation-feedback--error">{error}</div> : null}
+              {success ? <div className="moderation-feedback moderation-feedback--success">{success}</div> : null}
+            </div>
+
+            <div className="automod-modal-footer">
+              <button type="button" className="button" onClick={closeModal} disabled={applying}>Отмена</button>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => void apply()}
+                disabled={applying || !sourceChatId || sections.size === 0}
+              >
+                <Check size={16} />{applying ? "Копирую…" : "Скопировать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
