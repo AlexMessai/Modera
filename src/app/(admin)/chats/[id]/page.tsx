@@ -64,18 +64,47 @@ const botStatusLabels: Record<string, string> = {
   ACTIVE: "Активен", CONNECTED: "Подключён", NOT_ADMIN: "Не администратор", INSUFFICIENT_PERMISSIONS: "Недостаточно прав", REMOVED: "Удалён из чата", DISABLED: "Отключён", TELEGRAM_ERROR: "Ошибка Telegram"
 };
 
-const SETTINGS_SECTIONS = [
-  { key: "automod", label: "Automod" },
-  { key: "filters", label: "Фильтры" },
-  { key: "newusers", label: "Новые пользователи" },
-  { key: "antiraid", label: "Anti-Raid" },
-  { key: "manual", label: "Ручная модерация" },
-  { key: "appeals", label: "Апелляции" },
-  { key: "team", label: "Команда" },
-  { key: "reports", label: "Жалобы" },
-  { key: "logchannel", label: "Канал логов" },
-  { key: "autoresponses", label: "Автоответы" },
-  { key: "customcommands", label: "Свои команды" }
+const SETTINGS_GROUPS = [
+  {
+    key: "moderation",
+    label: "Модерация",
+    sections: [
+      { key: "automod", label: "Automod" },
+      { key: "filters", label: "Фильтры" },
+      { key: "manual", label: "Ручная модерация" },
+      { key: "antiraid", label: "Anti-Raid" }
+    ]
+  },
+  {
+    key: "welcome",
+    label: "Приветствие",
+    sections: [
+      { key: "welcome", label: "Приветствие" },
+      { key: "captcha", label: "Капча" }
+    ]
+  },
+  {
+    key: "appeals",
+    label: "Апелляции и жалобы",
+    sections: [
+      { key: "appeals", label: "Апелляции" },
+      { key: "reports", label: "Жалобы" }
+    ]
+  },
+  {
+    key: "automation",
+    label: "Автоматизация",
+    sections: [
+      { key: "autoresponses", label: "Автоответы" },
+      { key: "customcommands", label: "Свои команды" },
+      { key: "logchannel", label: "Канал логов" }
+    ]
+  }
+] as const;
+
+const MEMBERS_SECTIONS = [
+  { key: "roster", label: "Все участники" },
+  { key: "team", label: "Команда" }
 ] as const;
 
 function formatDate(value: string) {
@@ -94,7 +123,11 @@ export default async function ChatDetailPage({
   if (!access.ok) notFound();
   const effectiveRole = await resolveEffectiveChatRole(admin, id);
   const tab = typeof query.tab === "string" ? query.tab : "overview";
-  const section = SETTINGS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "automod";
+  const settingsGroup = SETTINGS_GROUPS.find((group) => group.key === query.group) ?? SETTINGS_GROUPS[0];
+  const section = settingsGroup.sections.some((item) => item.key === query.section)
+    ? (query.section as string)
+    : settingsGroup.sections[0].key;
+  const membersSection = MEMBERS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "roster";
 
   const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
     getChatModerationProfile(id),
@@ -127,9 +160,14 @@ export default async function ChatDetailPage({
 
       {tab === "settings" ? (
         <>
-          <nav className="page-tabs" aria-label="Вкладки настроек">
-            {SETTINGS_SECTIONS.map((item) => (
-              <Link key={item.key} href={`/chats/${id}?tab=settings&section=${item.key}`} className={`page-tab ${section === item.key ? "page-tab--active" : ""}`}>{item.label}</Link>
+          <nav className="page-tabs" aria-label="Разделы настроек">
+            {SETTINGS_GROUPS.map((group) => (
+              <Link key={group.key} href={`/chats/${id}?tab=settings&group=${group.key}&section=${group.sections[0].key}`} className={`page-tab ${settingsGroup.key === group.key ? "page-tab--active" : ""}`}>{group.label}</Link>
+            ))}
+          </nav>
+          <nav className="page-tabs page-tabs--secondary" aria-label={`Вкладки: ${settingsGroup.label}`}>
+            {settingsGroup.sections.map((item) => (
+              <Link key={item.key} href={`/chats/${id}?tab=settings&group=${settingsGroup.key}&section=${item.key}`} className={`page-tab ${section === item.key ? "page-tab--active" : ""}`}>{item.label}</Link>
             ))}
           </nav>
 
@@ -143,10 +181,16 @@ export default async function ChatDetailPage({
             <ChatMediaFilters chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
           ) : null}
 
-          {section === "newusers" && captchaProfile && contentProfile ? (
+          {section === "welcome" && contentProfile ? (
             <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Новые пользователи</h2><p>Приветствие, капча и защита участников при вступлении.</p></div></div>
+              <div className="panel-header"><div><h2>Приветствие</h2><p>Текст, кнопки и защита участников при вступлении.</p></div></div>
               <ContentSettings chatId={contentProfile.chat.id} initial={contentProfile.settings} canEdit={canEdit} />
+            </section>
+          ) : null}
+
+          {section === "captcha" && captchaProfile ? (
+            <section className="panel profile-section">
+              <div className="panel-header"><div><h2>Капча</h2><p>Проверка «я не бот» для новых участников.</p></div></div>
               <CaptchaSettings chatId={captchaProfile.chat.id} initial={captchaProfile.settings} canEdit={canEdit} botCanRestrictMembers={captchaProfile.bot.canRestrictMembers} />
             </section>
           ) : null}
@@ -169,13 +213,6 @@ export default async function ChatDetailPage({
             <section className="panel profile-section">
               <div className="panel-header"><div><h2>Апелляции</h2><p>Команда /appeal боту в личные сообщения: включение для этого чата и уведомления вокруг апелляций.</p></div></div>
               <ChatAppealSettings chatId={appealProfile.chat.id} initial={appealProfile.settings} canEdit={canEdit} />
-            </section>
-          ) : null}
-
-          {section === "team" ? (
-            <section className="panel profile-section">
-              <div className="panel-header"><div><h2>Команда</h2><p>Реальные администраторы Telegram (только просмотр) и доступ к веб-панели по @username для этого чата.</p></div></div>
-              <ChatTeamSettings chatId={id} initial={team} canEdit={canEditTeam} currentAdminId={admin.id} />
             </section>
           ) : null}
 
@@ -209,7 +246,24 @@ export default async function ChatDetailPage({
         </>
       ) : null}
 
-      {tab === "members" ? <MembersClient chatId={id} canManageTrust={canEdit} /> : null}
+      {tab === "members" ? (
+        <>
+          <nav className="page-tabs" aria-label="Вкладки участников">
+            {MEMBERS_SECTIONS.map((item) => (
+              <Link key={item.key} href={`/chats/${id}?tab=members&section=${item.key}`} className={`page-tab ${membersSection === item.key ? "page-tab--active" : ""}`}>{item.label}</Link>
+            ))}
+          </nav>
+
+          {membersSection === "roster" ? <MembersClient chatId={id} canManageTrust={canEdit} /> : null}
+
+          {membersSection === "team" ? (
+            <section className="panel profile-section">
+              <div className="panel-header"><div><h2>Команда</h2><p>Реальные администраторы Telegram (только просмотр) и доступ к веб-панели по @username для этого чата.</p></div></div>
+              <ChatTeamSettings chatId={id} initial={team} canEdit={canEditTeam} currentAdminId={admin.id} />
+            </section>
+          ) : null}
+        </>
+      ) : null}
       {tab === "requests" ? <JoinRequestsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
       {tab === "appeals" ? <AppealsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
       {tab === "messages" ? <MessagesClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
