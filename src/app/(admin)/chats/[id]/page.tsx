@@ -160,18 +160,19 @@ export default async function ChatDetailPage({
 
       {tab === "settings" ? (
         <>
-          <nav className="page-tabs" aria-label="Разделы настроек">
-            {SETTINGS_GROUPS.map((group) => (
-              <Link key={group.key} href={`/chats/${id}?tab=settings&group=${group.key}&section=${group.sections[0].key}`} className={`page-tab ${settingsGroup.key === group.key ? "page-tab--active" : ""}`}>{group.label}</Link>
-            ))}
-          </nav>
+          <div className="settings-toolbar">
+            <nav className="page-tabs" aria-label="Разделы настроек">
+              {SETTINGS_GROUPS.map((group) => (
+                <Link key={group.key} href={`/chats/${id}?tab=settings&group=${group.key}&section=${group.sections[0].key}`} className={`page-tab ${settingsGroup.key === group.key ? "page-tab--active" : ""}`}>{group.label}</Link>
+              ))}
+            </nav>
+            {canEdit ? <ChatSettingsCopy chatId={id} /> : null}
+          </div>
           <nav className="page-tabs page-tabs--secondary" aria-label={`Вкладки: ${settingsGroup.label}`}>
             {settingsGroup.sections.map((item) => (
               <Link key={item.key} href={`/chats/${id}?tab=settings&group=${settingsGroup.key}&section=${item.key}`} className={`page-tab ${section === item.key ? "page-tab--active" : ""}`}>{item.label}</Link>
             ))}
           </nav>
-
-          {canEdit ? <ChatSettingsCopy chatId={id} /> : null}
 
           {section === "automod" ? (
             <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />
