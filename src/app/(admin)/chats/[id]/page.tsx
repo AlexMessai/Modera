@@ -19,6 +19,7 @@ import { MessagesClient } from "@/components/messages-client";
 import { canModerate, canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage, requireChatAccess, canManageChatTeam, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { ChatTeamSettings } from "@/components/chat-team-settings";
+import { ChatSettingsCopy } from "@/components/chat-settings-copy";
 import { listChatTeam } from "@/server/services/chat-admin-access-service";
 import { getChatCaptchaProfile } from "@/server/services/captcha-settings-service";
 import { getChatModerationProfile } from "@/server/services/chat-moderation-settings-service";
@@ -135,6 +136,8 @@ export default async function ChatDetailPage({
               <Link key={item.key} href={`/chats/${id}?tab=settings&section=${item.key}`} className={`page-tab ${section === item.key ? "page-tab--active" : ""}`}>{item.label}</Link>
             ))}
           </nav>
+
+          {canEdit ? <ChatSettingsCopy chatId={id} /> : null}
 
           {section === "automod" ? (
             <ChatModerationSettings chatId={profile.chat.id} initial={profile.settings} canEdit={canEdit} botCanDeleteMessages={profile.bot.canDeleteMessages} botCanRestrictMembers={profile.bot.canRestrictMembers} />

@@ -98,6 +98,7 @@ const actionLabels: Record<string, string> = {
   APPEAL_REJECTED: "Апелляция отклонена",
   APPEAL_NOTIFICATION_FAILED: "Не удалось уведомить пользователя об апелляции",
   SELF_UNMUTE: "Пользователь самостоятельно снял mute",
+  CHAT_SETTINGS_COPIED: "Настройки скопированы из другого чата",
   ADMIN_ACCOUNT_CREATED: "Создан аккаунт администратора",
   ADMIN_ACCOUNT_UPDATED: "Изменён аккаунт администратора",
   ADMIN_SESSIONS_REVOKED: "Отозваны сессии администратора",

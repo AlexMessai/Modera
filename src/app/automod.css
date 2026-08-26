@@ -52,6 +52,13 @@
 .automod-media-option { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .automod-media-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .automod-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
+.chat-settings-copy { margin-bottom: 16px; }
+.chat-settings-copy-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.chat-settings-copy-checkbox { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; cursor: pointer; }
+.chat-settings-copy-checkbox input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+@media (max-width: 700px) {
+  .chat-settings-copy-sections { grid-template-columns: 1fr; }
+}
 .automod-audit-list { margin-top: 14px; }
 
 .escalation-rule-list { display: grid; gap: 8px; }
