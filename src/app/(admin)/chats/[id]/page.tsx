@@ -15,6 +15,7 @@ import { MembersClient } from "@/components/members-client";
 import { JoinRequestsClient } from "@/components/join-requests-client";
 import { AppealsClient } from "@/components/appeals-client";
 import { MessagesClient } from "@/components/messages-client";
+import { ChatInviteLinksClient } from "@/components/chat-invite-links-client";
 import { canModerate, canManageChatSettings } from "@/server/auth/permissions";
 import { requireAdminPage, requireChatAccess, canManageChatTeam, resolveEffectiveChatRole } from "@/server/auth/guards";
 import { ChatTeamSettings } from "@/components/chat-team-settings";
@@ -34,6 +35,7 @@ import { listAutoResponseRules } from "@/server/services/auto-response-service";
 import { CustomCommandSettings } from "@/components/custom-command-settings";
 import { listCustomCommands } from "@/server/services/custom-command-service";
 import { getChatStatistics } from "@/server/services/chat-statistics-service";
+import { listChatInviteLinks } from "@/server/services/chat-invite-link-service";
 
 export const dynamic = "force-dynamic";
 
@@ -129,7 +131,7 @@ export default async function ChatDetailPage({
     : settingsGroup.sections[0].key;
   const membersSection = MEMBERS_SECTIONS.some((item) => item.key === query.section) ? (query.section as string) : "roster";
 
-  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam] = await Promise.all([
+  const [profile, captchaProfile, manualModerationProfile, manualModerationVisibility, appealProfile, antiRaidProfile, reportProfile, logChannelProfile, contentProfile, silence, autoResponses, customCommands, statistics, team, canEditTeam, inviteLinks] = await Promise.all([
     getChatModerationProfile(id),
     getChatCaptchaProfile(id),
     getChatManualModerationProfile(id),
@@ -144,7 +146,8 @@ export default async function ChatDetailPage({
     listCustomCommands(id),
     getChatStatistics(id, "7D"),
     listChatTeam(id),
-    canManageChatTeam(admin, id)
+    canManageChatTeam(admin, id),
+    listChatInviteLinks(id)
   ]);
   if (!profile) notFound();
 
@@ -266,6 +269,7 @@ export default async function ChatDetailPage({
         </>
       ) : null}
       {tab === "requests" ? <JoinRequestsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
+      {tab === "invitelinks" ? <ChatInviteLinksClient chatId={id} initial={inviteLinks} canEdit={canEdit} /> : null}
       {tab === "appeals" ? <AppealsClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
       {tab === "messages" ? <MessagesClient initialChatId={id} lockChat canModerate={canModerateChat} /> : null}
 

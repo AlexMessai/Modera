@@ -1,5 +1,6 @@
 import type {
   TelegramApiEnvelope,
+  TelegramChatInviteLink,
   TelegramChatMember,
   TelegramChatPhoto,
   TelegramFile,
@@ -314,6 +315,48 @@ export class TelegramClient {
       chat_id: input.chatId,
       user_id: input.userId,
       only_if_banned: input.onlyIfBanned ?? true
+    });
+  }
+
+  createChatInviteLink(input: {
+    chatId: number;
+    name?: string;
+    expireDate?: number;
+    memberLimit?: number;
+    createsJoinRequest?: boolean;
+  }) {
+    return this.call<TelegramChatInviteLink>("createChatInviteLink", {
+      chat_id: input.chatId,
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.expireDate ? { expire_date: input.expireDate } : {}),
+      // Telegram rejects member_limit together with creates_join_request.
+      ...(input.createsJoinRequest ? { creates_join_request: true } : (input.memberLimit ? { member_limit: input.memberLimit } : {}))
+    });
+  }
+
+  editChatInviteLink(input: {
+    chatId: number;
+    inviteLink: string;
+    name?: string;
+    expireDate?: number | null;
+    memberLimit?: number | null;
+    createsJoinRequest?: boolean;
+  }) {
+    return this.call<TelegramChatInviteLink>("editChatInviteLink", {
+      chat_id: input.chatId,
+      invite_link: input.inviteLink,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.expireDate ? { expire_date: input.expireDate } : {}),
+      ...(input.createsJoinRequest
+        ? { creates_join_request: true }
+        : (input.memberLimit ? { member_limit: input.memberLimit } : {}))
+    });
+  }
+
+  revokeChatInviteLink(chatId: number, inviteLink: string) {
+    return this.call<TelegramChatInviteLink>("revokeChatInviteLink", {
+      chat_id: chatId,
+      invite_link: inviteLink
     });
   }
 

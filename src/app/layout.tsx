@@ -14,6 +14,7 @@ import "./dashboard.css";
 import "./appeals.css";
 import "./commands.css";
 import "./chats.css";
+import "./invite-links.css";
 
 const manrope = Manrope({
   subsets: ["cyrillic", "latin"],

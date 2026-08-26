@@ -143,6 +143,7 @@ model Chat {
   customCommands           CustomCommand[]
   adminAccess              ChatAdminAccess[]
   appealSettings           ChatAppealSettings?
+  inviteLinks              ChatInviteLink[]
 
   @@index([lastActivityAt(sort: Desc)])
   @@index([type])
@@ -231,17 +232,51 @@ model ChatMember {
   // since deletion silently failed in production when it was read straight
   // off the callback update.
   captchaChallengeEphemeralMessageId Int?
+  // Set when this member joined via a tracked invite link (see
+  // ChatInviteLink) -- cleared once a "left" event has been attributed back
+  // to that link, so a later organic leave (no fresh join in between) is
+  // never double-counted against a stale link.
+  joinedViaInviteLinkId          String?            @db.Uuid
   createdAt                      DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt                      DateTime           @updatedAt @db.Timestamptz(3)
   chat                           Chat               @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user                           TelegramUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberTag                      ChatMemberTag?
+  joinedViaInviteLink            ChatInviteLink?    @relation(fields: [joinedViaInviteLinkId], references: [id], onDelete: SetNull)
 
   @@unique([chatId, userId])
   @@index([chatId, status, lastSeenAt(sort: Desc)])
   @@index([status, lastSeenAt(sort: Desc)])
   @@index([punishmentState, punishmentExpiresAt])
   @@index([userId])
+  @@index([joinedViaInviteLinkId])
+}
+
+// Bot-created Telegram invite links tracked for per-link join/leave
+// statistics -- see chat-invite-link-service.ts. Telegram's Bot API has no
+// hard "delete", only revoke (createChatInviteLink/editChatInviteLink/
+// revokeChatInviteLink); "Удалить" in the panel maps to revoke + removing
+// this row, matching CLAUDE.md's no-fake-actions rule (we never pretend a
+// revoked-but-still-technically-existing link was deleted from Telegram).
+model ChatInviteLink {
+  id                 String       @id @default(uuid()) @db.Uuid
+  chatId             String       @db.Uuid
+  telegramInviteLink String       @unique
+  name               String?
+  memberLimit        Int?
+  expiresAt          DateTime?    @db.Timestamptz(3)
+  createsJoinRequest Boolean      @default(false)
+  isRevoked          Boolean      @default(false)
+  joinedCount        Int          @default(0)
+  leftCount          Int          @default(0)
+  createdByAdminId   String?      @db.Uuid
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+  chat               Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  createdByAdmin     AdminUser?   @relation("ChatInviteLinkCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  members            ChatMember[]
+
+  @@index([chatId])
 }
 
 model ChatMemberTag {
@@ -784,6 +819,7 @@ model AdminUser {
   chatAdminAccess           ChatAdminAccess[]  @relation("ChatAdminAccessAdmin")
   grantedChatAdminAccess    ChatAdminAccess[]  @relation("ChatAdminAccessGrantedBy")
   telegramLoginRequests     TelegramLoginRequest[]
+  createdInviteLinks        ChatInviteLink[]        @relation("ChatInviteLinkCreatedBy")
 
   @@index([role, isActive])
   @@index([scope])

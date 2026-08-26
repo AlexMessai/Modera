@@ -1,0 +1,40 @@
+.invite-links .settings-toolbar { margin-bottom: 14px; }
+.invite-link-list { display: grid; gap: 12px; margin-top: 14px; }
+
+.invite-link-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.invite-link-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.invite-link-card-head strong { font-size: 14px; }
+
+.invite-link-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; font-size: 12.5px; font-weight: 650; }
+.invite-link-stat { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.invite-link-stat--joined { color: var(--success); }
+.invite-link-stat--left { color: var(--danger); }
+.invite-link-stat--remaining { margin-left: auto; color: var(--text); }
+
+.invite-link-url {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.invite-link-url:hover { border-color: var(--accent); color: var(--accent); }
+.invite-link-url span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+
+.invite-link-meta { color: var(--muted); font-size: 12px; }
+
+.invite-link-actions { display: flex; justify-content: flex-end; gap: 8px; }

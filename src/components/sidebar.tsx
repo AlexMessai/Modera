@@ -7,6 +7,7 @@ import { TelegramChatAvatar } from "@/components/telegram-avatar";
 import {
   ChevronRight,
   LayoutDashboard,
+  Link2,
   LogOut,
   MessageCircleQuestion,
   MessageSquareText,
@@ -32,6 +33,7 @@ const chatTabs = [
   { tab: "settings", label: "Настройки", icon: ServerCog },
   { tab: "members", label: "Участники", icon: UsersRound },
   { tab: "requests", label: "Заявки", icon: UserRoundPlus },
+  { tab: "invitelinks", label: "Пригласительные ссылки", icon: Link2 },
   { tab: "appeals", label: "Апелляции", icon: MessageCircleQuestion },
   { tab: "messages", label: "Сообщения", icon: MessagesSquare },
   { tab: "journal", label: "Журнал чата", icon: ScrollText }

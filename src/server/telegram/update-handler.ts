@@ -13,6 +13,7 @@ import { sendWelcomeMessage } from "@/server/services/welcome-service";
 import { maybeIssueCaptchaChallenge, parseCaptchaCallbackData, verifyCaptchaChallenge } from "@/server/services/captcha-service";
 import { isLiveTelegramChatAdmin } from "@/server/services/telegram-admin-service";
 import { markBotChatTelegramError, syncTelegramChat, upsertTelegramBot } from "@/server/services/chat-service";
+import { recordInviteLinkJoin, recordInviteLinkLeft } from "@/server/services/chat-invite-link-service";
 import { recordTelegramJoinRequest } from "@/server/services/join-request-service";
 import { applyNewMemberProtection } from "@/server/services/new-member-protection-service";
 import {
@@ -91,6 +92,12 @@ function isNewMemberJoin(update: TelegramChatMemberUpdated) {
   const previous = update.old_chat_member.status;
   const next = update.new_chat_member.status;
   return (previous === "left" || previous === "kicked") && (next === "member" || next === "restricted");
+}
+
+function isMemberLeaving(update: TelegramChatMemberUpdated) {
+  const previous = update.old_chat_member.status;
+  const next = update.new_chat_member.status;
+  return previous !== "left" && previous !== "kicked" && (next === "left" || next === "kicked");
 }
 
 async function runAutomod(input: { chatId: string; message: TelegramMessage; isEdited: boolean }) {
@@ -1632,6 +1639,17 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
       member: update.chat_member.new_chat_member,
       eventAt: new Date(update.chat_member.date * 1000)
     }).catch(() => undefined);
+
+    if (isNewMemberJoin(update.chat_member) && update.chat_member.invite_link) {
+      await recordInviteLinkJoin({
+        chatId: syncedChat.id,
+        telegramInviteLink: update.chat_member.invite_link.invite_link,
+        membershipId: syncedMember.membership.id
+      });
+    }
+    if (isMemberLeaving(update.chat_member)) {
+      await recordInviteLinkLeft(syncedMember.membership.id);
+    }
 
     const joinedAt = new Date(update.chat_member.date * 1000);
     const protection = isNewMemberJoin(update.chat_member)
