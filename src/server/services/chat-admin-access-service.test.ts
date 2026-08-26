@@ -10,6 +10,7 @@ import {
   listTelegramModeratorsForChat,
   resolveTelegramUserByHandle,
   revokeChatAccess,
+  syncAutoChatAdminAccess,
   updateChatAccessRole
 } from "./chat-admin-access-service";
 
@@ -24,6 +25,7 @@ async function cleanup() {
   await prisma.telegramUser.deleteMany({ where: { telegramUserId: KNOWN_TELEGRAM_USER_ID } });
   await prisma.adminUser.deleteMany({ where: { email: GLOBAL_ADMIN_EMAIL } });
   await prisma.adminUser.deleteMany({ where: { telegramUserId: KNOWN_TELEGRAM_USER_ID } });
+  await prisma.telegramBot.deleteMany({ where: { telegramBotId: 900004001n } });
 }
 
 async function setup() {
@@ -206,6 +208,65 @@ test("listChatsForAdmin returns null for a GLOBAL admin and the exact chat-ID ar
     const forChatAdmin = await listChatsForAdmin(granted.adminId);
     assert.deepEqual(forChatAdmin, [chat.id]);
     assert.ok(!forChatAdmin?.includes(otherChat.id));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("syncAutoChatAdminAccess grants for newly-cached admin chats, revokes when demoted, and leaves MANUAL grants alone", async () => {
+  await cleanup();
+  const { chat, otherChat, globalAdmin, knownUser } = await setup();
+  try {
+    const bot = await prisma.telegramBot.create({
+      data: { telegramBotId: 900004001n, username: "chat_admin_access_ci_bot", firstName: "CI Bot" }
+    });
+    await prisma.botChat.create({ data: { botId: bot.id, chatId: chat.id, status: "ACTIVE" } });
+    const chatMember = await prisma.chatMember.create({
+      data: { chatId: chat.id, userId: knownUser.id, status: "ADMINISTRATOR", joinedAt: new Date() }
+    });
+    const chatAdminUser = await prisma.adminUser.create({
+      data: {
+        scope: "CHAT",
+        role: "VIEWER",
+        email: null,
+        passwordHash: null,
+        displayName: knownUser.displayName,
+        telegramUserId: KNOWN_TELEGRAM_USER_ID
+      }
+    });
+
+    // A MANUAL grant for a chat this Telegram user has no cached admin status
+    // in at all -- must never be touched by the auto-sync, regardless of direction.
+    const manualGrant = await grantChatAccessByUsername({
+      chatId: otherChat.id,
+      actingAdminId: globalAdmin.id,
+      handle: KNOWN_USERNAME,
+      role: "MODERATOR"
+    });
+
+    await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
+
+    const afterGrant = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id }, orderBy: { chatId: "asc" } });
+    assert.equal(afterGrant.length, 2);
+    const autoRow = afterGrant.find((row) => row.chatId === chat.id);
+    assert.equal(autoRow?.role, "ADMIN");
+    assert.equal(autoRow?.grantedVia, "AUTO");
+    const stillManual = afterGrant.find((row) => row.id === manualGrant.id);
+    assert.equal(stillManual?.grantedVia, "MANUAL");
+    assert.equal(stillManual?.role, "MODERATOR");
+
+    const syncLog = await prisma.auditLog.findFirst({ where: { actingAdminId: chatAdminUser.id, action: "CHAT_ADMIN_ACCESS_AUTO_SYNCED" } });
+    assert.ok(syncLog);
+
+    // Demoted to a regular member -- the AUTO grant for `chat` must disappear,
+    // but the unrelated MANUAL grant for `otherChat` must survive untouched.
+    await prisma.chatMember.update({ where: { id: chatMember.id }, data: { status: "MEMBER" } });
+    await syncAutoChatAdminAccess(chatAdminUser.id, KNOWN_TELEGRAM_USER_ID);
+
+    const afterDemotion = await prisma.chatAdminAccess.findMany({ where: { adminId: chatAdminUser.id } });
+    assert.equal(afterDemotion.length, 1);
+    assert.equal(afterDemotion[0].id, manualGrant.id);
+    assert.equal(afterDemotion[0].grantedVia, "MANUAL");
   } finally {
     await cleanup();
   }

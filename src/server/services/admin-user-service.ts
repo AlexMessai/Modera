@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/server/db/prisma";
 import type { AdminRoleValue } from "@/server/auth/permissions";
+import { syncAutoChatAdminAccess } from "@/server/services/chat-admin-access-service";
 
 export class AdminUserError extends Error {
   constructor(
@@ -357,6 +358,9 @@ export async function resolveOrCreateAdminFromTelegramIdentity(telegramUser: {
     return { outcome: "not_linked" };
   }
   if (existing) {
+    if (existing.scope === "CHAT") {
+      await syncAutoChatAdminAccess(existing.id, telegramUserId).catch(() => undefined);
+    }
     return { outcome: "ok", admin: existing };
   }
 

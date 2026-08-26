@@ -219,6 +219,67 @@ export async function revokeChatAccess(input: {
 }
 
 /**
+ * Keeps a self-registered admin's AUTO-granted chat access in sync with their
+ * current cached CREATOR/ADMINISTRATOR status. ChatAdminAccess is otherwise
+ * only ever granted once (at self-registration) and never automatically
+ * revoked -- so a member demoted or removed as a Telegram admin keeps their
+ * web-panel access to that chat forever unless someone remembers to revoke it
+ * by hand on the Команда tab. Called on every Telegram-bot login (not just
+ * first self-registration) to close that gap. Never touches "MANUAL" grants
+ * -- those were added deliberately by another admin and don't track Telegram
+ * status at all.
+ */
+export async function syncAutoChatAdminAccess(adminId: string, telegramUserId: bigint) {
+  const [currentAdminChats, existingAutoAccess] = await Promise.all([
+    prisma.chatMember.findMany({
+      where: {
+        user: { telegramUserId },
+        status: { in: ["CREATOR", "ADMINISTRATOR"] },
+        chat: { botLinks: { some: { status: { notIn: ["REMOVED", "DISABLED"] } } } }
+      },
+      select: { chatId: true, status: true }
+    }),
+    prisma.chatAdminAccess.findMany({
+      where: { adminId, grantedVia: "AUTO" },
+      select: { id: true, chatId: true }
+    })
+  ]);
+
+  const currentByChatId = new Map(currentAdminChats.map((membership) => [membership.chatId, membership.status]));
+  const existingChatIds = new Set(existingAutoAccess.map((access) => access.chatId));
+
+  const toGrant = currentAdminChats.filter((membership) => !existingChatIds.has(membership.chatId));
+  const toRevoke = existingAutoAccess.filter((access) => !currentByChatId.has(access.chatId));
+
+  if (toGrant.length === 0 && toRevoke.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    if (toGrant.length > 0) {
+      await tx.chatAdminAccess.createMany({
+        data: toGrant.map((membership) => ({
+          chatId: membership.chatId,
+          adminId,
+          role: membership.status === "CREATOR" ? "OWNER" : "ADMIN",
+          grantedVia: "AUTO"
+        })),
+        skipDuplicates: true
+      });
+    }
+    if (toRevoke.length > 0) {
+      await tx.chatAdminAccess.deleteMany({ where: { id: { in: toRevoke.map((access) => access.id) } } });
+    }
+    await tx.auditLog.create({
+      data: {
+        actingAdminId: adminId,
+        source: "ADMIN",
+        action: "CHAT_ADMIN_ACCESS_AUTO_SYNCED",
+        metadata: { granted: toGrant.map((m) => m.chatId), revoked: toRevoke.map((a) => a.chatId) }
+      }
+    });
+  });
+}
+
+/**
  * The scoping primitive every reader threads through: null (sentinel "no
  * filter, see everything") for a GLOBAL admin -- unchanged behavior -- or
  * the array of chat IDs a CHAT admin has access to.
