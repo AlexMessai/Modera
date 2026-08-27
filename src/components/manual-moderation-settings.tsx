@@ -32,11 +32,21 @@ const RECIPIENTS: Array<{ key: Recipient; title: string; description: string }> 
   { key: "MODERATOR", title: "Модераторам", description: "Только модераторам" }
 ];
 const VARIABLES = ["%target%", "%amount%", "%warns%", "%warns_limit%", "%admin%"];
+const USAGE_ROWS: Array<{ command: string; description: string }> = [
+  { command: "/warn @username причина", description: "выдать предупреждение" },
+  { command: "/unwarn @username 2", description: "снять указанное количество (без числа — одно)" },
+  { command: "/mute @username 2h причина", description: "ограничить на 10m / 2h / 3d — без длительности навсегда" },
+  { command: "/unmute @username", description: "снять ограничение" },
+  { command: "/ban @username 3d причина", description: "заблокировать на 10m / 2h / 3d — без длительности навсегда" },
+  { command: "/unban @username", description: "снять блокировку" },
+  { command: "/kick @username причина", description: "исключить из чата" }
+];
 const renderPreview = (template: string) => template.replaceAll("%target%", "@alex_test").replaceAll("%amount%", "2").replaceAll("%warns_limit%", "3").replaceAll("%warns%", "1").replaceAll("%admin%", "Алексей").replace(/<[^>]+>/g, "");
 
 export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: Props) {
   const [settings, setSettings] = useState(initial);
   const [openGroup, setOpenGroup] = useState<string | null>("warnings");
+  const [usageOpen, setUsageOpen] = useState(false);
   const [activeCommands, setActiveCommands] = useState<Record<string, CommandKey>>({ warnings: "unwarn", restrictions: "mute", blocks: "ban", kick: "kick" });
   const [recipient, setRecipient] = useState<Recipient>("PUBLIC");
   const [confirmCommand, setConfirmCommand] = useState<CommandKey | null>(null);
@@ -73,6 +83,10 @@ export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: 
   return <div className="automod-settings manual-mod-settings">
     {!canEdit ? <div className="moderation-readonly"><ShieldCheck size={18} /><div><strong>Только просмотр</strong><p>Изменять настройки чата могут OWNER и ADMIN.</p></div></div> : null}
     <div className="manual-mod-global-setting"><SettingsRow title="Автоматически удалять команды бота" description="Применяется ко всем командам ручной модерации в этом чате" checked={deleteCommandMessages} disabled={!canEdit || saving} onChange={setDeleteCommandMessages} /></div>
+    <div className={`manual-mod-usage-block${usageOpen ? " is-open" : ""}`}>
+      <button className="manual-mod-usage-toggle" type="button" aria-expanded={usageOpen} onClick={() => setUsageOpen((current) => !current)}><strong>Как использовать команды</strong><span>Общий синтаксис: /команда @username или ответом на сообщение цели</span><ChevronDown size={16} /></button>
+      {usageOpen ? <div className="manual-mod-usage-grid">{USAGE_ROWS.map((row) => <div key={row.command}><code>{row.command}</code><span>{row.description}</span></div>)}</div> : null}
+    </div>
     <div className="manual-mod-accordions">{GROUPS.map((group) => {
       const expanded = openGroup === group.key;
       const command = activeCommands[group.key] ?? group.commands[0]!.key;
@@ -82,7 +96,7 @@ export function ManualModerationSettings({ chatId, initial, canEdit, onSaved }: 
         <button className="manual-mod-accordion-head" type="button" aria-expanded={expanded} onClick={() => setOpenGroup((current) => current === group.key ? null : group.key)}><strong>{group.title}</strong><span className="manual-mod-accordion-badges">{group.commands.map((item) => <code key={item.key}>/{item.key}</code>)}</span><ChevronDown size={18} /></button>
         {expanded ? <div className="manual-mod-accordion-body">
           <div className="manual-mod-tabs" role="tablist">{group.commands.map((item) => <button key={item.key} type="button" role="tab" aria-selected={command === item.key} className={command === item.key ? "is-active" : ""} onClick={() => { setActiveCommands((current) => ({ ...current, [group.key]: item.key })); setRecipient("PUBLIC"); }}>{item.tab}</button>)}</div>
-          {command === "unwarn" ? <><div className="manual-mod-block"><h4>Как использовать</h4><div className="manual-mod-usage"><code>/unwarn @username</code><span>снять одно предупреждение</span><code>/unwarn @username 2</code><span>снять указанное количество</span><code>/unwarn</code><span>ответом на сообщение</span><code>/unwarn 2</code><span>ответом и снять указанное количество</span></div></div><div className="manual-mod-block"><h4>Параметры команды</h4><SettingsRow title="Разрешить указывать количество" description="Если количество не указано, снимается одно предупреждение" checked={profile.allowAmount} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, allowAmount: checked }))} /><p className="manual-mod-note">Принимаются только целые числа от 1. Нельзя снять больше предупреждений, чем есть у пользователя.</p></div></> : null}
+          {command === "unwarn" ? <div className="manual-mod-block"><h4>Параметры команды</h4><SettingsRow title="Разрешить указывать количество" description="Если количество не указано, снимается одно предупреждение" checked={profile.allowAmount} disabled={!canEdit || saving} onChange={(checked) => updateCommand(command, (current) => ({ ...current, allowAmount: checked }))} /><p className="manual-mod-note">Принимаются только целые числа от 1. Нельзя снять больше предупреждений, чем есть у пользователя.</p></div> : null}
           <div className="manual-mod-block"><h4>Кому отправить уведомление</h4><div className="manual-mod-recipients">{RECIPIENTS.map((item) => <div key={item.key} role="button" tabIndex={0} className={`manual-mod-recipient${recipient === item.key ? " is-selected" : ""}`} onClick={() => setRecipient(item.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setRecipient(item.key); } }}><div><strong>{item.title}</strong><span>{item.description}</span></div><button type="button" role="switch" aria-checked={profile.notifications[item.key].enabled} aria-label={`Уведомление: ${item.title}`} className={`switch${profile.notifications[item.key].enabled ? " switch--on" : ""}`} disabled={!canEdit || saving} onClick={(event) => { event.stopPropagation(); updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [item.key]: { ...current.notifications[item.key], enabled: !current.notifications[item.key].enabled } } })); }}><span className="switch-thumb" /></button></div>)}</div>
             {selectedChannel.enabled ? <div className="manual-mod-editor"><label htmlFor={`manual-template-${command}-${recipient}`}>Шаблон сообщения</label><textarea ref={editorRef} id={`manual-template-${command}-${recipient}`} rows={4} value={selectedChannel.template} disabled={!canEdit || saving} onChange={(event) => updateCommand(command, (current) => ({ ...current, notifications: { ...current.notifications, [recipient]: { ...current.notifications[recipient], template: event.target.value } } }))} /><div className="manual-mod-variables">{VARIABLES.map((variable) => <button type="button" key={variable} onClick={() => insertVariable(command, variable)} disabled={!canEdit || saving}>{variable}</button>)}</div><div className="manual-mod-preview"><small>ПРЕДПРОСМОТР</small><p>{renderPreview(selectedChannel.template)}</p></div></div> : null}
           </div>
