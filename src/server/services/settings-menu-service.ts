@@ -445,7 +445,7 @@ function previewText(value: string, limit: number = CONTENT_PREVIEW_LIMIT) {
 
 function renderWelcomeDetail(settings: ContentSettingsValue, telegramChatId: number) {
   return {
-    text: `👋 Приветствие новых участников\n\nОтправляется в чат сразу после вступления. Текст общий для всех чатов, редактируется в Web Admin → Система → Уведомления.\n\nТекущий текст:\n${previewText(settings.welcomeMessageTemplate)}`,
+    text: `👋 Приветствие новых участников\n\nОтправляется приватно вступившему участнику сразу после вступления (видно только ему, как нативное «Приветствие» в самом Telegram). Редактируется в Web Admin → этот чат → Новые пользователи.\n\nТекущий текст:\n${previewText(settings.welcomeMessageTemplate)}`,
     keyboard: {
       inline_keyboard: [
         toggleRow(`Статус: ${settings.welcomeEnabled ? "✅ включено" : "⬜ выключено"}`, "chat.welcome.toggle", telegramChatId),

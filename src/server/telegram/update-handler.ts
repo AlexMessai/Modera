@@ -1670,6 +1670,7 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
         telegramChatId: chat.id,
         chatTitle: syncedChat.title,
         memberCount: syncedChat.knownMemberCount,
+        newMemberTelegramUserId: update.chat_member.new_chat_member.user.id,
         newMemberFirstName: update.chat_member.new_chat_member.user.first_name,
         newMemberUsername: update.chat_member.new_chat_member.user.username ?? null
       }).catch(() => undefined);
